@@ -22,6 +22,7 @@ from ..config import Config
 from ..utils.llm_client import LLMClient
 from ..utils.logger import get_logger
 from ..utils.locale import get_language_instruction, t
+from .consumer.report_context import ConsumerReportContextBuilder
 from .zep_tools import (
     ZepToolsService, 
     SearchResult, 
@@ -446,8 +447,10 @@ class Report:
     graph_id: str
     simulation_requirement: str
     status: ReportStatus
+    project_type: str = "default"
     outline: Optional[ReportOutline] = None
     markdown_content: str = ""
+    report_context: Optional[Dict[str, Any]] = None
     created_at: str = ""
     completed_at: str = ""
     error: Optional[str] = None
@@ -459,8 +462,10 @@ class Report:
             "graph_id": self.graph_id,
             "simulation_requirement": self.simulation_requirement,
             "status": self.status.value,
+            "project_type": self.project_type,
             "outline": self.outline.to_dict() if self.outline else None,
             "markdown_content": self.markdown_content,
+            "report_context": self.report_context,
             "created_at": self.created_at,
             "completed_at": self.completed_at,
             "error": self.error
@@ -887,7 +892,9 @@ class ReportAgent:
         simulation_id: str,
         simulation_requirement: str,
         llm_client: Optional[LLMClient] = None,
-        zep_tools: Optional[ZepToolsService] = None
+        zep_tools: Optional[ZepToolsService] = None,
+        project_type: str = "default",
+        project_id: Optional[str] = None,
     ):
         """
         初始化Report Agent
@@ -902,6 +909,8 @@ class ReportAgent:
         self.graph_id = graph_id
         self.simulation_id = simulation_id
         self.simulation_requirement = simulation_requirement
+        self.project_type = project_type or "default"
+        self.project_id = project_id
         
         self.llm = llm_client or LLMClient()
         self.zep_tools = zep_tools or ZepToolsService()
@@ -1568,6 +1577,7 @@ class ReportAgent:
             graph_id=self.graph_id,
             simulation_requirement=self.simulation_requirement,
             status=ReportStatus.PENDING,
+            project_type=self.project_type,
             created_at=datetime.now().isoformat()
         )
         
@@ -1594,6 +1604,15 @@ class ReportAgent:
                 completed_sections=[]
             )
             ReportManager.save_report(report)
+
+            if self.project_type == "consumer_test":
+                return self._generate_consumer_report(
+                    report=report,
+                    report_id=report_id,
+                    start_time=start_time,
+                    completed_section_titles=completed_section_titles,
+                    progress_callback=progress_callback,
+                )
             
             # 阶段1: 规划大纲
             report.status = ReportStatus.PLANNING
@@ -1762,6 +1781,194 @@ class ReportAgent:
                 self.console_logger = None
             
             return report
+
+    def _generate_consumer_report(
+        self,
+        report: Report,
+        report_id: str,
+        start_time: datetime,
+        completed_section_titles: List[str],
+        progress_callback: Optional[Callable[[str, int, str], None]] = None,
+    ) -> Report:
+        if self.report_logger:
+            self.report_logger.log_planning_start()
+
+        ReportManager.update_progress(
+            report_id, "planning", 10, "正在整理消费者传播证据",
+            completed_sections=completed_section_titles,
+        )
+        if progress_callback:
+            progress_callback("planning", 10, "正在整理消费者传播证据")
+
+        context = self._build_consumer_report_context()
+        report.report_context = context
+        outline = self._build_consumer_outline(context)
+        report.outline = outline
+        report.status = ReportStatus.GENERATING
+        ReportManager.save_outline(report_id, outline)
+        ReportManager.save_report(report)
+
+        if self.report_logger:
+            self.report_logger.log_planning_complete(outline.to_dict())
+
+        total_sections = len(outline.sections)
+        for index, section in enumerate(outline.sections, start=1):
+            progress = 20 + int(((index - 1) / max(total_sections, 1)) * 70)
+            ReportManager.update_progress(
+                report_id,
+                "generating",
+                progress,
+                f"正在生成章节：{section.title}",
+                current_section=section.title,
+                completed_sections=completed_section_titles,
+            )
+            if progress_callback:
+                progress_callback("generating", progress, f"正在生成章节：{section.title}")
+
+            section.content = self._render_consumer_section(section.title, context)
+            ReportManager.save_section(report_id, index, section)
+            completed_section_titles.append(section.title)
+
+            if self.report_logger:
+                self.report_logger.log_section_full_complete(
+                    section_title=section.title,
+                    section_index=index,
+                    full_content=f"## {section.title}\n\n{section.content}".strip(),
+                )
+
+        report.markdown_content = ReportManager.assemble_full_report(report_id, outline)
+        report.status = ReportStatus.COMPLETED
+        report.completed_at = datetime.now().isoformat()
+
+        total_time_seconds = (datetime.now() - start_time).total_seconds()
+        if self.report_logger:
+            self.report_logger.log_report_complete(
+                total_sections=total_sections,
+                total_time_seconds=total_time_seconds,
+            )
+
+        ReportManager.save_report(report)
+        ReportManager.update_progress(
+            report_id, "completed", 100, t('progress.reportComplete'),
+            completed_sections=completed_section_titles,
+        )
+        if progress_callback:
+            progress_callback("completed", 100, t('progress.reportComplete'))
+
+        if self.console_logger:
+            self.console_logger.close()
+            self.console_logger = None
+
+        return report
+
+    def _build_consumer_report_context(self) -> Dict[str, Any]:
+        rounds_path = os.path.join(
+            Config.UPLOAD_FOLDER,
+            "simulations",
+            self.simulation_id,
+            "consumer_rounds.jsonl",
+        )
+        builder = ConsumerReportContextBuilder()
+        events = builder.load_events(rounds_path)
+        if not events:
+            raise ValueError(f"消费者传播快照不存在: {self.simulation_id}")
+        return builder.build(events)
+
+    def _build_consumer_outline(self, context: Dict[str, Any]) -> ReportOutline:
+        summary = context["summary"]
+        outline_summary = (
+            "本报告基于消费者群体传播快照生成，"
+            f"初始正向接受度 {summary['initial_acceptance']['positive']:.0%}，"
+            f"传播后正向接受度 {summary['post_propagation_acceptance']['positive']:.0%}，"
+            f"态度转向率 {summary['attitude_shift_rate']:.0%}。"
+        )
+        return ReportOutline(
+            title="消费者传播测试报告",
+            summary=outline_summary,
+            sections=[
+                ReportSection(title="测试概览", content=""),
+                ReportSection(title="初始反应", content=""),
+                ReportSection(title="传播演化", content=""),
+                ReportSection(title="风险与误读", content=""),
+                ReportSection(title="代表性消费者原声", content=""),
+                ReportSection(title="行动建议", content=""),
+            ],
+        )
+
+    def _render_consumer_section(self, section_title: str, context: Dict[str, Any]) -> str:
+        summary = context["summary"]
+        if section_title == "测试概览":
+            return (
+                f"- 事件样本数：{context['events_count']}\n"
+                f"- 初始接受度：{self._format_acceptance(summary['initial_acceptance'])}\n"
+                f"- 传播后接受度：{self._format_acceptance(summary['post_propagation_acceptance'])}\n"
+                f"- 态度转向率：{summary['attitude_shift_rate']:.0%}"
+            )
+
+        if section_title == "初始反应":
+            return (
+                f"- 高共鸣点：{self._format_points(context['top_resonance_points'])}\n"
+                f"- 代表性正向原声：\n{self._format_quotes(context['representative_voc_quotes']['resonance'])}"
+            )
+
+        if section_title == "传播演化":
+            return (
+                f"- 传播后接受度：{self._format_acceptance(summary['post_propagation_acceptance'])}\n"
+                f"- 态度转向率：{summary['attitude_shift_rate']:.0%}\n"
+                f"- 扩散中的高频讨论点：{self._format_points(context['top_resonance_points'])}"
+            )
+
+        if section_title == "风险与误读":
+            return (
+                f"- 高风险点：{self._format_points(context['top_risk_points'])}\n"
+                f"- 高误读点：{self._format_points(context['top_misreads'])}\n"
+                f"- 风险原声：\n{self._format_quotes(context['representative_voc_quotes']['risk'])}\n"
+                f"- 误读/疑问原声：\n{self._format_quotes(context['representative_voc_quotes']['misread'])}"
+            )
+
+        if section_title == "代表性消费者原声":
+            return (
+                f"**正向原声**\n{self._format_quotes(context['representative_voc_quotes']['resonance'])}\n\n"
+                f"**风险原声**\n{self._format_quotes(context['representative_voc_quotes']['risk'])}\n\n"
+                f"**误读/疑问原声**\n{self._format_quotes(context['representative_voc_quotes']['misread'])}"
+            )
+
+        if section_title == "行动建议":
+            resonance_point = self._first_point(context["top_resonance_points"], "现有核心卖点")
+            risk_point = self._first_point(context["top_risk_points"], "潜在争议点")
+            misread_point = self._first_point(context["top_misreads"], "传播中的模糊表述")
+            return (
+                f"- 放大高共鸣表达：围绕“{resonance_point}”继续强化概念与文案。\n"
+                f"- 提前澄清风险：针对“{risk_point}”准备更直接的解释与证据。\n"
+                f"- 修正文案误读：对“{misread_point}”补充更具体、更少歧义的表述。"
+            )
+
+        return ""
+
+    def _format_acceptance(self, acceptance: Dict[str, float]) -> str:
+        return (
+            f"正向 {acceptance.get('positive', 0.0):.0%} / "
+            f"中立 {acceptance.get('neutral', 0.0):.0%} / "
+            f"负向 {acceptance.get('negative', 0.0):.0%}"
+        )
+
+    def _format_points(self, points: List[str]) -> str:
+        if not points:
+            return "暂无显著点位"
+        return "；".join(points)
+
+    def _first_point(self, points: List[str], fallback: str) -> str:
+        return points[0] if points else fallback
+
+    def _format_quotes(self, quotes: List[Dict[str, Any]]) -> str:
+        if not quotes:
+            return "- 暂无代表性原声"
+        lines = []
+        for item in quotes:
+            quote = str(item.get("quote", "")).strip()
+            engagement = item.get("engagement", 0)
+            lines.append(f'- "{quote}"（互动值 {engagement}）')
+        return "\n".join(lines)
     
     def chat(
         self, 
@@ -2489,8 +2696,10 @@ class ReportManager:
             graph_id=data['graph_id'],
             simulation_requirement=data['simulation_requirement'],
             status=ReportStatus(data['status']),
+            project_type=data.get('project_type', 'default'),
             outline=outline,
             markdown_content=markdown_content,
+            report_context=data.get('report_context'),
             created_at=data.get('created_at', ''),
             completed_at=data.get('completed_at', ''),
             error=data.get('error')

@@ -14,6 +14,7 @@ from ..services.oasis_profile_generator import OasisProfileGenerator
 from ..services.simulation_manager import SimulationManager, SimulationStatus
 from ..services.simulation_runner import SimulationRunner, RunnerStatus
 from ..services.consumer.persona_pack import load_default_persona_pack
+from ..services.consumer.report_context import ConsumerReportContextBuilder
 from ..utils.logger import get_logger
 from ..utils.locale import t, get_locale, set_locale
 from ..models.project import ProjectManager
@@ -1141,6 +1142,46 @@ def get_simulation_profiles_realtime(simulation_id: str):
         
     except Exception as e:
         logger.error(f"实时获取Profile失败: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }), 500
+
+
+@simulation_bp.route('/<simulation_id>/consumer-summary', methods=['GET'])
+def get_consumer_summary(simulation_id: str):
+    """读取消费者传播快照并返回结构化摘要。"""
+    try:
+        manager = SimulationManager()
+        state = manager.get_simulation(simulation_id)
+        if not state:
+            return jsonify({
+                "success": False,
+                "error": t('api.simulationNotFound', id=simulation_id)
+            }), 404
+
+        if not state.consumer_mode:
+            return jsonify({
+                "success": False,
+                "error": "consumer summary is only available for consumer_test simulations"
+            }), 400
+
+        rounds_path = os.path.join(Config.UPLOAD_FOLDER, 'simulations', simulation_id, 'consumer_rounds.jsonl')
+        builder = ConsumerReportContextBuilder()
+        events = builder.load_events(rounds_path)
+        if not events:
+            return jsonify({
+                "success": False,
+                "error": f"consumer round snapshots not found for simulation {simulation_id}"
+            }), 404
+
+        return jsonify({
+            "success": True,
+            "data": builder.build(events)
+        })
+    except Exception as e:
+        logger.error(f"获取消费者传播摘要失败: {str(e)}")
         return jsonify({
             "success": False,
             "error": str(e),

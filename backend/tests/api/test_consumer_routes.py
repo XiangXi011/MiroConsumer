@@ -11,11 +11,14 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from flask import Flask
 
-from app.api import graph_bp, simulation_bp
+from app.api import graph_bp, report_bp, simulation_bp
 from app.api import graph as graph_api
+from app.api import report as report_api
 from app.api import simulation as simulation_api
 from app.models.project import ProjectManager, ProjectStatus
 from app.models.task import TaskManager, TaskStatus
+from app.services.report_agent import ReportManager
+from app.services.simulation_manager import SimulationManager
 
 
 def _create_test_app():
@@ -25,6 +28,7 @@ def _create_test_app():
         app.json.ensure_ascii = False
     app.register_blueprint(graph_bp, url_prefix="/api/graph")
     app.register_blueprint(simulation_bp, url_prefix="/api/simulation")
+    app.register_blueprint(report_bp, url_prefix="/api/report")
     return app
 
 
@@ -37,7 +41,15 @@ def _configure_simulation_storage(tmp_path, monkeypatch):
     simulations_dir = tmp_path / "uploads" / "simulations"
     monkeypatch.setattr(simulation_api.Config, "OASIS_SIMULATION_DATA_DIR", str(simulations_dir))
     monkeypatch.setattr(simulation_api.SimulationManager, "SIMULATION_DATA_DIR", str(simulations_dir))
+    monkeypatch.setattr(SimulationManager, "SIMULATION_DATA_DIR", str(simulations_dir))
     return simulations_dir
+
+
+def _configure_report_storage(tmp_path, monkeypatch):
+    reports_dir = tmp_path / "uploads" / "reports"
+    monkeypatch.setattr(report_api.ReportManager, "REPORTS_DIR", str(reports_dir))
+    monkeypatch.setattr(ReportManager, "REPORTS_DIR", str(reports_dir))
+    return reports_dir
 
 
 def _consumer_brief_payload():
@@ -53,6 +65,61 @@ def _consumer_brief_payload():
             "Some shoppers may repeat that the finish spreads quickly through group chats."
         ],
     }
+
+
+def _write_consumer_rounds(simulations_dir, simulation_id):
+    simulation_dir = simulations_dir / simulation_id
+    simulation_dir.mkdir(parents=True, exist_ok=True)
+    events = [
+        {
+            "round_num": 0,
+            "agent_id": "persona_a",
+            "agent_name": "Value Seeker",
+            "attitude_label": "positive",
+            "bucket": "resonance",
+            "engagement": 9,
+            "quote": "This actually sounds like a real breakfast fix.",
+            "prompt": "Pinned BusinessBrief Summary: breakfast yogurt pouch",
+            "visible_nodes": [{"type": "ProductConcept", "text": "breakfast yogurt pouch"}],
+        },
+        {
+            "round_num": 0,
+            "agent_id": "persona_b",
+            "agent_name": "Proof First",
+            "attitude_label": "neutral",
+            "bucket": "question",
+            "engagement": 5,
+            "quote": "I get the idea, but I still want more proof.",
+            "prompt": "Pinned BusinessBrief Summary: breakfast yogurt pouch",
+            "visible_nodes": [{"type": "CopyPoint", "text": "low sugar"}],
+        },
+        {
+            "round_num": 1,
+            "agent_id": "persona_a",
+            "agent_name": "Value Seeker",
+            "attitude_label": "negative",
+            "bucket": "risk",
+            "engagement": 8,
+            "quote": "Low sugar? I don't trust that claim after the debate.",
+            "prompt": "Pinned BusinessBrief Summary: breakfast yogurt pouch",
+            "visible_nodes": [{"type": "RiskPoint", "text": "sweetener debate"}],
+        },
+        {
+            "round_num": 1,
+            "agent_id": "persona_b",
+            "agent_name": "Proof First",
+            "attitude_label": "positive",
+            "bucket": "resonance",
+            "engagement": 7,
+            "quote": "People would probably keep sharing the breakfast angle.",
+            "prompt": "Pinned BusinessBrief Summary: breakfast yogurt pouch",
+            "visible_nodes": [{"type": "TalkingPoint", "text": "breakfast angle"}],
+        },
+    ]
+    (simulation_dir / "consumer_rounds.jsonl").write_text(
+        "\n".join(json.dumps(event, ensure_ascii=False) for event in events) + "\n",
+        encoding="utf-8",
+    )
 
 
 def test_generate_ontology_persists_consumer_project_metadata(tmp_path, monkeypatch):
@@ -423,3 +490,85 @@ def test_prepare_consumer_simulation_uses_persona_pack_and_writes_consumer_artif
     assert config_payload["persona_pack_id"]
     assert config_payload["pinned_brief_summary"]
     assert (simulation_dir / "twitter_profiles.csv").exists()
+
+
+def test_consumer_summary_route_returns_voc_and_shift(tmp_path, monkeypatch):
+    uploads_dir = tmp_path / "uploads"
+    projects_dir = uploads_dir / "projects"
+    simulations_dir = _configure_simulation_storage(tmp_path, monkeypatch)
+    monkeypatch.setattr(graph_api.Config, "UPLOAD_FOLDER", str(uploads_dir))
+    monkeypatch.setattr(ProjectManager, "PROJECTS_DIR", str(projects_dir))
+
+    project = ProjectManager.create_project(name="Consumer Summary")
+    project.project_type = "consumer_test"
+    project.graph_id = f"consumer_{project.project_id}"
+    project.consumer_brief = _consumer_brief_payload()
+    ProjectManager.save_project(project)
+
+    state = SimulationManager().create_simulation(
+        project_id=project.project_id,
+        graph_id=project.graph_id,
+        project_type="consumer_test",
+    )
+    _write_consumer_rounds(simulations_dir, state.simulation_id)
+
+    app = _create_test_app()
+    client = app.test_client()
+
+    response = client.get(f"/api/simulation/{state.simulation_id}/consumer-summary")
+
+    assert response.status_code == 200
+    payload = response.get_json()["data"]
+    assert payload["summary"]["attitude_shift_rate"] > 0
+    assert payload["representative_voc_quotes"]["risk"][0]["quote"].startswith("Low sugar")
+
+
+def test_generate_consumer_report_includes_voc_quotes(tmp_path, monkeypatch):
+    uploads_dir = tmp_path / "uploads"
+    projects_dir = uploads_dir / "projects"
+    simulations_dir = _configure_simulation_storage(tmp_path, monkeypatch)
+    reports_dir = _configure_report_storage(tmp_path, monkeypatch)
+    monkeypatch.setattr(graph_api.Config, "UPLOAD_FOLDER", str(uploads_dir))
+    monkeypatch.setattr(ProjectManager, "PROJECTS_DIR", str(projects_dir))
+    _reset_task_manager()
+
+    class ImmediateThread:
+        def __init__(self, target=None, daemon=None):
+            self._target = target
+            self.daemon = daemon
+
+        def start(self):
+            self._target()
+
+    monkeypatch.setattr(threading, "Thread", ImmediateThread)
+
+    project = ProjectManager.create_project(name="Consumer Report")
+    project.project_type = "consumer_test"
+    project.graph_id = f"consumer_{project.project_id}"
+    project.consumer_brief = _consumer_brief_payload()
+    ProjectManager.save_project(project)
+
+    state = SimulationManager().create_simulation(
+        project_id=project.project_id,
+        graph_id=project.graph_id,
+        project_type="consumer_test",
+    )
+    _write_consumer_rounds(simulations_dir, state.simulation_id)
+
+    app = _create_test_app()
+    client = app.test_client()
+
+    response = client.post("/api/report/generate", json={"simulation_id": state.simulation_id})
+
+    assert response.status_code == 200
+    payload = response.get_json()["data"]
+    task = TaskManager().get_task(payload["task_id"])
+
+    assert task is not None
+    assert task.status == TaskStatus.COMPLETED
+    report = ReportManager.get_report(task.result["report_id"])
+    assert report is not None
+    assert report.outline.title.startswith("消费者传播测试")
+    assert "This actually sounds like a real breakfast fix." in report.markdown_content
+    assert "Low sugar? I don't trust that claim" in report.markdown_content
+    assert reports_dir.exists()

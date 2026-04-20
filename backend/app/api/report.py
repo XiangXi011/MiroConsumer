@@ -99,12 +99,16 @@ def generate_report():
                 "error": t('api.missingGraphIdEnsure')
             }), 400
         
-        simulation_requirement = project.simulation_requirement
-        if not simulation_requirement:
+        consumer_mode = (project.project_type == 'consumer_test') or state.project_type == 'consumer_test'
+
+        simulation_requirement = project.simulation_requirement or ""
+        if not consumer_mode and not simulation_requirement:
             return jsonify({
                 "success": False,
                 "error": t('api.missingSimRequirement')
             }), 400
+        if consumer_mode and not simulation_requirement:
+            simulation_requirement = "Consumer propagation test"
         
         # 提前生成 report_id，以便立即返回给前端
         import uuid
@@ -139,7 +143,9 @@ def generate_report():
                 agent = ReportAgent(
                     graph_id=graph_id,
                     simulation_id=simulation_id,
-                    simulation_requirement=simulation_requirement
+                    simulation_requirement=simulation_requirement,
+                    project_type=project.project_type or state.project_type or "default",
+                    project_id=project.project_id,
                 )
                 
                 # 进度回调
