@@ -3,6 +3,7 @@
 采用项目上下文机制，服务端持久化状态
 """
 
+import json
 import os
 import traceback
 import threading
@@ -10,6 +11,7 @@ from flask import request, jsonify
 
 from . import graph_bp
 from ..config import Config
+from ..services.consumer import ConsumerBriefAdapter, ConsumerGraphBuilder, load_default_persona_pack
 from ..services.ontology_generator import OntologyGenerator
 from ..services.graph_builder import GraphBuilderService
 from ..services.text_processor import TextProcessor
@@ -21,6 +23,59 @@ from ..models.project import ProjectManager, ProjectStatus
 
 # 获取日志器
 logger = get_logger('mirofish.api')
+
+
+def _normalize_consumer_brief_payload(raw_payload):
+    """Parse a consumer brief from form/json payloads into a persisted summary."""
+    if raw_payload is None:
+        return None
+
+    payload = raw_payload
+    if isinstance(raw_payload, str):
+        raw_payload = raw_payload.strip()
+        if not raw_payload:
+            return None
+        payload = json.loads(raw_payload)
+
+    brief = ConsumerBriefAdapter.from_payload(payload)
+    return brief.to_summary()
+
+
+def _consumer_graph_id(project_id: str) -> str:
+    return f"consumer_{project_id}"
+
+
+def _get_consumer_graph_payload(project):
+    if not project or project.project_type != "consumer_test":
+        return None
+
+    consumer_context = project.consumer_context or {}
+    graph_payload = consumer_context.get("graph_payload")
+    if isinstance(graph_payload, dict):
+        return graph_payload
+    return None
+
+
+def _build_consumer_graph(project, text: str):
+    if not project.consumer_brief:
+        raise ValueError("consumer_brief is required for consumer_test graph builds")
+
+    brief = ConsumerBriefAdapter.from_payload(project.consumer_brief)
+    graph_payload = ConsumerGraphBuilder().build(
+        brief=brief,
+        background_text=text,
+        persona_pack=load_default_persona_pack(),
+        graph_id=_consumer_graph_id(project.project_id),
+    )
+
+    consumer_context = dict(project.consumer_context or {})
+    consumer_context["graph_payload"] = graph_payload
+    project.consumer_context = consumer_context
+    project.graph_id = graph_payload["graph_id"]
+    project.status = ProjectStatus.GRAPH_COMPLETED
+    ProjectManager.save_project(project)
+
+    return graph_payload
 
 
 def allowed_file(filename: str) -> bool:
@@ -154,6 +209,8 @@ def generate_ontology():
         simulation_requirement = request.form.get('simulation_requirement', '')
         project_name = request.form.get('project_name', 'Unnamed Project')
         additional_context = request.form.get('additional_context', '')
+        project_type = request.form.get('project_type', 'default').strip() or 'default'
+        consumer_brief = _normalize_consumer_brief_payload(request.form.get('consumer_brief'))
         
         logger.debug(f"项目名称: {project_name}")
         logger.debug(f"模拟需求: {simulation_requirement[:100]}...")
@@ -175,6 +232,8 @@ def generate_ontology():
         # 创建项目
         project = ProjectManager.create_project(name=project_name)
         project.simulation_requirement = simulation_requirement
+        project.project_type = project_type
+        project.consumer_brief = consumer_brief
         logger.info(f"创建项目: {project.project_id}")
         
         # 保存文件并提取文本
@@ -282,18 +341,7 @@ def build_graph():
     """
     try:
         logger.info("=== 开始构建图谱 ===")
-        
-        # 检查配置
-        errors = []
-        if not Config.ZEP_API_KEY:
-            errors.append(t('api.zepApiKeyMissing'))
-        if errors:
-            logger.error(f"配置错误: {errors}")
-            return jsonify({
-                "success": False,
-                "error": t('api.configError', details="; ".join(errors))
-            }), 500
-        
+
         # 解析请求
         data = request.get_json() or {}
         project_id = data.get('project_id')
@@ -360,6 +408,76 @@ def build_graph():
                 "success": False,
                 "error": t('api.ontologyNotFound')
             }), 400
+
+        if project.project_type == "consumer_test":
+            task_manager = TaskManager()
+            task_id = task_manager.create_task(f"构建消费测试图谱: {graph_name}")
+            logger.info(f"创建消费测试图谱任务: task_id={task_id}, project_id={project_id}")
+
+            project.status = ProjectStatus.GRAPH_BUILDING
+            project.graph_build_task_id = task_id
+            project.graph_id = None
+            project.error = None
+            consumer_context = dict(project.consumer_context or {})
+            consumer_context.pop("graph_payload", None)
+            project.consumer_context = consumer_context
+            ProjectManager.save_project(project)
+
+            try:
+                task_manager.update_task(
+                    task_id,
+                    status=TaskStatus.PROCESSING,
+                    message=t('progress.initGraphService'),
+                    progress=10
+                )
+                graph_data = _build_consumer_graph(project, text)
+                node_count = graph_data.get("node_count", 0)
+                edge_count = graph_data.get("edge_count", 0)
+                task_manager.update_task(
+                    task_id,
+                    status=TaskStatus.COMPLETED,
+                    message=t('progress.graphBuildComplete'),
+                    progress=100,
+                    result={
+                        "project_id": project_id,
+                        "graph_id": graph_data["graph_id"],
+                        "node_count": node_count,
+                        "edge_count": edge_count,
+                        "chunk_count": 1
+                    }
+                )
+            except Exception as e:
+                logger.error(f"消费测试图谱构建失败: {str(e)}")
+                project.status = ProjectStatus.FAILED
+                project.error = str(e)
+                ProjectManager.save_project(project)
+                task_manager.update_task(
+                    task_id,
+                    status=TaskStatus.FAILED,
+                    message=t('progress.buildFailed', error=str(e)),
+                    error=traceback.format_exc()
+                )
+                raise
+
+            return jsonify({
+                "success": True,
+                "data": {
+                    "project_id": project_id,
+                    "task_id": task_id,
+                    "message": t('api.graphBuildStarted', taskId=task_id)
+                }
+            })
+
+        # 检查配置
+        errors = []
+        if not Config.ZEP_API_KEY:
+            errors.append(t('api.zepApiKeyMissing'))
+        if errors:
+            logger.error(f"配置错误: {errors}")
+            return jsonify({
+                "success": False,
+                "error": t('api.configError', details="; ".join(errors))
+            }), 500
         
         # 创建异步任务
         task_manager = TaskManager()
@@ -572,6 +690,15 @@ def get_graph_data(graph_id: str):
     获取图谱数据（节点和边）
     """
     try:
+        if graph_id.startswith("consumer_"):
+            project = ProjectManager.get_project(graph_id[len("consumer_"):])
+            graph_payload = _get_consumer_graph_payload(project)
+            if graph_payload:
+                return jsonify({
+                    "success": True,
+                    "data": graph_payload
+                })
+
         if not Config.ZEP_API_KEY:
             return jsonify({
                 "success": False,
