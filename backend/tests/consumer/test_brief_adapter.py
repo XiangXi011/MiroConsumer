@@ -131,6 +131,18 @@ def test_unsupported_task_type_raises_value_error():
         )
 
 
+def test_adapter_rejects_invalid_graph_visibility():
+    with pytest.raises(ValueError, match="Unsupported graph_visibility"):
+        ConsumerBriefAdapter.from_payload(
+            {
+                "task_type": "concept_test",
+                "product_concept_assets": ["prototype.png"],
+                "research_goal": "Understand appeal",
+                "graph_visibility": "Invisible",
+            }
+        )
+
+
 def test_model_rejects_invalid_task_type_and_graph_visibility():
     with pytest.raises(ValueError, match="Unsupported task_type"):
         ConsumerBusinessBrief(
