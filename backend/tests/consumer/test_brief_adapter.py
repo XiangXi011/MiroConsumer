@@ -9,7 +9,7 @@ if str(BACKEND_ROOT) not in sys.path:
 import pytest
 
 from app.services.consumer.brief_adapter import ConsumerBriefAdapter
-from app.services.consumer.models import GraphVisibility
+from app.services.consumer.models import ConsumerBusinessBrief, ConsumerTaskType, GraphVisibility
 
 
 def test_concept_test_payload_builds_brief_correctly():
@@ -22,11 +22,11 @@ def test_concept_test_payload_builds_brief_correctly():
             "usage_scene": ["social feed", "landing page"],
             "research_goal": "Validate product appeal",
             "optional_background_materials": ["brand notes"],
-            "graph_visibility": "Restricted",
+            "graph_visibility": " Restricted ",
         }
     )
 
-    assert brief.task_type == "concept_test"
+    assert brief.task_type == ConsumerTaskType.ConceptTest
     assert brief.product_concept_assets == ["prototype-a.png", "prototype-b.png"]
     assert brief.copy_material == ["headline one", "headline two"]
     assert brief.target_audience == ["young professionals"]
@@ -47,6 +47,11 @@ def test_missing_required_fields_raises_value_error():
         )
 
 
+def test_non_mapping_payload_rejected():
+    with pytest.raises(ValueError, match="mapping"):
+        ConsumerBriefAdapter.from_payload(["not", "a", "mapping"])
+
+
 def test_claims_default_from_copy_material_when_omitted():
     brief = ConsumerBriefAdapter.from_payload(
         {
@@ -58,6 +63,17 @@ def test_claims_default_from_copy_material_when_omitted():
     )
 
     assert brief.claims == ["Claim A", "Claim B"]
+
+
+def test_non_string_elements_in_list_fields_rejected():
+    with pytest.raises(ValueError, match="product_concept_assets"):
+        ConsumerBriefAdapter.from_payload(
+            {
+                "task_type": "concept_test",
+                "product_concept_assets": ["prototype.png", 123],
+                "research_goal": "Understand appeal",
+            }
+        )
 
 
 def test_single_string_inputs_normalize_to_one_item_lists():
@@ -82,6 +98,28 @@ def test_single_string_inputs_normalize_to_one_item_lists():
     assert brief.optional_background_materials == ["background note"]
 
 
+def test_whitespace_values_trimmed_or_dropped():
+    brief = ConsumerBriefAdapter.from_payload(
+        {
+            "task_type": "copy_feedback",
+            "product_concept_assets": ["  prototype.png  ", "   "],
+            "copy_material": ["  headline  ", "   "],
+            "target_audience": ["  students  ", " "],
+            "usage_scene": ["  mobile app  ", ""],
+            "research_goal": "  Understand appeal  ",
+            "optional_background_materials": ["  note  ", "   "],
+        }
+    )
+
+    assert brief.product_concept_assets == ["prototype.png"]
+    assert brief.copy_material == ["headline"]
+    assert brief.claims == ["headline"]
+    assert brief.target_audience == ["students"]
+    assert brief.usage_scene == ["mobile app"]
+    assert brief.optional_background_materials == ["note"]
+    assert brief.research_goal == "Understand appeal"
+
+
 def test_unsupported_task_type_raises_value_error():
     with pytest.raises(ValueError, match="Unsupported task_type"):
         ConsumerBriefAdapter.from_payload(
@@ -90,4 +128,21 @@ def test_unsupported_task_type_raises_value_error():
                 "product_concept_assets": ["prototype.png"],
                 "research_goal": "Understand appeal",
             }
+        )
+
+
+def test_model_rejects_invalid_task_type_and_graph_visibility():
+    with pytest.raises(ValueError, match="Unsupported task_type"):
+        ConsumerBusinessBrief(
+            task_type="pricing_study",
+            product_concept_assets=["prototype.png"],
+            research_goal="Understand appeal",
+        )
+
+    with pytest.raises(ValueError, match="Unsupported graph_visibility"):
+        ConsumerBusinessBrief(
+            task_type=ConsumerTaskType.ConceptTest,
+            product_concept_assets=["prototype.png"],
+            research_goal="Understand appeal",
+            graph_visibility="Hidden",
         )
