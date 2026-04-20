@@ -19,8 +19,11 @@ from enum import Enum
 from queue import Queue
 
 from ..config import Config
+from ..models.project import ProjectManager
 from ..utils.logger import get_logger
 from ..utils.locale import get_locale, set_locale
+from .consumer.orchestrator import ConsumerSimulationOrchestrator
+from .consumer.persona_pack import load_default_persona_pack, map_persona_to_agent_traits
 from .zep_graph_memory_updater import ZepGraphMemoryManager
 from .simulation_ipc import SimulationIPCClient, CommandType, IPCResponse
 
@@ -368,6 +371,13 @@ class SimulationRunner:
         )
         
         cls._save_run_state(state)
+
+        if config.get("consumer_mode", False):
+            return cls._start_consumer_simulation(
+                simulation_id=simulation_id,
+                config=config,
+                state=state,
+            )
         
         # 如果启用图谱记忆更新，创建更新器
         if enable_graph_memory_update:
@@ -477,6 +487,126 @@ class SimulationRunner:
             raise
         
         return state
+
+    @classmethod
+    def _start_consumer_simulation(
+        cls,
+        simulation_id: str,
+        config: Dict[str, Any],
+        state: SimulationRunState,
+    ) -> SimulationRunState:
+        state.runner_status = RunnerStatus.RUNNING
+        state.reddit_running = True
+        cls._save_run_state(state)
+
+        current_locale = get_locale()
+        monitor_thread = threading.Thread(
+            target=cls._run_consumer_simulation,
+            args=(simulation_id, config, current_locale),
+            daemon=True,
+        )
+        monitor_thread.start()
+        cls._monitor_threads[simulation_id] = monitor_thread
+        logger.info(f"消费者传播仿真启动: {simulation_id}")
+        return state
+
+    @classmethod
+    def _run_consumer_simulation(
+        cls,
+        simulation_id: str,
+        config: Dict[str, Any],
+        locale: str = "zh",
+    ) -> None:
+        set_locale(locale)
+        state = cls.get_run_state(simulation_id)
+        if not state:
+            return
+
+        try:
+            project_id = config.get("project_id", "")
+            project = ProjectManager.get_project(project_id)
+            if not project:
+                raise ValueError(f"项目不存在: {project_id}")
+
+            graph_payload = ProjectManager.load_consumer_graph_payload(project_id)
+            if not graph_payload or not graph_payload.get("nodes"):
+                raise ValueError(f"消费者图谱不存在: {project_id}")
+
+            brief_summary = str(
+                config.get("pinned_brief_summary")
+                or "Pinned BusinessBrief Summary: consumer brief unavailable"
+            ).strip()
+            output_path = os.path.join(cls.RUN_STATE_DIR, simulation_id, "consumer_rounds.jsonl")
+            if os.path.exists(output_path):
+                os.remove(output_path)
+
+            orchestrator = ConsumerSimulationOrchestrator(output_path=output_path)
+            graph_nodes = graph_payload.get("nodes", [])
+            personas = load_default_persona_pack()
+            state.rounds = []
+
+            for round_num in range(state.total_rounds):
+                round_summary = RoundSummary(
+                    round_num=round_num,
+                    start_time=datetime.now().isoformat(),
+                    simulated_hour=int(((round_num + 1) / max(state.total_rounds, 1)) * state.total_simulation_hours),
+                )
+
+                for index, persona in enumerate(personas):
+                    agent_traits = map_persona_to_agent_traits(persona)
+                    snapshot = orchestrator.build_round_snapshot(
+                        round_num=round_num,
+                        agent_traits={
+                            **agent_traits["propagation_profile"],
+                            "influence_weight": agent_traits["influence_weight"],
+                        },
+                        brief_summary=brief_summary,
+                        visible_graph_nodes=graph_nodes,
+                        agent_id=agent_traits["persona_id"],
+                        agent_name=agent_traits["label"],
+                    )
+                    orchestrator.persist_round_snapshot(snapshot)
+
+                    action = AgentAction(
+                        round_num=round_num,
+                        timestamp=datetime.now().isoformat(),
+                        platform="reddit",
+                        agent_id=index,
+                        agent_name=agent_traits["label"],
+                        action_type="CONSUMER_REACTION",
+                        action_args={
+                            "attitude_label": snapshot["attitude_label"],
+                            "bucket": snapshot["bucket"],
+                            "engagement": snapshot["engagement"],
+                        },
+                        result=snapshot["quote"],
+                        success=True,
+                    )
+                    round_summary.actions.append(action)
+                    round_summary.reddit_actions += 1
+                    round_summary.active_agents.append(index)
+                    state.add_action(action)
+
+                round_summary.end_time = datetime.now().isoformat()
+                state.current_round = round_num + 1
+                state.reddit_current_round = state.current_round
+                state.simulated_hours = round_summary.simulated_hour
+                state.reddit_simulated_hours = round_summary.simulated_hour
+                state.rounds.append(round_summary)
+                cls._save_run_state(state)
+
+            state.runner_status = RunnerStatus.COMPLETED
+            state.reddit_running = False
+            state.completed_at = datetime.now().isoformat()
+            cls._save_run_state(state)
+        except Exception as e:
+            logger.error(f"消费者传播仿真失败: {simulation_id}, error={str(e)}")
+            state.runner_status = RunnerStatus.FAILED
+            state.reddit_running = False
+            state.error = str(e)
+            cls._save_run_state(state)
+        finally:
+            cls._monitor_threads.pop(simulation_id, None)
     
     @classmethod
     def _monitor_simulation(cls, simulation_id: str, locale: str = 'zh'):
@@ -1138,6 +1268,7 @@ class SimulationRunner:
             "simulation.log",
             "stdout.log",
             "stderr.log",
+            "consumer_rounds.jsonl",
             "twitter_simulation.db",  # Twitter 平台数据库
             "reddit_simulation.db",   # Reddit 平台数据库
             "env_status.json",        # 环境状态文件
