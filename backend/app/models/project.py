@@ -1,7 +1,6 @@
 """
-Project persistence and lifecycle helpers.
-Used to persist project state on the backend so large payloads do not need
-to move between frontend and backend repeatedly.
+椤圭洰涓婁笅鏂囩鐞?
+鐢ㄤ簬鍦ㄦ湇鍔＄鎸佷箙鍖栭」鐩姸鎬侊紝閬垮厤鍓嶇鍦ㄦ帴鍙ｉ棿浼犻€掑ぇ閲忔暟鎹?
 """
 
 import os
@@ -11,22 +10,22 @@ import shutil
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 from enum import Enum
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from ..config import Config
 
 
 class ProjectStatus(str, Enum):
-    """Project status."""
-    CREATED = "created"
-    ONTOLOGY_GENERATED = "ontology_generated"
-    GRAPH_BUILDING = "graph_building"
-    GRAPH_COMPLETED = "graph_completed"
-    FAILED = "failed"
+    """椤圭洰鐘舵€?"""
+    CREATED = "created"              # 鍒氬垱寤猴紝鏂囦欢宸蹭笂浼?
+    ONTOLOGY_GENERATED = "ontology_generated"  # 鏈綋宸茬敓鎴?
+    GRAPH_BUILDING = "graph_building"    # 鍥捐氨鏋勫缓涓?
+    GRAPH_COMPLETED = "graph_completed"  # 鍥捐氨鏋勫缓瀹屾垚
+    FAILED = "failed"                # 澶辫触
 
 
 @dataclass
 class Project:
-    """Project data model."""
+    """椤圭洰鏁版嵁妯″瀷"""
     project_id: str
     name: str
     status: ProjectStatus
@@ -34,30 +33,30 @@ class Project:
     updated_at: str
     project_type: str = "default"
 
-    # File information
+    # 鏂囦欢淇℃伅
     files: List[Dict[str, str]] = field(default_factory=list)  # [{filename, path, size}]
     total_text_length: int = 0
 
-    # Ontology information
+    # 鏈綋淇℃伅锛堟帴鍙?鐢熸垚鍚庡～鍏咃級
     ontology: Optional[Dict[str, Any]] = None
     analysis_summary: Optional[str] = None
 
-    # Graph information
+    # 鍥捐氨淇℃伅锛堟帴鍙?瀹屾垚鍚庡～鍏咃級
     graph_id: Optional[str] = None
     graph_build_task_id: Optional[str] = None
 
-    # Simulation/config information
+    # 閰嶇疆
     simulation_requirement: Optional[str] = None
     chunk_size: int = 500
     chunk_overlap: int = 50
     consumer_brief: Optional[Dict[str, Any]] = None
     consumer_context: Optional[Dict[str, Any]] = None
 
-    # Error information
+    # 閿欒淇℃伅
     error: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary."""
+        """杞崲涓哄瓧鍏?"""
         return {
             "project_id": self.project_id,
             "name": self.name,
@@ -80,8 +79,8 @@ class Project:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "Project":
-        """Create from dictionary."""
+    def from_dict(cls, data: Dict[str, Any]) -> 'Project':
+        """浠庡瓧鍏稿垱寤?"""
         status = data.get("status", "created")
         if isinstance(status, str):
             status = ProjectStatus(status)
@@ -109,45 +108,45 @@ class Project:
 
 
 class ProjectManager:
-    """Project manager responsible for persistence and lookup."""
+    """椤圭洰绠＄悊鍣?- 璐熻矗椤圭洰鐨勬寔涔呭寲瀛樺偍鍜屾绱?"""
 
     PROJECTS_DIR = os.path.join(Config.UPLOAD_FOLDER, "projects")
 
     @classmethod
     def _ensure_projects_dir(cls):
-        """Ensure the project directory exists."""
+        """纭繚椤圭洰鐩綍瀛樺湪"""
         os.makedirs(cls.PROJECTS_DIR, exist_ok=True)
 
     @classmethod
     def _get_project_dir(cls, project_id: str) -> str:
-        """Get project directory."""
+        """鑾峰彇椤圭洰鐩綍璺緞"""
         return os.path.join(cls.PROJECTS_DIR, project_id)
 
     @classmethod
     def _get_project_meta_path(cls, project_id: str) -> str:
-        """Get the project metadata file path."""
+        """鑾峰彇椤圭洰鍏冩暟鎹枃浠惰矾寰?"""
         return os.path.join(cls._get_project_dir(project_id), "project.json")
 
     @classmethod
     def _get_project_files_dir(cls, project_id: str) -> str:
-        """Get the project files directory."""
+        """鑾峰彇椤圭洰鏂囦欢瀛樺偍鐩綍"""
         return os.path.join(cls._get_project_dir(project_id), "files")
 
     @classmethod
     def _get_project_text_path(cls, project_id: str) -> str:
-        """Get the extracted text file path."""
+        """鑾峰彇椤圭洰鎻愬彇鏂囨湰瀛樺偍璺緞"""
         return os.path.join(cls._get_project_dir(project_id), "extracted_text.txt")
 
     @classmethod
     def create_project(cls, name: str = "Unnamed Project") -> Project:
         """
-        Create a new project.
+        鍒涘缓鏂伴」鐩?
 
         Args:
-            name: Project name
+            name: 椤圭洰鍚嶇О
 
         Returns:
-            Newly created Project instance
+            鏂板垱寤虹殑Project瀵硅薄
         """
         cls._ensure_projects_dir()
 
@@ -173,7 +172,7 @@ class ProjectManager:
 
     @classmethod
     def save_project(cls, project: Project) -> None:
-        """Save project metadata."""
+        """淇濆瓨椤圭洰鍏冩暟鎹?"""
         project.updated_at = datetime.now().isoformat()
         meta_path = cls._get_project_meta_path(project.project_id)
 
@@ -183,13 +182,13 @@ class ProjectManager:
     @classmethod
     def get_project(cls, project_id: str) -> Optional[Project]:
         """
-        Get a project.
+        鑾峰彇椤圭洰
 
         Args:
-            project_id: Project ID
+            project_id: 椤圭洰ID
 
         Returns:
-            Project instance or None if not found
+            Project瀵硅薄锛屽鏋滀笉瀛樺湪杩斿洖None
         """
         meta_path = cls._get_project_meta_path(project_id)
 
@@ -204,13 +203,13 @@ class ProjectManager:
     @classmethod
     def list_projects(cls, limit: int = 50) -> List[Project]:
         """
-        List all projects.
+        鍒楀嚭鎵€鏈夐」鐩?
 
         Args:
-            limit: Maximum number of projects to return
+            limit: 杩斿洖鏁伴噺闄愬埗
 
         Returns:
-            Projects sorted by creation time descending
+            椤圭洰鍒楄〃锛屾寜鍒涘缓鏃堕棿鍊掑簭
         """
         cls._ensure_projects_dir()
 
@@ -227,13 +226,13 @@ class ProjectManager:
     @classmethod
     def delete_project(cls, project_id: str) -> bool:
         """
-        Delete a project and its files.
+        鍒犻櫎椤圭洰鍙婂叾鎵€鏈夋枃浠?
 
         Args:
-            project_id: Project ID
+            project_id: 椤圭洰ID
 
         Returns:
-            Whether deletion succeeded
+            鏄惁鍒犻櫎鎴愬姛
         """
         project_dir = cls._get_project_dir(project_id)
 
@@ -246,15 +245,15 @@ class ProjectManager:
     @classmethod
     def save_file_to_project(cls, project_id: str, file_storage, original_filename: str) -> Dict[str, str]:
         """
-        Save an uploaded file into the project directory.
+        淇濆瓨涓婁紶鐨勬枃浠跺埌椤圭洰鐩綍
 
         Args:
-            project_id: Project ID
-            file_storage: Flask FileStorage object
-            original_filename: Original file name
+            project_id: 椤圭洰ID
+            file_storage: Flask鐨凢ileStorage瀵硅薄
+            original_filename: 鍘熷鏂囦欢鍚?
 
         Returns:
-            File metadata dict {filename, path, size}
+            鏂囦欢淇℃伅瀛楀吀 {filename, path, size}
         """
         files_dir = cls._get_project_files_dir(project_id)
         os.makedirs(files_dir, exist_ok=True)
@@ -276,14 +275,14 @@ class ProjectManager:
 
     @classmethod
     def save_extracted_text(cls, project_id: str, text: str) -> None:
-        """Save extracted text."""
+        """淇濆瓨鎻愬彇鐨勬枃鏈?"""
         text_path = cls._get_project_text_path(project_id)
         with open(text_path, "w", encoding="utf-8") as f:
             f.write(text)
 
     @classmethod
     def get_extracted_text(cls, project_id: str) -> Optional[str]:
-        """Get extracted text."""
+        """鑾峰彇鎻愬彇鐨勬枃鏈?"""
         text_path = cls._get_project_text_path(project_id)
 
         if not os.path.exists(text_path):
@@ -294,7 +293,7 @@ class ProjectManager:
 
     @classmethod
     def get_project_files(cls, project_id: str) -> List[str]:
-        """Get all project files."""
+        """鑾峰彇椤圭洰鐨勬墍鏈夋枃浠惰矾寰?"""
         files_dir = cls._get_project_files_dir(project_id)
 
         if not os.path.exists(files_dir):
