@@ -36,7 +36,12 @@ _DEFAULT_PERSONA_PATH = Path(__file__).with_name("data") / "default_personas.jso
 def load_default_persona_pack() -> List[PersonaRecord]:
     """Load the repo-owned Phase 1 persona pack."""
     payload = json.loads(_DEFAULT_PERSONA_PATH.read_text(encoding="utf-8"))
-    return [_normalize_persona(persona) for persona in payload]
+    if not isinstance(payload, list):
+        raise ValueError("Persona pack top-level JSON payload must be a list")
+
+    personas = [_normalize_persona(persona) for persona in payload]
+    _validate_unique_persona_ids(personas)
+    return personas
 
 
 def map_persona_to_agent_traits(persona: Mapping[str, Any]) -> AgentTraitProfile:
@@ -67,6 +72,9 @@ def can_access_deep_graph(agent_traits: Mapping[str, Any]) -> bool:
 
 
 def _normalize_persona(persona: Mapping[str, Any]) -> PersonaRecord:
+    if not isinstance(persona, Mapping):
+        raise ValueError("Persona record must be a mapping")
+
     required_fields = (
         "persona_id",
         "label",
@@ -125,9 +133,21 @@ def _normalize_level(value: Any, field_name: str) -> str:
 
 
 def _normalize_influence_weight(value: Any) -> float:
-    if not isinstance(value, (int, float)):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ValueError("influence_weight must be numeric")
-    return float(value)
+    normalized = float(value)
+    if not 0.0 <= normalized <= 1.0:
+        raise ValueError("influence_weight must be between 0.0 and 1.0 inclusive")
+    return normalized
+
+
+def _validate_unique_persona_ids(personas: List[PersonaRecord]) -> None:
+    seen_persona_ids = set()
+    for persona in personas:
+        persona_id = persona["persona_id"]
+        if persona_id in seen_persona_ids:
+            raise ValueError(f"Persona pack contains duplicate persona_id: {persona_id}")
+        seen_persona_ids.add(persona_id)
 
 
 __all__ = [
