@@ -2,6 +2,7 @@ from io import BytesIO
 import json
 from pathlib import Path
 import sys
+import threading
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
@@ -10,8 +11,9 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from flask import Flask
 
-from app.api import graph_bp
+from app.api import graph_bp, simulation_bp
 from app.api import graph as graph_api
+from app.api import simulation as simulation_api
 from app.models.project import ProjectManager, ProjectStatus
 from app.models.task import TaskManager, TaskStatus
 
@@ -22,12 +24,20 @@ def _create_test_app():
     if hasattr(app, "json") and hasattr(app.json, "ensure_ascii"):
         app.json.ensure_ascii = False
     app.register_blueprint(graph_bp, url_prefix="/api/graph")
+    app.register_blueprint(simulation_bp, url_prefix="/api/simulation")
     return app
 
 
 def _reset_task_manager():
     task_manager = TaskManager()
     task_manager._tasks.clear()
+
+
+def _configure_simulation_storage(tmp_path, monkeypatch):
+    simulations_dir = tmp_path / "uploads" / "simulations"
+    monkeypatch.setattr(simulation_api.Config, "OASIS_SIMULATION_DATA_DIR", str(simulations_dir))
+    monkeypatch.setattr(simulation_api.SimulationManager, "SIMULATION_DATA_DIR", str(simulations_dir))
+    return simulations_dir
 
 
 def _consumer_brief_payload():
@@ -317,3 +327,99 @@ def test_default_build_route_keeps_legacy_graph_builder_path(tmp_path, monkeypat
     assert task.status == TaskStatus.COMPLETED
     assert saved_project is not None
     assert saved_project.graph_id == "zep_graph_123"
+
+
+def test_create_simulation_defaults_to_legacy_mode_when_project_type_missing(tmp_path, monkeypatch):
+    uploads_dir = tmp_path / "uploads"
+    projects_dir = uploads_dir / "projects"
+    monkeypatch.setattr(graph_api.Config, "UPLOAD_FOLDER", str(uploads_dir))
+    monkeypatch.setattr(ProjectManager, "PROJECTS_DIR", str(projects_dir))
+    _configure_simulation_storage(tmp_path, monkeypatch)
+
+    project = ProjectManager.create_project(name="Legacy Simulation")
+    project.graph_id = "zep_graph_legacy"
+    ProjectManager.save_project(project)
+
+    app = _create_test_app()
+    client = app.test_client()
+
+    response = client.post("/api/simulation/create", json={"project_id": project.project_id})
+
+    assert response.status_code == 200
+    payload = response.get_json()["data"]
+    assert payload["project_type"] == "default"
+    assert payload["consumer_mode"] is False
+    assert payload["graph_id"] == "zep_graph_legacy"
+
+
+def test_prepare_consumer_simulation_uses_persona_pack_and_writes_consumer_artifacts(
+    tmp_path, monkeypatch
+):
+    uploads_dir = tmp_path / "uploads"
+    projects_dir = uploads_dir / "projects"
+    simulations_dir = _configure_simulation_storage(tmp_path, monkeypatch)
+    monkeypatch.setattr(graph_api.Config, "UPLOAD_FOLDER", str(uploads_dir))
+    monkeypatch.setattr(ProjectManager, "PROJECTS_DIR", str(projects_dir))
+    _reset_task_manager()
+
+    class ExplodingZepEntityReader:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError("Consumer prepare should not initialize ZepEntityReader")
+
+    class ImmediateThread:
+        def __init__(self, target=None, daemon=None):
+            self._target = target
+            self.daemon = daemon
+
+        def start(self):
+            self._target()
+
+    monkeypatch.setattr(simulation_api, "ZepEntityReader", ExplodingZepEntityReader)
+    monkeypatch.setattr(threading, "Thread", ImmediateThread)
+
+    project = ProjectManager.create_project(name="Consumer Simulation")
+    project.project_type = "consumer_test"
+    project.graph_id = f"consumer_{project.project_id}"
+    project.consumer_brief = _consumer_brief_payload()
+    ProjectManager.save_project(project)
+    ProjectManager.save_extracted_text(
+        project.project_id,
+        "Some shoppers say the finish spreads quickly through creator circles.",
+    )
+
+    app = _create_test_app()
+    client = app.test_client()
+
+    create_response = client.post("/api/simulation/create", json={"project_id": project.project_id})
+    assert create_response.status_code == 200
+    simulation_id = create_response.get_json()["data"]["simulation_id"]
+
+    prepare_response = client.post("/api/simulation/prepare", json={"simulation_id": simulation_id})
+
+    assert prepare_response.status_code == 200
+    prepare_payload = prepare_response.get_json()["data"]
+    task = TaskManager().get_task(prepare_payload["task_id"])
+
+    assert task is not None
+    assert task.status == TaskStatus.COMPLETED
+    assert task.result["consumer_mode"] is True
+    assert task.result["project_type"] == "consumer_test"
+    assert task.result["profiles_count"] > 0
+    assert task.result["persona_pack_id"]
+    assert task.result["pinned_brief_summary"]
+
+    simulation_dir = simulations_dir / simulation_id
+    state_payload = json.loads((simulation_dir / "state.json").read_text(encoding="utf-8"))
+    reddit_profiles = json.loads((simulation_dir / "reddit_profiles.json").read_text(encoding="utf-8"))
+    config_payload = json.loads((simulation_dir / "simulation_config.json").read_text(encoding="utf-8"))
+
+    assert state_payload["consumer_mode"] is True
+    assert state_payload["project_type"] == "consumer_test"
+    assert state_payload["persona_pack_id"]
+    assert state_payload["pinned_brief_summary"]
+    assert len(reddit_profiles) == task.result["profiles_count"]
+    assert config_payload["consumer_mode"] is True
+    assert config_payload["project_type"] == "consumer_test"
+    assert config_payload["persona_pack_id"]
+    assert config_payload["pinned_brief_summary"]
+    assert (simulation_dir / "twitter_profiles.csv").exists()

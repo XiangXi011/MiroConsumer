@@ -13,6 +13,7 @@ from ..services.zep_entity_reader import ZepEntityReader
 from ..services.oasis_profile_generator import OasisProfileGenerator
 from ..services.simulation_manager import SimulationManager, SimulationStatus
 from ..services.simulation_runner import SimulationRunner, RunnerStatus
+from ..services.consumer.persona_pack import load_default_persona_pack
 from ..utils.logger import get_logger
 from ..utils.locale import t, get_locale, set_locale
 from ..models.project import ProjectManager
@@ -219,6 +220,7 @@ def create_simulation():
         state = manager.create_simulation(
             project_id=project_id,
             graph_id=graph_id,
+            project_type=project.project_type or "default",
             enable_twitter=data.get('enable_twitter', True),
             enable_reddit=data.get('enable_reddit', True),
         )
@@ -340,6 +342,10 @@ def _check_simulation_prepared(simulation_id: str) -> tuple:
                 "profiles_count": profiles_count,
                 "entity_types": state_data.get("entity_types", []),
                 "config_generated": config_generated,
+                "project_type": state_data.get("project_type", "default"),
+                "consumer_mode": state_data.get("consumer_mode", False),
+                "persona_pack_id": state_data.get("persona_pack_id", ""),
+                "pinned_brief_summary": state_data.get("pinned_brief_summary", ""),
                 "created_at": state_data.get("created_at"),
                 "updated_at": state_data.get("updated_at"),
                 "existing_files": existing_files
@@ -454,8 +460,9 @@ def prepare_simulation():
             }), 404
         
         # 获取模拟需求
+        consumer_mode = state.consumer_mode or (project.project_type == 'consumer_test')
         simulation_requirement = project.simulation_requirement or ""
-        if not simulation_requirement:
+        if not consumer_mode and not simulation_requirement:
             return jsonify({
                 "success": False,
                 "error": t('api.projectMissingRequirement')
@@ -471,18 +478,24 @@ def prepare_simulation():
         # ========== 同步获取实体数量（在后台任务启动前） ==========
         # 这样前端在调用prepare后立即就能获取到预期Agent总数
         try:
-            logger.info(f"同步获取实体数量: graph_id={state.graph_id}")
-            reader = ZepEntityReader()
-            # 快速读取实体（不需要边信息，只统计数量）
-            filtered_preview = reader.filter_defined_entities(
-                graph_id=state.graph_id,
-                defined_entity_types=entity_types_list,
-                enrich_with_edges=False  # 不获取边信息，加快速度
-            )
-            # 保存实体数量到状态（供前端立即获取）
-            state.entities_count = filtered_preview.filtered_count
-            state.entity_types = list(filtered_preview.entity_types)
-            logger.info(f"预期实体数量: {filtered_preview.filtered_count}, 类型: {filtered_preview.entity_types}")
+            if consumer_mode:
+                persona_pack = load_default_persona_pack()
+                state.entities_count = len(persona_pack)
+                state.entity_types = ['AudienceSegment']
+                logger.info(f"consumer_test 预览 Persona 数量: {state.entities_count}")
+            else:
+                logger.info(f"同步获取实体数量: graph_id={state.graph_id}")
+                reader = ZepEntityReader()
+                # 快速读取实体（不需要边信息，只统计数量）
+                filtered_preview = reader.filter_defined_entities(
+                    graph_id=state.graph_id,
+                    defined_entity_types=entity_types_list,
+                    enrich_with_edges=False  # 不获取边信息，加快速度
+                )
+                # 保存实体数量到状态（供前端立即获取）
+                state.entities_count = filtered_preview.filtered_count
+                state.entity_types = list(filtered_preview.entity_types)
+                logger.info(f"预期实体数量: {filtered_preview.filtered_count}, 类型: {filtered_preview.entity_types}")
         except Exception as e:
             logger.warning(f"同步获取实体数量失败（将在后台任务中重试）: {e}")
             # 失败不影响后续流程，后台任务会重新获取
