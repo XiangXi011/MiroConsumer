@@ -211,6 +211,46 @@ def test_delete_project_removes_local_consumer_graph_payload(tmp_path, monkeypat
     assert client.get(f"/api/graph/data/{graph_id}").status_code == 404
 
 
+def test_delete_graph_route_handles_consumer_local_graphs(tmp_path, monkeypatch):
+    uploads_dir = tmp_path / "uploads"
+    projects_dir = uploads_dir / "projects"
+    monkeypatch.setattr(graph_api.Config, "UPLOAD_FOLDER", str(uploads_dir))
+    monkeypatch.setattr(graph_api.Config, "ZEP_API_KEY", None)
+    monkeypatch.setattr(ProjectManager, "PROJECTS_DIR", str(projects_dir))
+    _reset_task_manager()
+
+    project = ProjectManager.create_project(name="Consumer Graph Delete")
+    project.project_type = "consumer_test"
+    project.status = ProjectStatus.ONTOLOGY_GENERATED
+    project.ontology = {"entity_types": [{"name": "ProductConcept", "attributes": []}], "edge_types": []}
+    project.consumer_brief = _consumer_brief_payload()
+    ProjectManager.save_project(project)
+    ProjectManager.save_extracted_text(project.project_id, "Technical contamination risk appears in the background.")
+
+    app = _create_test_app()
+    client = app.test_client()
+
+    build_response = client.post("/api/graph/build", json={"project_id": project.project_id})
+    saved_project = ProjectManager.get_project(project.project_id)
+    graph_id = saved_project.graph_id
+    graph_file = projects_dir / project.project_id / "consumer_graph.json"
+
+    assert build_response.status_code == 200
+    assert graph_file.exists()
+    assert client.get(f"/api/graph/data/{graph_id}").status_code == 200
+
+    delete_response = client.delete(f"/api/graph/delete/{graph_id}")
+
+    assert delete_response.status_code == 200
+    refreshed_project = ProjectManager.get_project(project.project_id)
+    assert refreshed_project is not None
+    assert refreshed_project.graph_id is None
+    assert refreshed_project.graph_build_task_id is None
+    assert refreshed_project.status == ProjectStatus.ONTOLOGY_GENERATED
+    assert not graph_file.exists()
+    assert client.get(f"/api/graph/data/{graph_id}").status_code == 404
+
+
 def test_default_build_route_keeps_legacy_graph_builder_path(tmp_path, monkeypatch):
     uploads_dir = tmp_path / "uploads"
     projects_dir = uploads_dir / "projects"

@@ -725,6 +725,31 @@ def delete_graph(graph_id: str):
     删除Zep图谱
     """
     try:
+        if graph_id.startswith("consumer_"):
+            project_id = graph_id[len("consumer_"):]
+            project = ProjectManager.get_project(project_id)
+            graph_payload = _get_consumer_graph_payload(project)
+
+            if not project or graph_id != project.graph_id or not graph_payload:
+                return jsonify({
+                    "success": False,
+                    "error": f"Consumer graph not found: {graph_id}"
+                }), 404
+
+            ProjectManager.delete_consumer_graph_payload(project_id)
+            project.graph_id = None
+            project.graph_build_task_id = None
+            project.error = None
+            project.status = (
+                ProjectStatus.ONTOLOGY_GENERATED if project.ontology else ProjectStatus.CREATED
+            )
+            ProjectManager.save_project(project)
+
+            return jsonify({
+                "success": True,
+                "message": t('api.graphDeleted', id=graph_id)
+            })
+
         if not Config.ZEP_API_KEY:
             return jsonify({
                 "success": False,
