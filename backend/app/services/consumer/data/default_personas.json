@@ -1,0 +1,90 @@
+[
+  {
+    "persona_id": "M01",
+    "label": "Care-driven urban mom",
+    "attention_drivers": ["nutrition", "trust", "premium_brand"],
+    "risk_sensitivities": ["sugar", "overclaim", "unknown_origin"],
+    "expression_style": "practical",
+    "search_propensity": "high",
+    "cognition_level": "high",
+    "herd_tendency": "medium",
+    "influence_weight": 0.8
+  },
+  {
+    "persona_id": "M02",
+    "label": "Social proof explorer",
+    "attention_drivers": ["novelty", "peer_review", "visual_appeal"],
+    "risk_sensitivities": ["no_reviews", "wrong_age_fit"],
+    "expression_style": "conversational",
+    "search_propensity": "high",
+    "cognition_level": "medium",
+    "herd_tendency": "high",
+    "influence_weight": 0.72
+  },
+  {
+    "persona_id": "M03",
+    "label": "Traditional value caretaker",
+    "attention_drivers": ["familiar_brand", "daily_value", "safety"],
+    "risk_sensitivities": ["gimmicks", "high_price"],
+    "expression_style": "plainspoken",
+    "search_propensity": "low",
+    "cognition_level": "medium",
+    "herd_tendency": "medium",
+    "influence_weight": 0.58
+  },
+  {
+    "persona_id": "M04",
+    "label": "Busy urban filterer",
+    "attention_drivers": ["expert_recommendation", "low_effort_choice", "trusted_brand"],
+    "risk_sensitivities": ["unclear_ingredients", "unreliable_brand"],
+    "expression_style": "direct",
+    "search_propensity": "medium",
+    "cognition_level": "medium",
+    "herd_tendency": "high",
+    "influence_weight": 0.67
+  },
+  {
+    "persona_id": "M05",
+    "label": "Ingredient-first analyst",
+    "attention_drivers": ["ingredients", "evidence", "value"],
+    "risk_sensitivities": ["marketing_hype", "sugar", "weak_evidence"],
+    "expression_style": "analytical",
+    "search_propensity": "high",
+    "cognition_level": "high",
+    "herd_tendency": "low",
+    "influence_weight": 0.76
+  },
+  {
+    "persona_id": "M06",
+    "label": "Feature-seeking livestream buyer",
+    "attention_drivers": ["deal", "feature_count", "social_status"],
+    "risk_sensitivities": ["too_basic", "poor_value"],
+    "expression_style": "emphatic",
+    "search_propensity": "medium",
+    "cognition_level": "low",
+    "herd_tendency": "high",
+    "influence_weight": 0.71
+  },
+  {
+    "persona_id": "M07",
+    "label": "Evidence-maximizing planner",
+    "attention_drivers": ["data", "professional_endorsement", "system_fit"],
+    "risk_sensitivities": ["weak_evidence", "missing_tooling", "vague_claims"],
+    "expression_style": "structured",
+    "search_propensity": "high",
+    "cognition_level": "high",
+    "herd_tendency": "low",
+    "influence_weight": 0.74
+  },
+  {
+    "persona_id": "M08",
+    "label": "Budget-safe minimalist",
+    "attention_drivers": ["price", "safety", "ease"],
+    "risk_sensitivities": ["too_expensive", "too_complicated"],
+    "expression_style": "brief",
+    "search_propensity": "low",
+    "cognition_level": "low",
+    "herd_tendency": "medium",
+    "influence_weight": 0.52
+  }
+]
