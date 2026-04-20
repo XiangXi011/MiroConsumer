@@ -167,6 +167,33 @@
               </div>
             </div>
 
+            <div class="console-section">
+              <div class="console-header">
+                <span class="console-label">{{ $t('home.projectMode') }}</span>
+                <span class="console-meta">
+                  {{ formData.projectType === 'consumer_test' ? $t('home.modeConsumerMeta') : $t('home.modeDefaultMeta') }}
+                </span>
+              </div>
+              <div class="mode-switch">
+                <button
+                  class="mode-btn"
+                  :class="{ active: formData.projectType === 'default' }"
+                  @click="formData.projectType = 'default'"
+                  :disabled="loading"
+                >
+                  {{ $t('home.modeDefault') }}
+                </button>
+                <button
+                  class="mode-btn"
+                  :class="{ active: formData.projectType === 'consumer_test' }"
+                  @click="formData.projectType = 'consumer_test'"
+                  :disabled="loading"
+                >
+                  {{ $t('home.modeConsumer') }}
+                </button>
+              </div>
+            </div>
+
             <!-- 分割线 -->
             <div class="console-divider">
               <span>{{ $t('home.inputParams') }}</span>
@@ -181,11 +208,80 @@
                 <textarea
                   v-model="formData.simulationRequirement"
                   class="code-input"
-                  :placeholder="$t('home.promptPlaceholder')"
+                  :placeholder="simulationPromptPlaceholder"
                   rows="6"
                   :disabled="loading"
                 ></textarea>
                 <div class="model-badge">{{ $t('home.engineBadge') }}</div>
+              </div>
+            </div>
+
+            <div v-if="formData.projectType === 'consumer_test'" class="console-section consumer-brief-section">
+              <div class="console-header">
+                <span class="console-label">{{ $t('home.consumerBriefLabel') }}</span>
+                <span class="console-meta">{{ $t('home.consumerBriefHint') }}</span>
+              </div>
+              <div class="brief-grid">
+                <div class="brief-field brief-field-wide">
+                  <label>{{ $t('home.consumerConceptLabel') }}</label>
+                  <textarea
+                    v-model="formData.consumerConcept"
+                    class="brief-input"
+                    rows="3"
+                    :placeholder="$t('home.consumerConceptPlaceholder')"
+                    :disabled="loading"
+                  ></textarea>
+                </div>
+                <div class="brief-field brief-field-wide">
+                  <label>{{ $t('home.consumerCopyLabel') }}</label>
+                  <textarea
+                    v-model="formData.consumerCopy"
+                    class="brief-input"
+                    rows="3"
+                    :placeholder="$t('home.consumerCopyPlaceholder')"
+                    :disabled="loading"
+                  ></textarea>
+                </div>
+                <div class="brief-field">
+                  <label>{{ $t('home.consumerClaimsLabel') }}</label>
+                  <textarea
+                    v-model="formData.consumerClaims"
+                    class="brief-input"
+                    rows="2"
+                    :placeholder="$t('home.consumerClaimsPlaceholder')"
+                    :disabled="loading"
+                  ></textarea>
+                </div>
+                <div class="brief-field">
+                  <label>{{ $t('home.consumerAudienceLabel') }}</label>
+                  <textarea
+                    v-model="formData.consumerAudience"
+                    class="brief-input"
+                    rows="2"
+                    :placeholder="$t('home.consumerAudiencePlaceholder')"
+                    :disabled="loading"
+                  ></textarea>
+                </div>
+                <div class="brief-field">
+                  <label>{{ $t('home.consumerSceneLabel') }}</label>
+                  <textarea
+                    v-model="formData.consumerScene"
+                    class="brief-input"
+                    rows="2"
+                    :placeholder="$t('home.consumerScenePlaceholder')"
+                    :disabled="loading"
+                  ></textarea>
+                </div>
+                <div class="brief-field brief-field-wide">
+                  <label>{{ $t('home.consumerResearchGoalLabel') }}</label>
+                  <textarea
+                    v-model="formData.consumerResearchGoal"
+                    class="brief-input"
+                    rows="3"
+                    :placeholder="$t('home.consumerResearchGoalPlaceholder')"
+                    :disabled="loading"
+                  ></textarea>
+                </div>
               </div>
             </div>
 
@@ -214,14 +310,28 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import HistoryDatabase from '../components/HistoryDatabase.vue'
 import LanguageSwitcher from '../components/LanguageSwitcher.vue'
+import {
+  buildConsumerBrief,
+  isConsumerBriefComplete,
+  resolveSimulationRequirement
+} from '../utils/consumerBrief'
 
 const router = useRouter()
+const { t } = useI18n()
 
 // 表单数据
 const formData = ref({
-  simulationRequirement: ''
+  projectType: 'default',
+  simulationRequirement: '',
+  consumerConcept: '',
+  consumerCopy: '',
+  consumerClaims: '',
+  consumerAudience: '',
+  consumerScene: '',
+  consumerResearchGoal: ''
 })
 
 // 文件列表
@@ -236,8 +346,32 @@ const isDragOver = ref(false)
 const fileInput = ref(null)
 
 // 计算属性:是否可以提交
+const isConsumerMode = computed(() => formData.value.projectType === 'consumer_test')
+
+const simulationPromptPlaceholder = computed(() => (
+  isConsumerMode.value
+    ? t('home.consumerPromptPlaceholder')
+    : t('home.promptPlaceholder')
+))
+
+const resolvedSimulationRequirement = computed(() => (
+  resolveSimulationRequirement(
+    formData.value.projectType,
+    formData.value.simulationRequirement,
+    t('home.consumerDefaultPrompt')
+  )
+))
+
 const canSubmit = computed(() => {
-  return formData.value.simulationRequirement.trim() !== '' && files.value.length > 0
+  if (files.value.length === 0) {
+    return false
+  }
+
+  if (isConsumerMode.value) {
+    return isConsumerBriefComplete(formData.value)
+  }
+
+  return formData.value.simulationRequirement.trim() !== ''
 })
 
 // 触发文件选择
@@ -300,7 +434,12 @@ const startSimulation = () => {
   
   // 存储待上传的数据
   import('../store/pendingUpload.js').then(({ setPendingUpload }) => {
-    setPendingUpload(files.value, formData.value.simulationRequirement)
+    setPendingUpload({
+      files: files.value,
+      simulationRequirement: resolvedSimulationRequirement.value,
+      projectType: formData.value.projectType,
+      consumerBrief: isConsumerMode.value ? buildConsumerBrief(formData.value) : null
+    })
     
     // 立即跳转到Process页面（使用特殊标识表示新建项目）
     router.push({
@@ -694,6 +833,83 @@ const startSimulation = () => {
   color: #666;
 }
 
+.mode-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.mode-btn {
+  border: 1px solid #DDD;
+  background: #FAFAFA;
+  color: var(--black);
+  padding: 14px 16px;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.mode-btn:hover:not(:disabled) {
+  border-color: var(--orange);
+  background: #FFF3EE;
+}
+
+.mode-btn.active {
+  background: var(--black);
+  border-color: var(--black);
+  color: var(--white);
+}
+
+.mode-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.consumer-brief-section {
+  border-top: 1px solid #EEE;
+}
+
+.brief-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.brief-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.brief-field label {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: #666;
+}
+
+.brief-field-wide {
+  grid-column: 1 / -1;
+}
+
+.brief-input {
+  width: 100%;
+  border: 1px solid #DDD;
+  background: #FAFAFA;
+  padding: 14px 16px;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  line-height: 1.6;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.brief-input:focus {
+  border-color: var(--orange);
+  background: #FFFDFB;
+}
+
 .upload-zone {
   border: 1px dashed #CCC;
   height: 200px;
@@ -892,6 +1108,11 @@ const startSimulation = () => {
   .hero-logo {
     max-width: 200px;
     margin-bottom: 20px;
+  }
+
+  .mode-switch,
+  .brief-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>

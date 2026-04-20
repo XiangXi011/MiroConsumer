@@ -69,13 +69,40 @@
     "promptPlaceholder": "// 用自然语言输入模拟或预测需求（例.武大若发布撤销肖某处分的公告，会引发什么舆情走向）",
     "engineBadge": "引擎: MiroFish-V1.0",
     "startEngine": "启动引擎",
-    "initializing": "初始化中..."
+    "initializing": "初始化中...",
+    "projectMode": "项目模式",
+    "modeDefault": "通用仿真",
+    "modeConsumer": "消费者测试",
+    "modeDefaultMeta": "沿用原版 MiroFish 的图谱与仿真流程。",
+    "modeConsumerMeta": "用 MiroFish 做概念与文案的消费者传播测试。",
+    "consumerPromptPlaceholder": "// 可选：补充这次消费者传播测试的额外说明。不填时会使用默认的概念/文案测试提示词。",
+    "consumerDefaultPrompt": "请基于已上传的概念与文案资料运行一次消费者传播测试，模拟目标人群的初见反应、群体讨论扩散、共鸣点、质疑点与误读风险。",
+    "consumerBriefLabel": ">_ 03 / 消费者 Brief",
+    "consumerBriefHint": "消费者测试模式下必填概念、文案、目标人群和研究目标。",
+    "consumerConceptLabel": "产品概念",
+    "consumerConceptPlaceholder": "请输入产品概念描述，或每行粘贴一条概念素材。",
+    "consumerCopyLabel": "测试文案",
+    "consumerCopyPlaceholder": "请输入待测试的文案内容，建议每行一条。",
+    "consumerClaimsLabel": "核心 Claim",
+    "consumerClaimsPlaceholder": "选填，可用逗号或换行分隔。",
+    "consumerAudienceLabel": "目标人群",
+    "consumerAudiencePlaceholder": "必填，例如：职场妈妈、健身初学者。",
+    "consumerSceneLabel": "使用场景",
+    "consumerScenePlaceholder": "选填，例如：工作日早餐、通勤加餐。",
+    "consumerResearchGoalLabel": "研究目标",
+    "consumerResearchGoalPlaceholder": "必填，说明你希望这次传播测试回答什么问题。"
   },
   "main": {
     "layoutGraph": "图谱",
     "layoutSplit": "双栏",
     "layoutWorkbench": "工作台",
-    "stepNames": ["图谱构建", "环境搭建", "开始模拟", "报告生成", "深度互动"]
+    "stepNames": [
+      "图谱构建",
+      "环境搭建",
+      "开始模拟",
+      "报告生成",
+      "深度互动"
+    ]
   },
   "step1": {
     "ontologyGeneration": "本体生成",

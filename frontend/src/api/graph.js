@@ -1,12 +1,41 @@
 import service, { requestWithRetry } from './index'
 
 /**
+ * Build the multipart payload used by /api/graph/ontology/generate.
+ * Accepts the shared pending-upload payload shape from the Home page.
+ */
+export function buildOntologyFormData(payload = {}) {
+  const formData = new FormData()
+
+  for (const file of payload.files || []) {
+    formData.append('files', file)
+  }
+
+  formData.append('simulation_requirement', payload.simulationRequirement || '')
+  formData.append('project_type', payload.projectType || 'default')
+
+  if (payload.projectName) {
+    formData.append('project_name', payload.projectName)
+  }
+
+  if (payload.additionalContext) {
+    formData.append('additional_context', payload.additionalContext)
+  }
+
+  if (payload.consumerBrief) {
+    formData.append('consumer_brief', JSON.stringify(payload.consumerBrief))
+  }
+
+  return formData
+}
+
+/**
  * 生成本体（上传文档和模拟需求）
- * @param {Object} data - 包含files, simulation_requirement, project_name等
+ * @param {FormData} formData
  * @returns {Promise}
  */
 export function generateOntology(formData) {
-  return requestWithRetry(() => 
+  return requestWithRetry(() =>
     service({
       url: '/api/graph/ontology/generate',
       method: 'post',
@@ -20,7 +49,7 @@ export function generateOntology(formData) {
 
 /**
  * 构建图谱
- * @param {Object} data - 包含project_id, graph_name等
+ * @param {Object} data
  * @returns {Promise}
  */
 export function buildGraph(data) {
@@ -35,7 +64,7 @@ export function buildGraph(data) {
 
 /**
  * 查询任务状态
- * @param {String} taskId - 任务ID
+ * @param {String} taskId
  * @returns {Promise}
  */
 export function getTaskStatus(taskId) {
@@ -47,7 +76,7 @@ export function getTaskStatus(taskId) {
 
 /**
  * 获取图谱数据
- * @param {String} graphId - 图谱ID
+ * @param {String} graphId
  * @returns {Promise}
  */
 export function getGraphData(graphId) {
@@ -59,7 +88,7 @@ export function getGraphData(graphId) {
 
 /**
  * 获取项目信息
- * @param {String} projectId - 项目ID
+ * @param {String} projectId
  * @returns {Promise}
  */
 export function getProject(projectId) {
