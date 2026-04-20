@@ -48,12 +48,7 @@ def _consumer_graph_id(project_id: str) -> str:
 def _get_consumer_graph_payload(project):
     if not project or project.project_type != "consumer_test":
         return None
-
-    consumer_context = project.consumer_context or {}
-    graph_payload = consumer_context.get("graph_payload")
-    if isinstance(graph_payload, dict):
-        return graph_payload
-    return None
+    return ProjectManager.load_consumer_graph_payload(project.project_id)
 
 
 def _build_consumer_graph(project, text: str):
@@ -68,9 +63,7 @@ def _build_consumer_graph(project, text: str):
         graph_id=_consumer_graph_id(project.project_id),
     )
 
-    consumer_context = dict(project.consumer_context or {})
-    consumer_context["graph_payload"] = graph_payload
-    project.consumer_context = consumer_context
+    ProjectManager.save_consumer_graph_payload(project.project_id, graph_payload)
     project.graph_id = graph_payload["graph_id"]
     project.status = ProjectStatus.GRAPH_COMPLETED
     ProjectManager.save_project(project)
@@ -163,6 +156,7 @@ def reset_project(project_id: str):
     project.graph_id = None
     project.graph_build_task_id = None
     project.error = None
+    ProjectManager.delete_consumer_graph_payload(project.project_id)
     ProjectManager.save_project(project)
     
     return jsonify({
@@ -383,6 +377,7 @@ def build_graph():
             project.graph_id = None
             project.graph_build_task_id = None
             project.error = None
+            ProjectManager.delete_consumer_graph_payload(project.project_id)
         
         # 获取配置
         graph_name = data.get('graph_name', project.name or 'MiroFish Graph')
@@ -418,9 +413,7 @@ def build_graph():
             project.graph_build_task_id = task_id
             project.graph_id = None
             project.error = None
-            consumer_context = dict(project.consumer_context or {})
-            consumer_context.pop("graph_payload", None)
-            project.consumer_context = consumer_context
+            ProjectManager.delete_consumer_graph_payload(project.project_id)
             ProjectManager.save_project(project)
 
             try:
@@ -691,13 +684,18 @@ def get_graph_data(graph_id: str):
     """
     try:
         if graph_id.startswith("consumer_"):
-            project = ProjectManager.get_project(graph_id[len("consumer_"):])
+            project_id = graph_id[len("consumer_"):]
+            project = ProjectManager.get_project(project_id)
             graph_payload = _get_consumer_graph_payload(project)
             if graph_payload:
                 return jsonify({
                     "success": True,
                     "data": graph_payload
                 })
+            return jsonify({
+                "success": False,
+                "error": f"Consumer graph not found: {graph_id}"
+            }), 404
 
         if not Config.ZEP_API_KEY:
             return jsonify({

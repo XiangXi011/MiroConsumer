@@ -57,6 +57,13 @@ class Project:
     
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""
+        consumer_context = self.consumer_context
+        if isinstance(consumer_context, dict) and "graph_payload" in consumer_context:
+            consumer_context = {
+                key: value for key, value in consumer_context.items()
+                if key != "graph_payload"
+            }
+
         return {
             "project_id": self.project_id,
             "name": self.name,
@@ -74,7 +81,7 @@ class Project:
             "chunk_size": self.chunk_size,
             "chunk_overlap": self.chunk_overlap,
             "consumer_brief": self.consumer_brief,
-            "consumer_context": self.consumer_context,
+            "consumer_context": consumer_context,
             "error": self.error
         }
     
@@ -137,6 +144,11 @@ class ProjectManager:
     def _get_project_text_path(cls, project_id: str) -> str:
         """获取项目提取文本存储路径"""
         return os.path.join(cls._get_project_dir(project_id), 'extracted_text.txt')
+
+    @classmethod
+    def _get_consumer_graph_path(cls, project_id: str) -> str:
+        """获取消费者本地图谱存储路径"""
+        return os.path.join(cls._get_project_dir(project_id), 'consumer_graph.json')
     
     @classmethod
     def create_project(cls, name: str = "Unnamed Project") -> Project:
@@ -242,9 +254,37 @@ class ProjectManager:
         
         if not os.path.exists(project_dir):
             return False
-        
+
+        cls.delete_consumer_graph_payload(project_id)
         shutil.rmtree(project_dir)
         return True
+
+    @classmethod
+    def save_consumer_graph_payload(cls, project_id: str, graph_payload: Dict[str, Any]) -> None:
+        """将消费者图谱载荷保存到项目本地文件，而不是项目元数据中"""
+        project_dir = cls._get_project_dir(project_id)
+        os.makedirs(project_dir, exist_ok=True)
+
+        graph_path = cls._get_consumer_graph_path(project_id)
+        with open(graph_path, 'w', encoding='utf-8') as f:
+            json.dump(graph_payload, f, ensure_ascii=False, indent=2)
+
+    @classmethod
+    def load_consumer_graph_payload(cls, project_id: str) -> Optional[Dict[str, Any]]:
+        """读取项目本地存储的消费者图谱载荷"""
+        graph_path = cls._get_consumer_graph_path(project_id)
+        if not os.path.exists(graph_path):
+            return None
+
+        with open(graph_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+
+    @classmethod
+    def delete_consumer_graph_payload(cls, project_id: str) -> None:
+        """删除项目本地存储的消费者图谱载荷"""
+        graph_path = cls._get_consumer_graph_path(project_id)
+        if os.path.exists(graph_path):
+            os.remove(graph_path)
     
     @classmethod
     def save_file_to_project(cls, project_id: str, file_storage, original_filename: str) -> Dict[str, str]:

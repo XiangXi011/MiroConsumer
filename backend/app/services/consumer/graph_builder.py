@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Mapping, Optional
 
 from .models import ConsumerBusinessBrief, GraphVisibility
-from .persona_pack import load_default_persona_pack
+from .persona_pack import load_default_persona_pack, map_persona_to_agent_traits
 
 
 class ConsumerGraphBuilder:
@@ -159,9 +159,8 @@ class ConsumerGraphBuilder:
         created_at: str,
     ) -> None:
         for persona in personas:
-            label = str(persona.get("label", "")).strip()
-            if not label:
-                continue
+            agent_traits = map_persona_to_agent_traits(persona)
+            label = agent_traits["label"]
 
             persona_id = self._add_node(
                 nodes,
@@ -171,9 +170,9 @@ class ConsumerGraphBuilder:
                 summary="Default persona segment used to anchor downstream simulation cohorts.",
                 visibility=GraphVisibility.Propagation_Only,
                 attributes={
-                    "persona_id": persona.get("persona_id"),
-                    "attention_drivers": list(persona.get("attention_drivers", [])),
-                    "risk_sensitivities": list(persona.get("risk_sensitivities", [])),
+                    "persona_id": agent_traits["persona_id"],
+                    "attention_drivers": list(agent_traits.get("attention_drivers", [])),
+                    "risk_sensitivities": list(agent_traits.get("risk_sensitivities", [])),
                     "source": "default_persona_pack",
                     "round0_visible": False,
                 },

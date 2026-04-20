@@ -58,3 +58,19 @@ def test_background_risk_nodes_are_never_initial():
     assert all(node["visibility"] != GraphVisibility.Initial.value for node in risk_nodes)
     assert any(node["visibility"] == GraphVisibility.Propagation_Only.value for node in risk_nodes)
     assert any(node["visibility"] == GraphVisibility.Restricted.value for node in risk_nodes)
+
+
+def test_consumer_graph_builder_rejects_malformed_persona_pack_records():
+    builder = ConsumerGraphBuilder()
+
+    try:
+        builder.build(
+            brief=_build_brief(),
+            background_text="Background risk.",
+            persona_pack=[{"persona_id": "p1", "label": "Bad Persona"}],
+            graph_id="consumer_proj_bad_persona",
+        )
+    except ValueError as exc:
+        assert "missing required fields" in str(exc).lower()
+    else:
+        raise AssertionError("Expected malformed persona pack to raise ValueError")

@@ -130,7 +130,14 @@ def test_consumer_build_route_stores_graph_and_graph_data_is_retrievable(tmp_pat
     assert saved_project is not None
     assert saved_project.graph_id == f"consumer_{project.project_id}"
     assert saved_project.status == ProjectStatus.GRAPH_COMPLETED
-    assert saved_project.consumer_context["graph_payload"]["graph_id"] == saved_project.graph_id
+    project_meta_path = projects_dir / project.project_id / "project.json"
+    project_meta = json.loads(project_meta_path.read_text(encoding="utf-8"))
+    graph_payload_path = projects_dir / project.project_id / "consumer_graph.json"
+
+    assert saved_project.consumer_context in (None, {})
+    assert "graph_payload" not in json.dumps(project_meta, ensure_ascii=False)
+    assert graph_payload_path.exists()
+    assert json.loads(graph_payload_path.read_text(encoding="utf-8"))["graph_id"] == saved_project.graph_id
     assert graph_response.status_code == 200
     assert graph_response.get_json()["data"]["graph_id"] == saved_project.graph_id
     assert any(
@@ -138,6 +145,70 @@ def test_consumer_build_route_stores_graph_and_graph_data_is_retrievable(tmp_pat
         for node in graph_response.get_json()["data"]["nodes"]
         if "RiskPoint" in node["labels"]
     )
+
+
+def test_reset_project_clears_local_consumer_graph_payload(tmp_path, monkeypatch):
+    uploads_dir = tmp_path / "uploads"
+    projects_dir = uploads_dir / "projects"
+    monkeypatch.setattr(graph_api.Config, "UPLOAD_FOLDER", str(uploads_dir))
+    monkeypatch.setattr(graph_api.Config, "ZEP_API_KEY", None)
+    monkeypatch.setattr(ProjectManager, "PROJECTS_DIR", str(projects_dir))
+    _reset_task_manager()
+
+    project = ProjectManager.create_project(name="Consumer Reset")
+    project.project_type = "consumer_test"
+    project.status = ProjectStatus.ONTOLOGY_GENERATED
+    project.ontology = {"entity_types": [{"name": "ProductConcept", "attributes": []}], "edge_types": []}
+    project.consumer_brief = _consumer_brief_payload()
+    ProjectManager.save_project(project)
+    ProjectManager.save_extracted_text(project.project_id, "Contamination risk may spread in creator circles.")
+
+    app = _create_test_app()
+    client = app.test_client()
+
+    build_response = client.post("/api/graph/build", json={"project_id": project.project_id})
+    graph_id = ProjectManager.get_project(project.project_id).graph_id
+    assert build_response.status_code == 200
+    assert client.get(f"/api/graph/data/{graph_id}").status_code == 200
+
+    reset_response = client.post(f"/api/graph/project/{project.project_id}/reset")
+
+    assert reset_response.status_code == 200
+    assert client.get(f"/api/graph/data/{graph_id}").status_code == 404
+    assert not (projects_dir / project.project_id / "consumer_graph.json").exists()
+
+
+def test_delete_project_removes_local_consumer_graph_payload(tmp_path, monkeypatch):
+    uploads_dir = tmp_path / "uploads"
+    projects_dir = uploads_dir / "projects"
+    monkeypatch.setattr(graph_api.Config, "UPLOAD_FOLDER", str(uploads_dir))
+    monkeypatch.setattr(graph_api.Config, "ZEP_API_KEY", None)
+    monkeypatch.setattr(ProjectManager, "PROJECTS_DIR", str(projects_dir))
+    _reset_task_manager()
+
+    project = ProjectManager.create_project(name="Consumer Delete")
+    project.project_type = "consumer_test"
+    project.status = ProjectStatus.ONTOLOGY_GENERATED
+    project.ontology = {"entity_types": [{"name": "ProductConcept", "attributes": []}], "edge_types": []}
+    project.consumer_brief = _consumer_brief_payload()
+    ProjectManager.save_project(project)
+    ProjectManager.save_extracted_text(project.project_id, "Technical contamination risk appears in the background.")
+
+    app = _create_test_app()
+    client = app.test_client()
+
+    build_response = client.post("/api/graph/build", json={"project_id": project.project_id})
+    graph_id = ProjectManager.get_project(project.project_id).graph_id
+    graph_file = projects_dir / project.project_id / "consumer_graph.json"
+
+    assert build_response.status_code == 200
+    assert graph_file.exists()
+
+    delete_response = client.delete(f"/api/graph/project/{project.project_id}")
+
+    assert delete_response.status_code == 200
+    assert not (projects_dir / project.project_id).exists()
+    assert client.get(f"/api/graph/data/{graph_id}").status_code == 404
 
 
 def test_default_build_route_keeps_legacy_graph_builder_path(tmp_path, monkeypatch):
