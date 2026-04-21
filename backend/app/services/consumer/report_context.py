@@ -10,6 +10,199 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional
 from .scoring import ConsumerPhase2Summary, ConsumerScoringService
 
 
+def _build_source_catalog(snapshot: Any) -> List[Dict[str, Any]]:
+    """Build a readable source catalog from a research snapshot."""
+    from .models import ResearchSnapshot
+
+    if not isinstance(snapshot, ResearchSnapshot):
+        return []
+
+    doc_counts: Dict[str, int] = Counter()
+    chunk_counts: Dict[str, int] = Counter()
+    for doc in snapshot.documents:
+        doc_counts[doc.source_id] += 1
+    for chunk in snapshot.chunks:
+        chunk_counts[chunk.source_id] += 1
+
+    catalog: List[Dict[str, Any]] = []
+    for source in snapshot.sources:
+        lane_val = source.lane.value if hasattr(source.lane, "value") else str(source.lane)
+        type_val = source.source_type.value if hasattr(source.source_type, "value") else str(source.source_type)
+        catalog.append({
+            "source_id": source.source_id,
+            "label": source.label,
+            "uri": source.uri,
+            "lane": lane_val,
+            "source_type": type_val,
+            "trust_tier": source.trust_tier,
+            "document_count": doc_counts.get(source.source_id, 0),
+            "chunk_count": chunk_counts.get(source.source_id, 0),
+            "metadata": source.metadata,
+        })
+    return catalog
+
+
+def _enrich_finding(
+    finding: Any,
+    source_by_id: Dict[str, Any],
+    chunk_by_id: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Enrich a finding with readable provenance fields."""
+    result: Dict[str, Any] = {
+        "finding_id": finding.finding_id if hasattr(finding, "finding_id") else finding.get("finding_id", ""),
+        "finding_type": finding.finding_type if hasattr(finding, "finding_type") else finding.get("finding_type", ""),
+        "summary": finding.summary if hasattr(finding, "summary") else finding.get("summary", ""),
+        "evidence_snippets": (
+            finding.evidence_snippets if hasattr(finding, "evidence_snippets") else finding.get("evidence_snippets", [])
+        ),
+        "source_label": (
+            finding.source_label if hasattr(finding, "source_label") else finding.get("source_label", "")
+        ),
+        "visibility": (
+            finding.visibility.value if hasattr(finding, "visibility") and hasattr(finding.visibility, "value")
+            else str(finding.visibility) if hasattr(finding, "visibility")
+            else finding.get("visibility", "")
+        ),
+        "confidence": finding.confidence if hasattr(finding, "confidence") else finding.get("confidence", 0),
+        "source_id": finding.source_id if hasattr(finding, "source_id") else finding.get("source_id", ""),
+        "snippet_id": finding.snippet_id if hasattr(finding, "snippet_id") else finding.get("snippet_id", ""),
+        "retrieval_trace_id": (
+            finding.retrieval_trace_id if hasattr(finding, "retrieval_trace_id")
+            else finding.get("retrieval_trace_id", "")
+        ),
+    }
+
+    source_id = result["source_id"]
+    source = source_by_id.get(source_id) if source_id else None
+    if source:
+        result["source_title"] = source.label
+        result["source_uri"] = source.uri
+        result["source_lane"] = (
+            source.lane.value if hasattr(source.lane, "value") else str(source.lane)
+        )
+        result["source_type"] = (
+            source.source_type.value if hasattr(source.source_type, "value") else str(source.source_type)
+        )
+        result["trust_tier"] = source.trust_tier
+
+    preview = ""
+    evidence_snippets = result["evidence_snippets"]
+    if evidence_snippets:
+        preview = evidence_snippets[0]
+    elif result["snippet_id"] and result["snippet_id"] in chunk_by_id:
+        preview = chunk_by_id[result["snippet_id"]].text
+    if preview:
+        result["evidence_preview"] = preview[:300] + "..." if len(preview) > 300 else preview
+
+    return result
+
+
+def _enrich_trace(
+    trace: Any,
+    chunk_by_id: Dict[str, Any],
+    source_by_id: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Enrich a retrieval trace with readable provenance fields."""
+    result: Dict[str, Any] = {
+        "trace_id": trace.trace_id if hasattr(trace, "trace_id") else trace.get("trace_id", ""),
+        "query": trace.query if hasattr(trace, "query") else trace.get("query", ""),
+        "lane": (
+            trace.lane.value if hasattr(trace, "lane") and hasattr(trace.lane, "value")
+            else str(trace.lane) if hasattr(trace, "lane")
+            else trace.get("lane", "")
+        ),
+        "chunk_ids": trace.chunk_ids if hasattr(trace, "chunk_ids") else trace.get("chunk_ids", []),
+        "scores": trace.scores if hasattr(trace, "scores") else trace.get("scores", []),
+        "retrieved_at": trace.retrieved_at if hasattr(trace, "retrieved_at") else trace.get("retrieved_at", ""),
+    }
+
+    chunk_previews: List[Dict[str, str]] = []
+    seen_source_ids: set = set()
+    primary_source = None
+
+    chunk_ids = result["chunk_ids"]
+    for chunk_id in chunk_ids:
+        chunk = chunk_by_id.get(chunk_id)
+        if not chunk:
+            continue
+        text = chunk.text
+        preview_text = text[:200] + "..." if len(text) > 200 else text
+        chunk_previews.append({"chunk_id": chunk_id, "text_preview": preview_text})
+        if chunk.source_id and chunk.source_id not in seen_source_ids:
+            seen_source_ids.add(chunk.source_id)
+            source = source_by_id.get(chunk.source_id)
+            if source and primary_source is None:
+                primary_source = source
+
+    if primary_source:
+        result["source_title"] = primary_source.label
+        result["source_uri"] = primary_source.uri
+        result["source_type"] = (
+            primary_source.source_type.value if hasattr(primary_source.source_type, "value")
+            else str(primary_source.source_type)
+        )
+        result["trust_tier"] = primary_source.trust_tier
+
+    result["chunk_previews"] = chunk_previews
+    result["source_count"] = len(seen_source_ids)
+
+    return result
+
+
+def enrich_report_context_with_snapshot(
+    context: Dict[str, Any],
+    findings: Iterable[Any],
+    traces: Optional[Iterable[Any]],
+    snapshot: Any,
+) -> Dict[str, Any]:
+    """Enrich report context with readable provenance from a snapshot.
+
+    Args:
+        context: The report context dict to enrich in-place.
+        findings: ResearchFinding objects or dicts.
+        traces: Optional RetrievalTrace objects or dicts.
+        snapshot: A ResearchSnapshot object.
+
+    Returns:
+        The enriched context dict.
+    """
+    from .models import ResearchFinding, ResearchSnapshot, RetrievalTrace
+
+    if not isinstance(snapshot, ResearchSnapshot):
+        return context
+
+    typed_findings: List[ResearchFinding] = []
+    for f in findings:
+        if isinstance(f, ResearchFinding):
+            typed_findings.append(f)
+        elif isinstance(f, dict):
+            typed_findings.append(ResearchFinding(**f))
+
+    typed_traces: List[RetrievalTrace] = []
+    if traces:
+        for t in traces:
+            if isinstance(t, RetrievalTrace):
+                typed_traces.append(t)
+            elif isinstance(t, dict):
+                typed_traces.append(RetrievalTrace(**t))
+            else:
+                typed_traces.append(t)
+
+    source_by_id = {s.source_id: s for s in snapshot.sources}
+    chunk_by_id = {c.chunk_id: c for c in snapshot.chunks}
+
+    context["source_catalog"] = _build_source_catalog(snapshot)
+    context["enriched_findings"] = [
+        _enrich_finding(f, source_by_id, chunk_by_id) for f in typed_findings
+    ]
+    if typed_traces:
+        context["enriched_traces"] = [
+            _enrich_trace(t, chunk_by_id, source_by_id) for t in typed_traces
+        ]
+
+    return context
+
+
 class ConsumerReportContextBuilder:
     """Build structured report context from consumer round snapshots."""
 
@@ -175,6 +368,7 @@ def build_consumer_report_context(
     findings: Iterable[Any],
     events: Iterable[Any],
     traces: Optional[Iterable[Any]] = None,
+    snapshot: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """Build structured report context with causal chains from events and findings.
 
@@ -183,10 +377,12 @@ def build_consumer_report_context(
         findings: ResearchFinding objects or dicts.
         events: PropagationEvent objects or dicts.
         traces: Optional RetrievalTrace objects or dicts for provenance enrichment.
+        snapshot: Optional ResearchSnapshot for source catalog and provenance enrichment.
 
     Returns:
         Dict with causal_chains, event_led_reversals, persona_group_signals,
-        and optional retrieval_provenance.
+        and optional retrieval_provenance, source_catalog, enriched_findings,
+        and enriched_traces.
     """
     from .models import PropagationEvent, ResearchFinding
 
@@ -259,8 +455,8 @@ def build_consumer_report_context(
         "event_count": len(typed_events),
     }
 
+    typed_traces = []
     if traces is not None:
-        typed_traces = []
         for t in traces:
             if hasattr(t, "model_dump"):
                 typed_traces.append(t)
@@ -274,7 +470,16 @@ def build_consumer_report_context(
             t.model_dump() if hasattr(t, "model_dump") else dict(t) for t in typed_traces
         ]
 
+    if snapshot is not None:
+        enrich_report_context_with_snapshot(
+            context, typed_findings, typed_traces or None, snapshot
+        )
+
     return context
 
 
-__all__ = ["ConsumerReportContextBuilder", "build_consumer_report_context"]
+__all__ = [
+    "ConsumerReportContextBuilder",
+    "build_consumer_report_context",
+    "enrich_report_context_with_snapshot",
+]

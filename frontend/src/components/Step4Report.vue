@@ -105,18 +105,42 @@
               </div>
             </div>
 
-            <div v-if="isConsumerMode && consumerCitationReadyFindings.length > 0" class="consumer-findings-strip">
+            <div v-if="isConsumerMode && consumerSourceCatalog.length > 0" class="consumer-findings-strip">
+              <div class="consumer-findings-header">{{ $t('consumer.sourcesUsed') }}</div>
+              <div class="consumer-source-list">
+                <div
+                  v-for="source in consumerSourceCatalog"
+                  :key="source.source_id"
+                  class="consumer-source-chip"
+                >
+                  <span class="source-label">{{ source.label }}</span>
+                  <span v-if="source.lane" class="source-lane">{{ source.lane }}</span>
+                  <span v-if="source.trust_tier" class="source-trust">T{{ source.trust_tier }}</span>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="isConsumerMode && consumerEnrichedFindings.length > 0" class="consumer-findings-strip">
               <div class="consumer-findings-header">{{ $t('consumer.citationReadyFindings') }}</div>
               <div class="consumer-findings-list">
                 <div
-                  v-for="(f, idx) in consumerCitationReadyFindings"
+                  v-for="(f, idx) in consumerEnrichedFindings"
                   :key="idx"
                   class="consumer-finding-item"
                   :class="'type-' + f.findingType"
                 >
                   <span class="finding-type">{{ f.findingType }}</span>
                   <span class="finding-text">{{ f.summary }}</span>
-                  <div v-if="f.sourceLabel || f.sourceId || f.retrievalTraceId" class="finding-provenance">
+                  <div v-if="f.sourceTitle || f.sourceUri || f.evidencePreview" class="finding-evidence">
+                    <div v-if="f.sourceTitle" class="evidence-source">
+                      <span class="evidence-source-title">{{ f.sourceTitle }}</span>
+                      <a v-if="f.sourceUri" :href="f.sourceUri" target="_blank" class="evidence-source-uri">{{ f.sourceUri }}</a>
+                      <span v-if="f.sourceLane" class="evidence-lane-badge">{{ f.sourceLane }}</span>
+                      <span v-if="f.trustTier" class="evidence-trust-tier">T{{ f.trustTier }}</span>
+                    </div>
+                    <div v-if="f.evidencePreview" class="evidence-preview">"{{ f.evidencePreview }}"</div>
+                  </div>
+                  <div v-else-if="f.sourceLabel || f.sourceId || f.retrievalTraceId" class="finding-provenance">
                     <span v-if="f.sourceLabel" class="prov-badge">{{ f.sourceLabel }}</span>
                     <span v-if="f.sourceId" class="prov-id">src:{{ f.sourceId }}</span>
                     <span v-if="f.snippetId" class="prov-id">snip:{{ f.snippetId }}</span>
@@ -126,18 +150,34 @@
               </div>
             </div>
 
-            <div v-if="isConsumerMode && consumerRetrievalTraces.length > 0" class="consumer-findings-strip">
+            <div v-if="isConsumerMode && consumerEnrichedTraces.length > 0" class="consumer-findings-strip">
               <div class="consumer-findings-header">{{ $t('consumer.retrievalTraces') }}</div>
               <div class="consumer-findings-list">
                 <div
-                  v-for="(trace, idx) in consumerRetrievalTraces"
+                  v-for="(trace, idx) in consumerEnrichedTraces"
                   :key="idx"
                   class="consumer-finding-item"
                 >
                   <span class="finding-text">{{ trace.query }}</span>
-                  <div class="finding-provenance">
-                    <span class="prov-badge">{{ trace.lane }}</span>
-                    <span class="prov-id">{{ (trace.chunk_ids || []).length }} chunks</span>
+                  <div class="finding-evidence">
+                    <div v-if="trace.sourceTitle" class="evidence-source">
+                      <span class="evidence-source-title">{{ trace.sourceTitle }}</span>
+                      <span v-if="trace.sourceType" class="evidence-type-badge">{{ trace.sourceType }}</span>
+                      <span v-if="trace.trustTier" class="evidence-trust-tier">T{{ trace.trustTier }}</span>
+                    </div>
+                    <div v-if="trace.chunkPreviews.length > 0" class="evidence-previews">
+                      <div
+                        v-for="(preview, pidx) in trace.chunkPreviews.slice(0, 2)"
+                        :key="pidx"
+                        class="evidence-preview"
+                      >
+                        "{{ preview.text_preview }}"
+                      </div>
+                    </div>
+                    <div v-else class="finding-provenance">
+                      <span class="prov-badge">{{ trace.lane }}</span>
+                      <span class="prov-id">{{ trace.chunkCount }} chunks</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -635,13 +675,36 @@ const consumerResearchSnapshot = computed(() => {
   return props.reportData.report_context.research_snapshot || null
 })
 
-const consumerRetrievalTraces = computed(() => {
+const consumerSourceCatalog = computed(() => {
   if (!isConsumerMode.value || !props.reportData?.report_context) return []
-  return props.reportData.report_context.retrieval_traces || []
+  return props.reportData.report_context.source_catalog || []
 })
 
-const consumerCitationReadyFindings = computed(() => {
+const consumerEnrichedFindings = computed(() => {
   if (!isConsumerMode.value || !props.reportData?.report_context) return []
+  const enriched = props.reportData.report_context.enriched_findings || []
+  if (enriched.length > 0) {
+    return enriched
+      .filter(f => f && f.summary)
+      .map(f => ({
+        findingId: f.finding_id || '',
+        findingType: f.finding_type || '',
+        summary: f.summary,
+        sourceTitle: f.source_title || '',
+        sourceUri: f.source_uri || '',
+        sourceLane: f.source_lane || '',
+        sourceType: f.source_type || '',
+        trustTier: f.trust_tier || 0,
+        evidencePreview: f.evidence_preview || '',
+        confidence: f.confidence || 0,
+        visibility: f.visibility || '',
+        sourceLabel: f.source_label || '',
+        sourceId: f.source_id || '',
+        snippetId: f.snippet_id || '',
+        retrievalTraceId: f.retrieval_trace_id || '',
+      }))
+  }
+  // Graceful fallback to raw findings when enrichment is absent
   const findings = props.reportData.report_context.research_findings || []
   return findings
     .filter(f => f && f.summary)
@@ -649,13 +712,52 @@ const consumerCitationReadyFindings = computed(() => {
       findingId: f.finding_id || '',
       findingType: f.finding_type || '',
       summary: f.summary,
+      sourceTitle: '',
+      sourceUri: '',
+      sourceLane: f.source_label || '',
+      sourceType: '',
+      trustTier: 0,
+      evidencePreview: '',
+      confidence: f.confidence || 0,
+      visibility: f.visibility || '',
       sourceLabel: f.source_label || '',
       sourceId: f.source_id || '',
       snippetId: f.snippet_id || '',
       retrievalTraceId: f.retrieval_trace_id || '',
-      confidence: f.confidence || 0,
-      visibility: f.visibility || '',
     }))
+})
+
+const consumerEnrichedTraces = computed(() => {
+  if (!isConsumerMode.value || !props.reportData?.report_context) return []
+  const enriched = props.reportData.report_context.enriched_traces || []
+  if (enriched.length > 0) {
+    return enriched.map(t => ({
+      traceId: t.trace_id || '',
+      query: t.query,
+      lane: t.lane,
+      sourceTitle: t.source_title || '',
+      sourceUri: t.source_uri || '',
+      sourceType: t.source_type || '',
+      trustTier: t.trust_tier || 0,
+      chunkCount: (t.chunk_ids || []).length,
+      chunkPreviews: t.chunk_previews || [],
+      sourceCount: t.source_count || 0,
+    }))
+  }
+  // Graceful fallback to raw traces
+  const traces = props.reportData.report_context.retrieval_traces || []
+  return traces.map(t => ({
+    traceId: t.trace_id || '',
+    query: t.query,
+    lane: t.lane,
+    sourceTitle: '',
+    sourceUri: '',
+    sourceType: '',
+    trustTier: 0,
+    chunkCount: (t.chunk_ids || []).length,
+    chunkPreviews: [],
+    sourceCount: 0,
+  }))
 })
 
 // Toggle functions
@@ -5502,6 +5604,120 @@ watch(() => props.reportId, (newId) => {
   font-size: 0.65rem;
   font-family: 'JetBrains Mono', monospace;
   color: #94A3B8;
+}
+
+/* Source catalog chips */
+.consumer-source-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.consumer-source-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: #F3F4F6;
+  border: 1px solid #E5E7EB;
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.consumer-source-chip .source-label {
+  color: #374151;
+  font-weight: 500;
+}
+
+.consumer-source-chip .source-lane {
+  font-size: 0.65rem;
+  font-family: 'JetBrains Mono', monospace;
+  padding: 1px 5px;
+  background: #E0F2FE;
+  color: #0369A1;
+  border-radius: 3px;
+}
+
+.consumer-source-chip .source-trust {
+  font-size: 0.65rem;
+  font-family: 'JetBrains Mono', monospace;
+  color: #6B7280;
+}
+
+/* Readable evidence cards */
+.finding-evidence {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 10px 12px;
+  background: #FAFAF9;
+  border-left: 3px solid #D6D3D1;
+  border-radius: 0 6px 6px 0;
+}
+
+.evidence-source {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.evidence-source-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #44403C;
+}
+
+.evidence-source-uri {
+  font-size: 11px;
+  color: #0369A1;
+  text-decoration: none;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.evidence-source-uri:hover {
+  text-decoration: underline;
+}
+
+.evidence-lane-badge {
+  font-size: 0.65rem;
+  font-family: 'JetBrains Mono', monospace;
+  padding: 1px 5px;
+  background: #E0F2FE;
+  color: #0369A1;
+  border-radius: 3px;
+}
+
+.evidence-type-badge {
+  font-size: 0.65rem;
+  font-family: 'JetBrains Mono', monospace;
+  padding: 1px 5px;
+  background: #F3E8FF;
+  color: #7C3AED;
+  border-radius: 3px;
+}
+
+.evidence-trust-tier {
+  font-size: 0.65rem;
+  font-family: 'JetBrains Mono', monospace;
+  color: #6B7280;
+}
+
+.evidence-preview {
+  font-size: 12px;
+  color: #57534E;
+  line-height: 1.5;
+  font-style: italic;
+}
+
+.evidence-previews {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 </style>
 

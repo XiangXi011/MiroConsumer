@@ -243,6 +243,19 @@
                 </div>
               </div>
             </div>
+
+            <div v-if="consumerSourceCatalog.length > 0 || consumerEnrichedFindings.length > 0" class="consumer-chat-section">
+              <div class="consumer-chat-label">{{ $t('consumer.sourcesUsed') }}</div>
+              <div class="consumer-source-strip">
+                <div v-for="source in consumerSourceCatalog.slice(0, 4)" :key="source.source_id" class="consumer-source-mini">
+                  <span class="source-mini-label">{{ source.label }}</span>
+                  <span v-if="source.lane" class="source-mini-lane">{{ source.lane }}</span>
+                </div>
+                <div v-if="consumerEnrichedFindings.length > 0" class="source-mini-evidence">
+                  <span class="evidence-mini-count">{{ consumerEnrichedFindings.length }} {{ $t('consumer.evidenceItems') }}</span>
+                </div>
+              </div>
+            </div>
           </div>
 
           <!-- Agent Profile Card -->
@@ -506,6 +519,21 @@ const consumerVocHighlights = computed(() => (
     ? pickTopVocQuotes(props.reportData.report_context, t)
     : []
 ))
+
+const consumerSourceCatalog = computed(() => (
+  isConsumerMode.value && props.reportData?.report_context
+    ? (props.reportData.report_context.source_catalog || [])
+    : []
+))
+
+const consumerEnrichedFindings = computed(() => {
+  if (!isConsumerMode.value || !props.reportData?.report_context) return []
+  const enriched = props.reportData.report_context.enriched_findings || []
+  if (enriched.length > 0) {
+    return enriched.filter(f => f && f.summary)
+  }
+  return (props.reportData.report_context.research_findings || []).filter(f => f && f.summary)
+})
 
 // Helper Methods
 const isSectionCompleted = (sectionIndex) => {
@@ -1622,6 +1650,48 @@ watch(() => props.simulationId, (newId) => {
 .consumer-chat-text {
   color: #374151;
   line-height: 1.6;
+}
+
+/* Compact source strip in chat brief */
+.consumer-source-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.consumer-source-mini {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  background: #F3F4F6;
+  border: 1px solid #E5E7EB;
+  border-radius: 999px;
+  font-size: 11px;
+}
+
+.source-mini-label {
+  color: #374151;
+  font-weight: 500;
+}
+
+.source-mini-lane {
+  font-size: 0.6rem;
+  font-family: 'JetBrains Mono', monospace;
+  padding: 1px 4px;
+  background: #E0F2FE;
+  color: #0369A1;
+  border-radius: 3px;
+}
+
+.source-mini-evidence {
+  font-size: 11px;
+  color: #6B7280;
+}
+
+.evidence-mini-count {
+  font-family: 'JetBrains Mono', monospace;
 }
 
 .tools-card-header {

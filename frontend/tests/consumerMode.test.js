@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 import {
   buildConsumerMetricCards,
   buildConsumerQuickPrompts,
+  buildSourceAwarePrompts,
   isConsumerProject,
   pickTopVocQuotes,
 } from '../src/utils/consumerMode.js'
@@ -154,4 +155,148 @@ test('Step4Report field mapping renders non-empty results with real backend sche
   assert.equal(causalChains.length, 1, 'Expected causal chains mapped from finding_summary field')
   assert.ok(causalChains[0].description.includes('Sugar too high'))
   assert.ok(causalChains[0].description.includes('risk_discovery'))
+})
+
+test('buildSourceAwarePrompts generates risk-source prompt when enriched risk finding has source_title', () => {
+  const prompts = buildSourceAwarePrompts({
+    enriched_findings: [
+      { finding_type: 'risk_signal', summary: 'Sugar too high', source_title: 'Brief Background' },
+    ],
+    source_catalog: [{ source_id: 'src_a', label: 'Brief Background', lane: 'lane_a' }],
+    causal_chains: [{ finding_summary: 'Sugar too high', event_ids: ['e1'], event_types: ['risk_discovery'] }],
+  })
+
+  assert.ok(prompts.some(p => p.includes('source') || p.includes('Source') || p.includes('来源')), 'Expected source-aware prompt')
+  assert.ok(prompts.some(p => p.includes('Sugar too high')), 'Expected prompt to mention finding summary')
+})
+
+test('buildSourceAwarePrompts generates influence prompt when catalog and causal chains exist', () => {
+  const prompts = buildSourceAwarePrompts({
+    enriched_findings: [],
+    source_catalog: [{ source_id: 'src_a', label: 'Brief Background' }],
+    causal_chains: [{ finding_summary: 'X', event_ids: ['e1'], event_types: ['risk_discovery'] }],
+  })
+
+  assert.ok(prompts.some(p => p.includes('influenced') || p.includes('spread') || p.includes('扩散')), 'Expected influence prompt')
+})
+
+test('buildSourceAwarePrompts generates evidence prompt when finding has evidence_preview and source_title', () => {
+  const prompts = buildSourceAwarePrompts({
+    enriched_findings: [
+      { finding_type: 'risk_signal', summary: 'Sugar concern', source_title: 'Web Article', evidence_preview: 'High sugar' },
+    ],
+    source_catalog: [],
+    causal_chains: [],
+  })
+
+  assert.ok(prompts.some(p => p.includes('evidence') || p.includes('Evidence') || p.includes('证据') || p.includes('Web Article')), 'Expected evidence prompt')
+})
+
+test('buildSourceAwarePrompts returns empty array when no enriched data exists', () => {
+  const prompts = buildSourceAwarePrompts({})
+  assert.deepEqual(prompts, [])
+})
+
+test('buildConsumerQuickPrompts includes source-aware prompts when enriched findings exist', () => {
+  const prompts = buildConsumerQuickPrompts({
+    top_resonance_points: ['portable breakfast'],
+    enriched_findings: [
+      { finding_type: 'risk_signal', summary: 'Sugar too high', source_title: 'Brief Background', evidence_preview: 'High sugar' },
+    ],
+    source_catalog: [{ source_id: 'src_a', label: 'Brief Background', lane: 'lane_a' }],
+    causal_chains: [{ finding_summary: 'Sugar too high', event_ids: ['e1'], event_types: ['risk_discovery'] }],
+  })
+
+  assert.ok(prompts.some(p => p.includes('portable breakfast')), 'Expected resonance prompt')
+  assert.ok(prompts.some(p => p.includes('Sugar too high')), 'Expected source-risk prompt')
+})
+
+test('Step4 enriched field mapping renders readable provenance when backend provides enriched_findings', () => {
+  const reportContext = {
+    enriched_findings: [
+      {
+        finding_id: 'f1',
+        finding_type: 'risk_signal',
+        summary: 'Sugar concern',
+        source_title: 'Brief Background',
+        source_uri: 'file://brief.pdf',
+        source_lane: 'lane_a',
+        source_type: 'upload',
+        trust_tier: 2,
+        evidence_preview: 'Sugar content is higher than claimed.',
+      },
+    ],
+  }
+
+  const findings = (reportContext.enriched_findings || [])
+    .filter(f => f && f.summary)
+    .map(f => ({
+      findingId: f.finding_id || '',
+      findingType: f.finding_type || '',
+      summary: f.summary,
+      sourceTitle: f.source_title || '',
+      sourceUri: f.source_uri || '',
+      sourceLane: f.source_lane || '',
+      sourceType: f.source_type || '',
+      trustTier: f.trust_tier || 0,
+      evidencePreview: f.evidence_preview || '',
+    }))
+
+  assert.equal(findings.length, 1)
+  assert.equal(findings[0].sourceTitle, 'Brief Background')
+  assert.equal(findings[0].sourceUri, 'file://brief.pdf')
+  assert.equal(findings[0].sourceLane, 'lane_a')
+  assert.equal(findings[0].trustTier, 2)
+  assert.ok(findings[0].evidencePreview.includes('Sugar content'))
+})
+
+test('Step4 enriched field mapping falls back gracefully to raw findings when enriched_findings absent', () => {
+  const reportContext = {
+    research_findings: [
+      { finding_id: 'f1', finding_type: 'risk_signal', summary: 'Sugar concern', source_label: 'brief_background' },
+    ],
+  }
+
+  const enriched = reportContext.enriched_findings || []
+  const findings = enriched.length > 0
+    ? enriched.filter(f => f && f.summary)
+    : (reportContext.research_findings || []).filter(f => f && f.summary)
+
+  assert.equal(findings.length, 1)
+  assert.equal(findings[0].summary, 'Sugar concern')
+})
+
+test('Step5 enriched trace mapping renders readable provenance when backend provides enriched_traces', () => {
+  const reportContext = {
+    enriched_traces: [
+      {
+        trace_id: 't1',
+        query: 'sugar claims',
+        lane: 'lane_a',
+        source_title: 'Brief Background',
+        source_uri: 'file://brief.pdf',
+        source_type: 'upload',
+        trust_tier: 2,
+        chunk_previews: [{ chunk_id: 'chk_1', text_preview: 'Sugar content...' }],
+        source_count: 1,
+      },
+    ],
+  }
+
+  const traces = (reportContext.enriched_traces || []).map(t => ({
+    traceId: t.trace_id || '',
+    query: t.query,
+    lane: t.lane,
+    sourceTitle: t.source_title || '',
+    sourceUri: t.source_uri || '',
+    sourceType: t.source_type || '',
+    trustTier: t.trust_tier || 0,
+    chunkPreviews: t.chunk_previews || [],
+    sourceCount: t.source_count || 0,
+  }))
+
+  assert.equal(traces.length, 1)
+  assert.equal(traces[0].sourceTitle, 'Brief Background')
+  assert.equal(traces[0].sourceCount, 1)
+  assert.equal(traces[0].chunkPreviews.length, 1)
 })

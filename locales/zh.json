@@ -345,7 +345,10 @@
     "quickPrompts": {
       "resonance": "为什么\"{point}\"会成为高共鸣点？",
       "risk": "为什么\"{point}\"会在传播中被放大？",
-      "misread": "\"{point}\"是如何被误读出来的？"
+      "misread": "\"{point}\"是如何被误读出来的？",
+      "sourceRisk": "哪个来源触发了关于\"{summary}\"的风险信号？",
+      "sourceInfluence": "哪些来源影响了这些信号的扩散？",
+      "sourceEvidence": "\"{source}\"提供了哪些证据支持\"{summary}\"？"
     },
     "eventTypes": {
       "positive_relay": "正向传播",
@@ -364,6 +367,8 @@
     "laneBEnabled": "Lane B（公开网络）已启用",
     "citationReadyFindings": "可引用发现",
     "retrievalTraces": "检索轨迹",
+    "sourcesUsed": "参考来源",
+    "evidenceItems": "条证据",
     "findingType": {
       "category_context": "品类语境",
       "competitor_signal": "竞品信号",

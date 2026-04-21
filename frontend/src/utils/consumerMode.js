@@ -89,6 +89,47 @@ export function pickTopVocQuotes(reportContext = {}, t = null) {
     .filter(Boolean)
 }
 
+export function buildSourceAwarePrompts(reportContext = {}, t = null) {
+  const prompts = []
+  const enrichedFindings = reportContext.enriched_findings || []
+  const sourceCatalog = reportContext.source_catalog || []
+
+  const riskFindingsWithSource = enrichedFindings.filter(
+    f => f.finding_type === 'risk_signal' && f.source_title,
+  )
+  if (riskFindingsWithSource.length > 0) {
+    const first = riskFindingsWithSource[0]
+    prompts.push(translate(
+      t,
+      'consumer.quickPrompts.sourceRisk',
+      `Which source triggered the risk signal about "${first.summary}"?`,
+      { summary: first.summary, source: first.source_title },
+    ))
+  }
+
+  if (sourceCatalog.length > 0 && (reportContext.causal_chains || []).length > 0) {
+    prompts.push(translate(
+      t,
+      'consumer.quickPrompts.sourceInfluence',
+      'Which sources influenced the spread of these signals?',
+    ))
+  }
+
+  const findingWithEvidence = enrichedFindings.find(
+    f => f.evidence_preview && f.source_title,
+  )
+  if (findingWithEvidence) {
+    prompts.push(translate(
+      t,
+      'consumer.quickPrompts.sourceEvidence',
+      `What evidence from "${findingWithEvidence.source_title}" supports "${findingWithEvidence.summary}"?`,
+      { summary: findingWithEvidence.summary, source: findingWithEvidence.source_title },
+    ))
+  }
+
+  return prompts
+}
+
 export function buildConsumerQuickPrompts(reportContext = {}, t = null) {
   const prompts = []
   const resonance = reportContext.top_resonance_points?.[0]
@@ -147,6 +188,9 @@ export function buildConsumerQuickPrompts(reportContext = {}, t = null) {
       'What helped the clarification recover acceptance?',
     ))
   }
+
+  const sourcePrompts = buildSourceAwarePrompts(reportContext, t)
+  prompts.push(...sourcePrompts)
 
   return prompts
 }

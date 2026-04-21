@@ -339,7 +339,10 @@
     "quickPrompts": {
       "resonance": "Why did \"{point}\" become a top resonance point?",
       "risk": "Why did \"{point}\" get amplified during propagation?",
-      "misread": "How did \"{point}\" turn into a misread?"
+      "misread": "How did \"{point}\" turn into a misread?",
+      "sourceRisk": "Which source triggered the risk signal about \"{summary}\"?",
+      "sourceInfluence": "Which sources influenced the spread of these signals?",
+      "sourceEvidence": "What evidence from \"{source}\" supports \"{summary}\"?"
     },
     "eventTypes": {
       "positive_relay": "Positive Relay",
@@ -358,6 +361,8 @@
     "laneBEnabled": "Lane B (Public Web) Enabled",
     "citationReadyFindings": "Citation-Ready Findings",
     "retrievalTraces": "Retrieval Traces",
+    "sourcesUsed": "Sources Used",
+    "evidenceItems": "evidence items",
     "findingType": {
       "category_context": "Category Context",
       "competitor_signal": "Competitor Signal",

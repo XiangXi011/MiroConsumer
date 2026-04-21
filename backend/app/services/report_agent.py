@@ -1967,6 +1967,7 @@ class ReportAgent:
                 findings=research_findings,
                 events=all_events,
                 traces=retrieval_traces,
+                snapshot=persisted_snapshot if loaded_from_project else None,
             )
 
             context["event_counts"] = phase2_summary.event_counts
@@ -1974,6 +1975,15 @@ class ReportAgent:
             context["causal_chains"] = phase2_context["causal_chains"]
             context["event_led_reversals"] = phase2_context["event_led_reversals"]
             context["retrieval_provenance"] = phase2_context.get("retrieval_provenance")
+            context["source_catalog"] = phase2_context.get("source_catalog")
+            context["enriched_findings"] = phase2_context.get("enriched_findings")
+            context["enriched_traces"] = phase2_context.get("enriched_traces")
+        elif loaded_from_project and persisted_snapshot is not None:
+            # Enrich findings/traces with snapshot even when there are no propagation events
+            from ..services.consumer.report_context import enrich_report_context_with_snapshot
+            enrich_report_context_with_snapshot(
+                context, research_findings, retrieval_traces, persisted_snapshot
+            )
 
         return context
 
