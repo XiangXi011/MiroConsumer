@@ -24,6 +24,7 @@ from .consumer.research_ingest import (
     default_auto_research_provider,
     resolve_research_findings,
 )
+from .consumer.url_ingest import ingest_background_url_sources
 from .oasis_profile_generator import OasisProfileGenerator
 from .simulation_config_generator import (
     AgentActivityConfig,
@@ -495,6 +496,13 @@ class SimulationManager:
         reddit_profiles: List[Dict[str, Any]] = []
         twitter_profiles: List[Dict[str, Any]] = []
         agent_configs: List[AgentActivityConfig] = []
+
+        # Ingest any URL entries from optional_background_materials into Lane A
+        ingest_background_url_sources(
+            state.project_id,
+            brief=brief,
+            upload_root=Config.UPLOAD_FOLDER,
+        )
 
         lane_b_provider = build_lane_b_provider(state.project_id, upload_root=Config.UPLOAD_FOLDER)
 

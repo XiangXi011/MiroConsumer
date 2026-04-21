@@ -17,6 +17,7 @@ from ..services.consumer.models import ResearchSourceLane, ResearchSourceType
 from ..services.consumer.lane_b_provider import build_lane_b_provider
 from ..services.consumer.research_ingest import build_research_summary, resolve_research_findings, default_auto_research_provider, build_research_snapshot
 from ..services.consumer.source_registry import SourceRegistry
+from ..services.consumer.url_ingest import ingest_background_url_sources
 from ..services.ontology_generator import OntologyGenerator
 from ..services.graph_builder import GraphBuilderService
 from ..services.text_processor import TextProcessor
@@ -85,6 +86,14 @@ def _build_consumer_graph(project, text: str):
         raise ValueError("consumer_brief is required for consumer_test graph builds")
 
     brief = ConsumerBriefAdapter.from_payload(project.consumer_brief)
+
+    # Ingest any URL entries from optional_background_materials into Lane A
+    ingest_background_url_sources(
+        project.project_id,
+        brief=brief,
+        upload_root=Config.UPLOAD_FOLDER,
+    )
+
     lane_b_provider = build_lane_b_provider(project.project_id, upload_root=Config.UPLOAD_FOLDER)
     research_findings = resolve_research_findings(
         brief,

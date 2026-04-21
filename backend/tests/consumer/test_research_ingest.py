@@ -14,6 +14,7 @@ from app.services.consumer.research_ingest import (
     build_research_findings,
     build_research_summary,
     build_research_snapshot,
+    build_workspace_findings,
     resolve_research_findings,
 )
 from app.services.consumer.source_registry import SourceRegistry
@@ -475,4 +476,126 @@ def test_build_lane_b_findings_dedup_on_repeat_queries(tmp_path):
 
     assert registry.source_count(lane=ResearchSourceLane.LaneB) == 1
     assert len(ingest.load_chunks()) == 1
+
+
+def test_build_research_findings_skips_url_lines():
+    brief = ConsumerBriefAdapter.from_payload(
+        {
+            "task_type": "concept_test",
+            "product_concept_assets": ["Protein bar"],
+            "research_goal": "Find signals",
+            "optional_background_materials": [
+                "Plain note about sweeteners",
+                "https://example.com/article",
+                "Another plain note",
+            ],
+        }
+    )
+
+    findings = build_research_findings(brief)
+    summaries = [f.summary for f in findings]
+
+    assert "Plain note about sweeteners" in summaries
+    assert "Another plain note" in summaries
+    assert "https://example.com/article" not in summaries
+    assert len(findings) == 2
+
+
+def test_url_ingested_content_appears_in_workspace_findings(tmp_path):
+    root = str(tmp_path / "uploads")
+    brief = ConsumerBriefAdapter.from_payload(
+        {
+            "task_type": "concept_test",
+            "product_concept_assets": ["Protein bar"],
+            "research_goal": "Find signals",
+            "optional_background_materials": ["https://example.com/article"],
+        }
+    )
+
+    def fake_fetch(url):
+        return "A new competitor entered the protein bar market this quarter."
+
+    from app.services.consumer.url_ingest import ingest_background_url_sources
+
+    ingest_background_url_sources(
+        "proj_url_findings", brief, upload_root=root, fetch_fn=fake_fetch
+    )
+
+    findings = build_workspace_findings("proj_url_findings", upload_root=root)
+
+    assert len(findings) > 0
+    assert any("competitor" in f.summary.lower() for f in findings)
+    assert all(f.source_label == "ingested_document" for f in findings)
+
+
+def test_resolve_research_findings_includes_url_ingested_content(tmp_path):
+    root = str(tmp_path / "uploads")
+    brief = ConsumerBriefAdapter.from_payload(
+        {
+            "task_type": "concept_test",
+            "product_concept_assets": ["Protein bar"],
+            "research_goal": "Find signals",
+            "optional_background_materials": [
+                "https://example.com/article",
+                "Plain background note",
+            ],
+        }
+    )
+
+    def fake_fetch(url):
+        return "A new competitor entered the protein bar market this quarter."
+
+    from app.services.consumer.url_ingest import ingest_background_url_sources
+
+    ingest_background_url_sources(
+        "proj_url_resolve", brief, upload_root=root, fetch_fn=fake_fetch
+    )
+
+    findings = resolve_research_findings(
+        brief,
+        project_id="proj_url_resolve",
+        upload_root=root,
+    )
+
+    # URL should NOT be a brief_background finding
+    assert not any(
+        f.source_label == "brief_background" and "https://" in f.summary
+        for f in findings
+    )
+    # But workspace findings should include the ingested content
+    assert any(f.source_label == "ingested_document" for f in findings)
+    # Plain note should still be present
+    assert any(f.summary == "Plain background note" for f in findings)
+
+
+def test_build_research_snapshot_includes_url_ingested_findings(tmp_path):
+    root = str(tmp_path / "uploads")
+    brief = ConsumerBriefAdapter.from_payload(
+        {
+            "task_type": "concept_test",
+            "product_concept_assets": ["Protein bar"],
+            "research_goal": "Find signals",
+            "optional_background_materials": ["https://example.com/article"],
+        }
+    )
+
+    def fake_fetch(url):
+        return "A new competitor entered the protein bar market this quarter."
+
+    from app.services.consumer.url_ingest import ingest_background_url_sources
+
+    ingest_background_url_sources(
+        "proj_url_snap", brief, upload_root=root, fetch_fn=fake_fetch
+    )
+
+    snapshot = build_research_snapshot(
+        "proj_url_snap",
+        brief=brief,
+        upload_root=root,
+    )
+
+    assert any(f.source_label == "ingested_document" for f in snapshot.findings)
+    assert any(s.source_type == ResearchSourceType.Url for s in snapshot.sources)
+    assert len(snapshot.documents) > 0
+    assert len(snapshot.chunks) > 0
 

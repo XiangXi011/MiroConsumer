@@ -125,6 +125,9 @@ def build_research_findings(brief: ConsumerBusinessBrief) -> List[ResearchFindin
         text = material.strip()
         if not text:
             continue
+        # Skip URLs — they are ingested into Lane A workspace separately
+        if text.startswith(("http://", "https://")):
+            continue
         key = text.casefold()
         if key in seen:
             continue
