@@ -156,6 +156,73 @@
           </div>
         </div>
       </div>
+
+      <!-- Branch / Intervention Panel -->
+      <div v-if="isConsumerMode && phase >= 1" class="consumer-branch-panel">
+        <div class="consumer-branch-header">
+          <span class="consumer-branch-title">{{ $t('consumer.branchPanel.title') }}</span>
+          <span v-if="selectedBranch" class="consumer-branch-badge">
+            {{ selectedBranch.name }}
+          </span>
+        </div>
+
+        <div class="consumer-branch-toolbar">
+          <select v-model="selectedBranchId" class="consumer-branch-select" @change="onBranchChange">
+            <option value="">{{ $t('consumer.branchPanel.selectBranch') }}</option>
+            <option v-for="b in branches" :key="b.branch_id" :value="b.branch_id">
+              {{ b.name }} (R{{ b.fork_round }})
+            </option>
+          </select>
+          <button class="consumer-branch-btn" @click="showCreateBranch = !showCreateBranch">
+            {{ showCreateBranch ? $t('common.cancel') : $t('consumer.branchPanel.create') }}
+          </button>
+        </div>
+
+        <div v-if="showCreateBranch" class="consumer-branch-form">
+          <input v-model="newBranchName" class="consumer-input" :placeholder="$t('consumer.branchPanel.namePlaceholder')" />
+          <input v-model.number="newBranchForkRound" type="number" min="0" class="consumer-input narrow" :placeholder="$t('consumer.branchPanel.forkRoundPlaceholder')" />
+          <input v-model="newBranchDescription" class="consumer-input" :placeholder="$t('consumer.branchPanel.descPlaceholder')" />
+          <button class="consumer-branch-btn primary" :disabled="!newBranchName.trim() || creatingBranch" @click="doCreateBranch">
+            <span v-if="creatingBranch" class="loading-spinner-small"></span>
+            {{ $t('consumer.branchPanel.confirmCreate') }}
+          </button>
+        </div>
+
+        <div v-if="selectedBranch" class="consumer-intervention-section">
+          <div class="consumer-intervention-header">
+            <span class="consumer-intervention-title">{{ $t('consumer.branchPanel.interventions') }}</span>
+            <button class="consumer-branch-btn small" @click="showAddIntervention = !showAddIntervention">
+              {{ showAddIntervention ? $t('common.cancel') : $t('consumer.branchPanel.addIntervention') }}
+            </button>
+          </div>
+
+          <div v-if="showAddIntervention" class="consumer-intervention-form">
+            <select v-model="newInterventionType" class="consumer-input">
+              <option value="">{{ $t('consumer.branchPanel.selectType') }}</option>
+              <option value="clarification_injection">{{ $t('consumer.interventionTypes.clarification_injection') }}</option>
+              <option value="revised_claim_injection">{{ $t('consumer.interventionTypes.revised_claim_injection') }}</option>
+              <option value="evidence_reveal">{{ $t('consumer.interventionTypes.evidence_reveal') }}</option>
+            </select>
+            <input v-model="newInterventionPayload" class="consumer-input" :placeholder="interventionPayloadPlaceholder" />
+            <input v-model.number="newInterventionTargetRound" type="number" min="0" class="consumer-input narrow" :placeholder="$t('consumer.branchPanel.targetRoundPlaceholder')" />
+            <button class="consumer-branch-btn primary" :disabled="!newInterventionType || !newInterventionPayload.trim() || addingIntervention" @click="doAddIntervention">
+              <span v-if="addingIntervention" class="loading-spinner-small"></span>
+              {{ $t('consumer.branchPanel.confirmAdd') }}
+            </button>
+          </div>
+
+          <div v-if="branchInterventions.length > 0" class="consumer-intervention-list">
+            <div v-for="intv in branchInterventions" :key="intv.intervention_id" class="consumer-intervention-item">
+              <span class="intervention-type">{{ intv.intervention_type }}</span>
+              <span class="intervention-payload">{{ getInterventionDisplayText(intv.intervention_type, intv.payload) }}</span>
+              <span v-if="intv.target_round != null" class="intervention-round">R{{ intv.target_round }}</span>
+            </div>
+          </div>
+          <div v-else class="consumer-intervention-empty">
+            {{ $t('consumer.branchPanel.noInterventions') }}
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Main Content: Dual Timeline -->
@@ -349,14 +416,23 @@ import {
   stopSimulation,
   getRunStatus,
   getRunStatusDetail,
-  getConsumerSummary
+  getConsumerSummary,
+  listBranches,
+  createBranch,
+  listInterventions,
+  addIntervention,
 } from '../api/simulation'
 import { generateReport } from '../api/report'
 import {
   buildConsumerMetricCards,
   getConsumerEventLabel,
   isConsumerProject,
-  pickTopVocQuotes
+  pickTopVocQuotes,
+  loadSelectedBranch,
+  saveSelectedBranch,
+  clearSelectedBranch,
+  buildInterventionPayload,
+  getInterventionDisplayText,
 } from '../utils/consumerMode'
 
 const { t } = useI18n()
@@ -388,6 +464,32 @@ const allActions = ref([]) // 所有动作（增量累积）
 const actionIds = ref(new Set()) // 用于去重的动作ID集合
 const scrollContainer = ref(null)
 const consumerSummary = ref(null)
+
+// Branch / Intervention state
+const branches = ref([])
+const selectedBranchId = ref('')
+const selectedBranch = computed(() => branches.value.find(b => b.branch_id === selectedBranchId.value) || null)
+const showCreateBranch = ref(false)
+const newBranchName = ref('')
+const newBranchForkRound = ref(0)
+const newBranchDescription = ref('')
+const creatingBranch = ref(false)
+
+const branchInterventions = ref([])
+const showAddIntervention = ref(false)
+const newInterventionType = ref('')
+const newInterventionPayload = ref('')
+const newInterventionTargetRound = ref(null)
+const addingIntervention = ref(false)
+
+const interventionPayloadPlaceholder = computed(() => {
+  const map = {
+    clarification_injection: t('consumer.branchPanel.payloadClarification'),
+    revised_claim_injection: t('consumer.branchPanel.payloadRevisedClaim'),
+    evidence_reveal: t('consumer.branchPanel.payloadEvidence'),
+  }
+  return map[newInterventionType.value] || t('consumer.branchPanel.payloadDefault')
+})
 
 // Computed
 // 按时间顺序显示动作（最新的在最后面，即底部）
@@ -479,6 +581,103 @@ const loadConsumerSummary = async () => {
     }
   } catch (err) {
     // Snapshots are expected to be missing in the earliest polling cycles.
+  }
+}
+
+// Branch / Intervention methods
+const loadBranches = async () => {
+  if (!props.simulationId || !isConsumerMode.value) return
+  try {
+    const res = await listBranches(props.simulationId)
+    if (res.success && res.data) {
+      branches.value = res.data.branches || []
+      const persisted = loadSelectedBranch(props.simulationId)
+      if (persisted && branches.value.some(b => b.branch_id === persisted)) {
+        selectedBranchId.value = persisted
+        await loadInterventions()
+      } else if (persisted) {
+        clearSelectedBranch(props.simulationId)
+        selectedBranchId.value = ''
+      }
+    }
+  } catch (err) {
+    console.warn('loadBranches failed:', err)
+  }
+}
+
+const onBranchChange = async () => {
+  saveSelectedBranch(props.simulationId, selectedBranchId.value || null)
+  branchInterventions.value = []
+  if (selectedBranchId.value) {
+    await loadInterventions()
+  }
+}
+
+const doCreateBranch = async () => {
+  if (!props.simulationId || !newBranchName.value.trim()) return
+  creatingBranch.value = true
+  try {
+    const forkRound = Number.isFinite(newBranchForkRound.value) ? Math.max(0, Math.floor(newBranchForkRound.value)) : 0
+    const res = await createBranch(props.simulationId, {
+      name: newBranchName.value.trim(),
+      fork_round: forkRound,
+      description: newBranchDescription.value.trim(),
+    })
+    if (res.success && res.data) {
+      addLog(`Branch created: ${res.data.name} (R${res.data.fork_round})`)
+      await loadBranches()
+      selectedBranchId.value = res.data.branch_id
+      saveSelectedBranch(props.simulationId, res.data.branch_id)
+      showCreateBranch.value = false
+      newBranchName.value = ''
+      newBranchForkRound.value = 0
+      newBranchDescription.value = ''
+      await loadInterventions()
+    } else {
+      addLog(`Create branch failed: ${res.error || 'unknown'}`)
+    }
+  } catch (err) {
+    addLog(`Create branch error: ${err.message}`)
+  } finally {
+    creatingBranch.value = false
+  }
+}
+
+const loadInterventions = async () => {
+  if (!props.simulationId || !selectedBranchId.value) return
+  try {
+    const res = await listInterventions(props.simulationId, selectedBranchId.value)
+    if (res.success && res.data) {
+      branchInterventions.value = res.data.interventions || []
+    }
+  } catch (err) {
+    console.warn('loadInterventions failed:', err)
+  }
+}
+
+const doAddIntervention = async () => {
+  if (!props.simulationId || !selectedBranchId.value || !newInterventionType.value) return
+  addingIntervention.value = true
+  try {
+    const res = await addIntervention(props.simulationId, selectedBranchId.value, {
+      intervention_type: newInterventionType.value,
+      payload: buildInterventionPayload(newInterventionType.value, newInterventionPayload.value),
+      target_round: Number.isFinite(newInterventionTargetRound.value) ? Math.max(0, Math.floor(newInterventionTargetRound.value)) : undefined,
+    })
+    if (res.success && res.data) {
+      addLog(`Intervention added: ${res.data.intervention_type}`)
+      await loadInterventions()
+      showAddIntervention.value = false
+      newInterventionType.value = ''
+      newInterventionPayload.value = ''
+      newInterventionTargetRound.value = null
+    } else {
+      addLog(`Add intervention failed: ${res.error || 'unknown'}`)
+    }
+  } catch (err) {
+    addLog(`Add intervention error: ${err.message}`)
+  } finally {
+    addingIntervention.value = false
   }
 }
 
@@ -811,6 +1010,15 @@ onMounted(() => {
   if (props.simulationId) {
     doStartSimulation()
   }
+  if (isConsumerMode.value) {
+    loadBranches()
+  }
+})
+
+watch(() => props.simulationId, () => {
+  if (isConsumerMode.value && props.simulationId) {
+    loadBranches()
+  }
 })
 
 onUnmounted(() => {
@@ -938,6 +1146,180 @@ onUnmounted(() => {
 .consumer-voc-copy {
   color: #7C2D12;
   line-height: 1.5;
+}
+
+/* --- Branch Panel --- */
+.consumer-branch-panel {
+  border-top: 1px solid #E5E7EB;
+  padding-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.consumer-branch-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.consumer-branch-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #374151;
+}
+
+.consumer-branch-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  background: #EEF2FF;
+  color: #4338CA;
+  border-radius: 4px;
+}
+
+.consumer-branch-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.consumer-branch-select {
+  padding: 6px 10px;
+  font-size: 13px;
+  border: 1px solid #D1D5DB;
+  border-radius: 4px;
+  background: #FFF;
+  min-width: 200px;
+  color: #111827;
+}
+
+.consumer-branch-btn {
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid #D1D5DB;
+  border-radius: 4px;
+  background: #FFF;
+  color: #374151;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.consumer-branch-btn:hover:not(:disabled) {
+  background: #F3F4F6;
+}
+
+.consumer-branch-btn.primary {
+  background: #111827;
+  color: #FFF;
+  border-color: #111827;
+}
+
+.consumer-branch-btn.primary:hover:not(:disabled) {
+  background: #374151;
+}
+
+.consumer-branch-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.consumer-branch-btn.small {
+  padding: 4px 10px;
+  font-size: 11px;
+}
+
+.consumer-branch-form,
+.consumer-intervention-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.consumer-input {
+  padding: 6px 10px;
+  font-size: 13px;
+  border: 1px solid #D1D5DB;
+  border-radius: 4px;
+  background: #FFF;
+  color: #111827;
+  min-width: 180px;
+}
+
+.consumer-input.narrow {
+  min-width: 80px;
+  width: 100px;
+}
+
+.consumer-intervention-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: #F9FAFB;
+  border-radius: 4px;
+}
+
+.consumer-intervention-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.consumer-intervention-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #374151;
+}
+
+.consumer-intervention-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.consumer-intervention-item {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-size: 12px;
+  padding: 6px 8px;
+  background: #FFF;
+  border: 1px solid #E5E7EB;
+  border-radius: 4px;
+}
+
+.consumer-intervention-item .intervention-type {
+  font-weight: 600;
+  color: #4338CA;
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+}
+
+.consumer-intervention-item .intervention-payload {
+  color: #111827;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.consumer-intervention-item .intervention-round {
+  font-size: 10px;
+  color: #6B7280;
+  background: #F3F4F6;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.consumer-intervention-empty {
+  font-size: 12px;
+  color: #9CA3AF;
 }
 
 .status-group {

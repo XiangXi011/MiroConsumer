@@ -348,7 +348,10 @@
       "misread": "\"{point}\"是如何被误读出来的？",
       "sourceRisk": "哪个来源触发了关于\"{summary}\"的风险信号？",
       "sourceInfluence": "哪些来源影响了这些信号的扩散？",
-      "sourceEvidence": "\"{source}\"提供了哪些证据支持\"{summary}\"？"
+      "sourceEvidence": "\"{source}\"提供了哪些证据支持\"{summary}\"？",
+      "branchFork": "分支\"{branchName}\"（在第{forkRound}轮分叉）与基线运行有何不同？",
+      "branchIntervention": "这{count}种干预类型对接受度产生了什么影响？",
+      "branchDelta": "接受度{direction}了{delta}个百分点。原因是什么？"
     },
     "eventTypes": {
       "positive_relay": "正向传播",
@@ -423,6 +426,40 @@
       "causalPromptTrigger": "哪个发现触发了负面转折？",
       "causalPromptSpread": "为什么这个信号在这些画像中扩散？",
       "causalPromptRecovery": "什么帮助澄清恢复了接受度？"
+    },
+    "interventionTypes": {
+      "clarification_injection": "澄清注入",
+      "revised_claim_injection": "修订声明",
+      "evidence_reveal": "证据揭示"
+    },
+    "branchPanel": {
+      "title": "分支",
+      "selectBranch": "选择分支...",
+      "create": "新建分支",
+      "namePlaceholder": "分支名称",
+      "forkRoundPlaceholder": "分叉轮次",
+      "descPlaceholder": "描述（可选）",
+      "confirmCreate": "创建",
+      "interventions": "干预",
+      "addIntervention": "添加",
+      "selectType": "选择类型...",
+      "payloadClarification": "输入澄清文本...",
+      "payloadRevisedClaim": "输入修订声明...",
+      "payloadEvidence": "输入证据文本...",
+      "payloadDefault": "输入内容...",
+      "targetRoundPlaceholder": "目标轮次（可选）",
+      "confirmAdd": "添加",
+      "noInterventions": "暂无干预"
+    },
+    "branchComparison": {
+      "title": "分支对比",
+      "forkRound": "分叉轮次",
+      "interventions": "干预数",
+      "baseAcceptance": "基线接受度",
+      "branchAcceptance": "分支接受度",
+      "delta": "差异",
+      "newResonance": "新增共鸣引语",
+      "newRisk": "新增风险引语"
     }
   },
   "graph": {

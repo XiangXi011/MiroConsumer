@@ -342,7 +342,10 @@
       "misread": "How did \"{point}\" turn into a misread?",
       "sourceRisk": "Which source triggered the risk signal about \"{summary}\"?",
       "sourceInfluence": "Which sources influenced the spread of these signals?",
-      "sourceEvidence": "What evidence from \"{source}\" supports \"{summary}\"?"
+      "sourceEvidence": "What evidence from \"{source}\" supports \"{summary}\"?",
+      "branchFork": "How does the branch \"{branchName}\" (forked at round {forkRound}) differ from the base run?",
+      "branchIntervention": "What impact did the {count} intervention type(s) have on acceptance?",
+      "branchDelta": "Acceptance {direction} by {delta} percentage points. Why?"
     },
     "eventTypes": {
       "positive_relay": "Positive Relay",
@@ -417,6 +420,40 @@
       "causalPromptTrigger": "Which finding triggered the negative turn?",
       "causalPromptSpread": "Why did this signal spread among these personas?",
       "causalPromptRecovery": "What helped the clarification recover acceptance?"
+    },
+    "interventionTypes": {
+      "clarification_injection": "Clarification",
+      "revised_claim_injection": "Revised Claim",
+      "evidence_reveal": "Evidence Reveal"
+    },
+    "branchPanel": {
+      "title": "Branches",
+      "selectBranch": "Select a branch...",
+      "create": "New Branch",
+      "namePlaceholder": "Branch name",
+      "forkRoundPlaceholder": "Fork round",
+      "descPlaceholder": "Description (optional)",
+      "confirmCreate": "Create",
+      "interventions": "Interventions",
+      "addIntervention": "Add",
+      "selectType": "Select type...",
+      "payloadClarification": "Enter clarification text...",
+      "payloadRevisedClaim": "Enter revised claim...",
+      "payloadEvidence": "Enter evidence text...",
+      "payloadDefault": "Enter payload...",
+      "targetRoundPlaceholder": "Target round (optional)",
+      "confirmAdd": "Add",
+      "noInterventions": "No interventions yet"
+    },
+    "branchComparison": {
+      "title": "Branch Comparison",
+      "forkRound": "Fork Round",
+      "interventions": "Interventions",
+      "baseAcceptance": "Base Acceptance",
+      "branchAcceptance": "Branch Acceptance",
+      "delta": "Delta",
+      "newResonance": "New Resonance Quotes",
+      "newRisk": "New Risk Quotes"
     }
   },
   "graph": {

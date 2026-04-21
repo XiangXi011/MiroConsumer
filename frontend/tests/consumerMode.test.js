@@ -300,3 +300,130 @@ test('Step5 enriched trace mapping renders readable provenance when backend prov
   assert.equal(traces[0].sourceCount, 1)
   assert.equal(traces[0].chunkPreviews.length, 1)
 })
+
+import {
+  loadSelectedBranch,
+  saveSelectedBranch,
+  clearSelectedBranch,
+  formatBranchComparison,
+  buildBranchAwarePrompts,
+  buildInterventionPayload,
+  getInterventionDisplayText,
+} from '../src/utils/consumerMode.js'
+
+test('loadSelectedBranch returns null in non-browser environment', () => {
+  assert.equal(loadSelectedBranch('sim_123'), null)
+})
+
+test('saveSelectedBranch does not throw in non-browser environment', () => {
+  assert.doesNotThrow(() => saveSelectedBranch('sim_123', 'branch_abc'))
+})
+
+test('clearSelectedBranch does not throw in non-browser environment', () => {
+  assert.doesNotThrow(() => clearSelectedBranch('sim_123'))
+})
+
+test('formatBranchComparison returns readable summary from backend context', () => {
+  const context = {
+    branch_id: 'branch_a',
+    base_branch_id: 'branch_base',
+    fork_round: 3,
+    branch_name: 'Clarify sugar claim',
+    branch_description: 'Inject clarification about sugar content',
+    interventions: [{ intervention_id: 'i1', intervention_type: 'clarification_injection' }],
+    base_summary: {
+      events_count: 12,
+      has_data: true,
+      initial_acceptance: { positive: 0.4, neutral: 0.4, negative: 0.2 },
+      post_propagation_acceptance: { positive: 0.35, neutral: 0.35, negative: 0.3 },
+      attitude_shift_rate: 0.05,
+      top_resonance_quotes: [{ quote: 'Easy to share' }],
+      top_risk_quotes: [{ quote: 'Too sweet' }],
+    },
+    branch_summary: {
+      events_count: 14,
+      has_data: true,
+      initial_acceptance: { positive: 0.4, neutral: 0.4, negative: 0.2 },
+      post_propagation_acceptance: { positive: 0.55, neutral: 0.25, negative: 0.2 },
+      attitude_shift_rate: 0.15,
+      top_resonance_quotes: [{ quote: 'Easy to share' }, { quote: 'Good for kids' }],
+      top_risk_quotes: [{ quote: 'Too sweet' }],
+    },
+  }
+
+  const result = formatBranchComparison(context)
+  assert.equal(result.branchId, 'branch_a')
+  assert.equal(result.forkRound, 3)
+  assert.equal(result.branchName, 'Clarify sugar claim')
+  assert.equal(result.interventionCount, 1)
+  assert.equal(result.baseAcceptancePct, '35%')
+  assert.equal(result.branchAcceptancePct, '55%')
+  assert.equal(result.deltaText, '+20pp')
+  assert.equal(result.topResonanceDelta.length, 1)
+  assert.equal(result.topResonanceDelta[0], 'Good for kids')
+  assert.equal(result.topRiskDelta.length, 0)
+})
+
+test('formatBranchComparison handles missing data gracefully', () => {
+  const result = formatBranchComparison({})
+  assert.equal(result.forkRound, 0)
+  assert.equal(result.interventionCount, 0)
+  assert.equal(result.baseAcceptancePct, '0%')
+  assert.equal(result.branchAcceptancePct, '0%')
+  assert.equal(result.deltaText, '+0pp')
+})
+
+test('buildBranchAwarePrompts generates fork and intervention prompts when branch data exists', () => {
+  const comparison = {
+    branch_name: 'Test Branch',
+    fork_round: 2,
+    interventions: [{ intervention_type: 'clarification_injection' }],
+    base_summary: { post_propagation_acceptance: { positive: 0.4 } },
+    branch_summary: { post_propagation_acceptance: { positive: 0.5 } },
+  }
+
+  const prompts = buildBranchAwarePrompts(comparison)
+  assert.ok(prompts.some(p => p.includes('Test Branch')), 'Expected branch name prompt')
+  assert.ok(prompts.some(p => p.includes('intervention')), 'Expected intervention prompt')
+  assert.ok(prompts.some(p => p.includes('improved') || p.includes('worsened')), 'Expected delta prompt')
+})
+
+test('buildBranchAwarePrompts returns empty array when no branch data', () => {
+  const prompts = buildBranchAwarePrompts({})
+  assert.equal(prompts.length, 0)
+})
+
+test('buildInterventionPayload uses type-specific keys per backend contract', () => {
+  assert.deepEqual(buildInterventionPayload('clarification_injection', ' Hello '), { message: 'Hello' })
+  assert.deepEqual(buildInterventionPayload('revised_claim_injection', ' New claim '), { claim: 'New claim' })
+  assert.deepEqual(buildInterventionPayload('evidence_reveal', ' Evidence text '), { evidence: 'Evidence text' })
+  assert.deepEqual(buildInterventionPayload('unknown_type', ' Fallback '), { text: 'Fallback' })
+})
+
+test('buildInterventionPayload trims and stringifies input', () => {
+  assert.deepEqual(buildInterventionPayload('clarification_injection', '  '), { message: '' })
+  assert.deepEqual(buildInterventionPayload('evidence_reveal', 123), { evidence: '123' })
+})
+
+test('getInterventionDisplayText reads correct payload key by type', () => {
+  assert.equal(getInterventionDisplayText('clarification_injection', { message: 'Fix it' }), 'Fix it')
+  assert.equal(getInterventionDisplayText('revised_claim_injection', { claim: 'Better claim' }), 'Better claim')
+  assert.equal(getInterventionDisplayText('evidence_reveal', { evidence: 'Source A' }), 'Source A')
+  assert.equal(getInterventionDisplayText('unknown_type', { text: 'Plain text' }), 'Plain text')
+})
+
+test('getInterventionDisplayText falls back gracefully for missing payload', () => {
+  assert.equal(getInterventionDisplayText('clarification_injection', null), '')
+  assert.equal(getInterventionDisplayText('evidence_reveal', {}), '')
+  assert.equal(getInterventionDisplayText('unknown_type', { foo: 'bar' }), JSON.stringify({ foo: 'bar' }))
+})
+
+test('clearSelectedBranch removes persisted selection so missing branch is reset', () => {
+  // Simulate save + clear cycle in a minimal way
+  assert.doesNotThrow(() => {
+    saveSelectedBranch('sim_reset_test', 'branch_old')
+    clearSelectedBranch('sim_reset_test')
+    const after = loadSelectedBranch('sim_reset_test')
+    assert.equal(after, null)
+  })
+})

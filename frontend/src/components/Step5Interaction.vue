@@ -456,11 +456,14 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { chatWithReport, getReport, getAgentLog } from '../api/report'
-import { interviewAgents, getSimulationProfilesRealtime } from '../api/simulation'
+import { interviewAgents, getSimulationProfilesRealtime, getBranchComparison } from '../api/simulation'
 import {
   buildConsumerQuickPrompts,
+  buildBranchAwarePrompts,
   isConsumerProject,
   pickTopVocQuotes,
+  loadSelectedBranch,
+  clearSelectedBranch,
 } from '../utils/consumerMode'
 
 const { t } = useI18n()
@@ -508,11 +511,18 @@ const isConsumerMode = computed(() => (
   isConsumerProject(props.reportData) || isConsumerProject(props.projectData)
 ))
 
-const consumerQuickPrompts = computed(() => (
-  isConsumerMode.value && props.reportData?.report_context
+const branchComparisonRaw = ref(null)
+
+const consumerQuickPrompts = computed(() => {
+  if (!isConsumerMode.value) return []
+  const basePrompts = props.reportData?.report_context
     ? buildConsumerQuickPrompts(props.reportData.report_context, t)
     : []
-))
+  const branchPrompts = branchComparisonRaw.value
+    ? buildBranchAwarePrompts(branchComparisonRaw.value, t)
+    : []
+  return [...basePrompts, ...branchPrompts]
+})
 
 const consumerVocHighlights = computed(() => (
   isConsumerMode.value && props.reportData?.report_context
@@ -557,6 +567,35 @@ const applyQuickPrompt = (prompt) => {
     chatInputRef.value?.focus()
   })
 }
+
+const loadBranchComparison = async () => {
+  if (!props.simulationId || !isConsumerMode.value) {
+    branchComparisonRaw.value = null
+    return
+  }
+  const branchId = loadSelectedBranch(props.simulationId)
+  if (!branchId) {
+    branchComparisonRaw.value = null
+    return
+  }
+  try {
+    const res = await getBranchComparison(props.simulationId, branchId)
+    if (res.success && res.data) {
+      branchComparisonRaw.value = res.data
+    } else {
+      clearSelectedBranch(props.simulationId)
+      branchComparisonRaw.value = null
+    }
+  } catch (err) {
+    console.warn('loadBranchComparison failed:', err)
+    clearSelectedBranch(props.simulationId)
+    branchComparisonRaw.value = null
+  }
+}
+
+watch(() => props.simulationId, () => {
+  loadBranchComparison()
+})
 
 const toggleSectionCollapse = (idx) => {
   if (!generatedSections.value[idx + 1]) return
@@ -1030,6 +1069,7 @@ onMounted(() => {
   addLog(t('log.step5Init'))
   loadReportData()
   loadProfiles()
+  loadBranchComparison()
   document.addEventListener('click', handleClickOutside)
 })
 

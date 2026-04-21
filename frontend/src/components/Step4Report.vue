@@ -182,6 +182,49 @@
                 </div>
               </div>
             </div>
+
+            <!-- Branch Comparison -->
+            <div v-if="isConsumerMode && branchComparisonFormatted" class="consumer-findings-strip">
+              <div class="consumer-findings-header">{{ $t('consumer.branchComparison.title') }}</div>
+              <div class="consumer-comparison-summary">
+                <div class="comparison-row">
+                  <span class="comparison-label">{{ $t('consumer.branchComparison.forkRound') }}</span>
+                  <span class="comparison-value mono">R{{ branchComparisonFormatted.forkRound }}</span>
+                </div>
+                <div class="comparison-row">
+                  <span class="comparison-label">{{ $t('consumer.branchComparison.interventions') }}</span>
+                  <span class="comparison-value mono">{{ branchComparisonFormatted.interventionCount }}</span>
+                </div>
+                <div class="comparison-row">
+                  <span class="comparison-label">{{ $t('consumer.branchComparison.baseAcceptance') }}</span>
+                  <span class="comparison-value mono">{{ branchComparisonFormatted.baseAcceptancePct }}</span>
+                </div>
+                <div class="comparison-row">
+                  <span class="comparison-label">{{ $t('consumer.branchComparison.branchAcceptance') }}</span>
+                  <span class="comparison-value mono" :class="{ 'delta-positive': branchComparisonFormatted.deltaText.startsWith('+'), 'delta-negative': branchComparisonFormatted.deltaText.startsWith('-') }">
+                    {{ branchComparisonFormatted.branchAcceptancePct }}
+                  </span>
+                </div>
+                <div class="comparison-row">
+                  <span class="comparison-label">{{ $t('consumer.branchComparison.delta') }}</span>
+                  <span class="comparison-value mono delta-text" :class="{ 'delta-positive': branchComparisonFormatted.deltaText.startsWith('+'), 'delta-negative': branchComparisonFormatted.deltaText.startsWith('-') }">
+                    {{ branchComparisonFormatted.deltaText }}
+                  </span>
+                </div>
+                <div v-if="branchComparisonFormatted.topResonanceDelta.length > 0" class="comparison-delta-quotes">
+                  <span class="comparison-label">{{ $t('consumer.branchComparison.newResonance') }}</span>
+                  <div class="comparison-quote-list">
+                    <span v-for="(q, idx) in branchComparisonFormatted.topResonanceDelta" :key="idx" class="comparison-quote">"{{ q }}"</span>
+                  </div>
+                </div>
+                <div v-if="branchComparisonFormatted.topRiskDelta.length > 0" class="comparison-delta-quotes">
+                  <span class="comparison-label">{{ $t('consumer.branchComparison.newRisk') }}</span>
+                  <div class="comparison-quote-list">
+                    <span v-for="(q, idx) in branchComparisonFormatted.topRiskDelta" :key="idx" class="comparison-quote">"{{ q }}"</span>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
 
           <!-- Sections List -->
@@ -562,12 +605,16 @@ import { ref, computed, watch, onMounted, onUnmounted, nextTick, h, reactive } f
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { getAgentLog, getConsoleLog } from '../api/report'
+import { getBranchComparison } from '../api/simulation'
 import {
   buildConsumerMetricCards,
   getConsumerEventLabel,
   isConsumerProject,
   pickTopVocQuotes,
   translate,
+  loadSelectedBranch,
+  formatBranchComparison,
+  clearSelectedBranch,
 } from '../utils/consumerMode'
 
 const router = useRouter()
@@ -608,9 +655,45 @@ const rightPanel = ref(null)
 const logContent = ref(null)
 const showRawResult = reactive({})
 
+// Branch comparison state
+const branchComparisonRaw = ref(null)
+const branchComparisonFormatted = computed(() => {
+  if (!branchComparisonRaw.value) return null
+  return formatBranchComparison(branchComparisonRaw.value, t)
+})
+
 const isConsumerMode = computed(() => (
   isConsumerProject(props.reportData) || isConsumerProject(props.projectData)
 ))
+
+const loadBranchComparison = async () => {
+  if (!props.simulationId || !isConsumerMode.value) {
+    branchComparisonRaw.value = null
+    return
+  }
+  const branchId = loadSelectedBranch(props.simulationId)
+  if (!branchId) {
+    branchComparisonRaw.value = null
+    return
+  }
+  try {
+    const res = await getBranchComparison(props.simulationId, branchId)
+    if (res.success && res.data) {
+      branchComparisonRaw.value = res.data
+    } else {
+      clearSelectedBranch(props.simulationId)
+      branchComparisonRaw.value = null
+    }
+  } catch (err) {
+    console.warn('loadBranchComparison failed:', err)
+    clearSelectedBranch(props.simulationId)
+    branchComparisonRaw.value = null
+  }
+}
+
+watch(() => props.simulationId, () => {
+  loadBranchComparison()
+})
 
 const consumerMetricCards = computed(() => (
   isConsumerMode.value && props.reportData?.report_context
@@ -2510,6 +2593,7 @@ onMounted(() => {
     addLog(`Report Agent initialized: ${props.reportId}`)
     startPolling()
   }
+  loadBranchComparison()
 })
 
 onUnmounted(() => {
@@ -5718,6 +5802,68 @@ watch(() => props.reportId, (newId) => {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+/* Branch Comparison */
+.consumer-comparison-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: #F9FAFB;
+  border-radius: 6px;
+}
+
+.comparison-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.comparison-label {
+  color: #6B7280;
+  min-width: 140px;
+}
+
+.comparison-value {
+  font-weight: 600;
+  color: #111827;
+}
+
+.delta-positive {
+  color: #059669;
+}
+
+.delta-negative {
+  color: #DC2626;
+}
+
+.delta-text {
+  font-weight: 700;
+}
+
+.comparison-delta-quotes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.comparison-quote-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.comparison-quote {
+  font-size: 12px;
+  color: #4B5563;
+  font-style: italic;
+  padding: 4px 8px;
+  background: #FFFFFF;
+  border-radius: 4px;
+  border: 1px solid #E5E7EB;
 }
 </style>
 
