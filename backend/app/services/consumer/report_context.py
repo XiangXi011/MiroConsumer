@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from collections import Counter
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Mapping
+from typing import Any, Dict, Iterable, List, Mapping, Optional
 
 from .scoring import ConsumerPhase2Summary, ConsumerScoringService
 
@@ -116,10 +116,65 @@ class ConsumerReportContextBuilder:
         return str(event.get("quote", "")).strip()
 
 
+def _build_provenance_summary(
+    findings: List[Any],
+    traces: List[Any],
+) -> Dict[str, Any]:
+    """Build a provenance summary from findings and retrieval traces."""
+    trace_by_id: Dict[str, Any] = {}
+    for t in traces:
+        tid = t.trace_id if hasattr(t, "trace_id") else t.get("trace_id", "")
+        if tid:
+            trace_by_id[tid] = t
+
+    lane_counts: Dict[str, int] = {"lane_a": 0, "lane_b": 0, "unknown": 0}
+    provenance_entries: List[Dict[str, Any]] = []
+
+    for f in findings:
+        source_label = (
+            f.source_label if hasattr(f, "source_label") else f.get("source_label", "")
+        )
+        trace_id = (
+            f.retrieval_trace_id if hasattr(f, "retrieval_trace_id") else f.get("retrieval_trace_id", "")
+        )
+
+        if source_label == "public_web":
+            lane_counts["lane_b"] += 1
+        elif source_label in {"ingested_document", "brief_background"}:
+            lane_counts["lane_a"] += 1
+        else:
+            lane_counts["unknown"] += 1
+
+        entry: Dict[str, Any] = {
+            "finding_id": f.finding_id if hasattr(f, "finding_id") else f.get("finding_id", ""),
+            "finding_type": f.finding_type if hasattr(f, "finding_type") else f.get("finding_type", ""),
+            "source_label": source_label,
+            "snippet_id": f.snippet_id if hasattr(f, "snippet_id") else f.get("snippet_id", ""),
+            "retrieval_trace_id": trace_id,
+        }
+        if trace_id and trace_id in trace_by_id:
+            trace = trace_by_id[trace_id]
+            entry["retrieval_query"] = (
+                trace.query if hasattr(trace, "query") else trace.get("query", "")
+            )
+            entry["retrieval_lane"] = (
+                trace.lane if hasattr(trace, "lane") else trace.get("lane", "")
+            )
+        provenance_entries.append(entry)
+
+    return {
+        "lane_counts": lane_counts,
+        "trace_count": len(traces),
+        "provenanced_finding_count": len(provenance_entries),
+        "findings": provenance_entries,
+    }
+
+
 def build_consumer_report_context(
     summary: Any,
     findings: Iterable[Any],
     events: Iterable[Any],
+    traces: Optional[Iterable[Any]] = None,
 ) -> Dict[str, Any]:
     """Build structured report context with causal chains from events and findings.
 
@@ -127,9 +182,11 @@ def build_consumer_report_context(
         summary: A ConsumerPhase2Summary or compatible object.
         findings: ResearchFinding objects or dicts.
         events: PropagationEvent objects or dicts.
+        traces: Optional RetrievalTrace objects or dicts for provenance enrichment.
 
     Returns:
-        Dict with causal_chains, event_led_reversals, and persona_group_signals.
+        Dict with causal_chains, event_led_reversals, persona_group_signals,
+        and optional retrieval_provenance.
     """
     from .models import PropagationEvent, ResearchFinding
 
@@ -193,7 +250,7 @@ def build_consumer_report_context(
 
     summary_dict = summary.to_dict() if hasattr(summary, "to_dict") else dict(summary)
 
-    return {
+    context: Dict[str, Any] = {
         "phase2_summary": summary_dict,
         "causal_chains": causal_chains,
         "event_led_reversals": reversals,
@@ -201,6 +258,23 @@ def build_consumer_report_context(
         "trigger_finding_count": len(causal_chains),
         "event_count": len(typed_events),
     }
+
+    if traces is not None:
+        typed_traces = []
+        for t in traces:
+            if hasattr(t, "model_dump"):
+                typed_traces.append(t)
+            elif isinstance(t, dict):
+                from .models import RetrievalTrace
+                typed_traces.append(RetrievalTrace(**t))
+            else:
+                typed_traces.append(t)
+        context["retrieval_provenance"] = _build_provenance_summary(typed_findings, typed_traces)
+        context["retrieval_traces"] = [
+            t.model_dump() if hasattr(t, "model_dump") else dict(t) for t in typed_traces
+        ]
+
+    return context
 
 
 __all__ = ["ConsumerReportContextBuilder", "build_consumer_report_context"]

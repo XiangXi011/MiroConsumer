@@ -598,7 +598,11 @@ class SimulationManager:
                     "document_count": len(snapshot.documents),
                     "chunk_count": len(snapshot.chunks),
                     "finding_count": len(snapshot.findings),
+                    "retrieval_trace_count": len(snapshot.retrieval_traces),
                 },
+                "retrieval_traces": [
+                    t.model_dump() for t in snapshot.retrieval_traces
+                ],
             },
         )
 

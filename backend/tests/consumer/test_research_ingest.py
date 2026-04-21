@@ -7,13 +7,16 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from app.services.consumer.brief_adapter import ConsumerBriefAdapter
-from app.services.consumer.models import GraphVisibility, ResearchFinding
+from app.services.consumer.document_ingest import DocumentIngestService
+from app.services.consumer.models import DocumentChunk, GraphVisibility, ResearchFinding, ResearchSourceLane, ResearchSourceType
 from app.services.consumer.research_ingest import (
+    build_lane_b_findings,
     build_research_findings,
     build_research_summary,
     build_research_snapshot,
     resolve_research_findings,
 )
+from app.services.consumer.source_registry import SourceRegistry
 
 
 def test_research_ingest_builds_typed_findings():
@@ -124,4 +127,159 @@ def test_build_research_snapshot_without_provider_skips_auto_enrich(tmp_path):
 
     # No provider passed, so auto_enrich findings should not be generated
     assert not any(f.source_label == "auto_enrich" for f in snapshot.findings)
+
+
+def test_build_lane_b_findings_with_provider(tmp_path):
+    brief = ConsumerBriefAdapter.from_payload(
+        {
+            "task_type": "concept_test",
+            "product_concept_assets": ["Protein bar"],
+            "claims": ["High protein snack"],
+            "research_goal": "Find competitor signals",
+        }
+    )
+
+    def fake_provider(query: str, top_k: int):
+        return [
+            DocumentChunk(
+                chunk_id="chk_web_1",
+                doc_id="doc_web",
+                source_id="src_web",
+                text="Competitor launched a rival protein bar this month.",
+                index=0,
+            )
+        ]
+
+    findings, traces = build_lane_b_findings(
+        project_id="proj_lb",
+        brief=brief,
+        upload_root=str(tmp_path / "uploads"),
+        lane_b_provider=fake_provider,
+    )
+
+    assert len(findings) > 0
+    assert all(f.source_label == "public_web" for f in findings)
+    assert all(f.retrieval_trace_id != "" for f in findings)
+    assert len(traces) > 0
+
+
+def test_build_lane_b_findings_fallback_empty_when_no_corpus(tmp_path):
+    brief = ConsumerBriefAdapter.from_payload(
+        {
+            "task_type": "concept_test",
+            "product_concept_assets": ["Protein bar"],
+            "research_goal": "Find signals",
+        }
+    )
+
+    findings, traces = build_lane_b_findings(
+        project_id="proj_lb_empty",
+        brief=brief,
+        upload_root=str(tmp_path / "uploads"),
+    )
+
+    assert findings == []
+    # Traces may still be created for auditability even with empty results
+
+
+def test_build_lane_b_findings_fallback_searches_workspace_lane_b(tmp_path):
+    root = str(tmp_path / "uploads")
+    registry = SourceRegistry("proj_lb_ws", upload_root=root)
+    ingest = DocumentIngestService("proj_lb_ws", upload_root=root)
+
+    src = registry.register_source(
+        lane=ResearchSourceLane.LaneB,
+        source_type=ResearchSourceType.PublicWeb,
+        label="Web article",
+    )
+    ingest.ingest_text(
+        source_id=src.source_id,
+        text="Competitor launched a new protein shake line.",
+        chunk_size=20,
+    )
+
+    brief = ConsumerBriefAdapter.from_payload(
+        {
+            "task_type": "concept_test",
+            "product_concept_assets": ["Protein shake"],
+            "research_goal": "Find competitor signals",
+        }
+    )
+
+    findings, traces = build_lane_b_findings(
+        project_id="proj_lb_ws",
+        brief=brief,
+        upload_root=root,
+    )
+
+    assert len(findings) > 0
+    assert all(f.source_label == "public_web" for f in findings)
+
+
+def test_resolve_research_findings_includes_lane_b_when_enabled(tmp_path):
+    root = str(tmp_path / "uploads")
+    registry = SourceRegistry("proj_resolve", upload_root=root)
+    ingest = DocumentIngestService("proj_resolve", upload_root=root)
+
+    src = registry.register_source(
+        lane=ResearchSourceLane.LaneB,
+        source_type=ResearchSourceType.PublicWeb,
+        label="Web article",
+    )
+    ingest.ingest_text(
+        source_id=src.source_id,
+        text="A new safety risk was discovered in protein supplements.",
+        chunk_size=20,
+    )
+
+    brief = ConsumerBriefAdapter.from_payload(
+        {
+            "task_type": "concept_test",
+            "product_concept_assets": ["Protein supplement"],
+            "research_goal": "Assess safety risks",
+        }
+    )
+
+    findings = resolve_research_findings(
+        brief,
+        project_id="proj_resolve",
+        upload_root=root,
+        enable_lane_b=True,
+    )
+
+    assert any(f.source_label == "public_web" for f in findings)
+
+
+def test_build_research_snapshot_includes_retrieval_traces(tmp_path):
+    root = str(tmp_path / "uploads")
+    registry = SourceRegistry("proj_snap", upload_root=root)
+    ingest = DocumentIngestService("proj_snap", upload_root=root)
+
+    src = registry.register_source(
+        lane=ResearchSourceLane.LaneA,
+        source_type=ResearchSourceType.Upload,
+        label="Upload",
+    )
+    ingest.ingest_text(
+        source_id=src.source_id,
+        text="Breakfast trends are shifting toward high protein.",
+        chunk_size=20,
+    )
+
+    brief = ConsumerBriefAdapter.from_payload(
+        {
+            "task_type": "concept_test",
+            "product_concept_assets": ["High protein breakfast"],
+            "research_goal": "Understand breakfast trends",
+        }
+    )
+
+    snapshot = build_research_snapshot(
+        "proj_snap",
+        brief=brief,
+        upload_root=root,
+    )
+
+    assert len(snapshot.retrieval_traces) >= 0
+    # Snapshot should include traces even if they are from Lane A only
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-from typing import Any, Callable, Dict, List, Mapping, Optional
+from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 from .models import (
     ConsumerBusinessBrief,
@@ -11,9 +11,11 @@ from .models import (
     ResearchFinding,
     ResearchSnapshot,
     ResearchSourceLane,
+    RetrievalTrace,
 )
 from .document_ingest import DocumentIngestService
 from .finding_distiller import distill_findings_from_chunks
+from .retrieval import PublicWebSearchProvider, RetrievalService
 from .source_registry import SourceRegistry
 
 
@@ -278,11 +280,70 @@ def build_workspace_findings(
     return findings
 
 
+def build_lane_b_findings(
+    project_id: str,
+    brief: ConsumerBusinessBrief,
+    upload_root: Optional[str] = None,
+    lane_b_provider: Optional[PublicWebSearchProvider] = None,
+) -> Tuple[List[ResearchFinding], List[RetrievalTrace]]:
+    """Build Lane B findings via dual-lane retrieval.
+
+    Uses the brief's research_goal, claims, and product concepts as
+    retrieval queries.  Retrieved chunks are distilled into findings
+    with full provenance (source_id, snippet_id, retrieval_trace_id).
+
+    Lane B findings are gap-fillers; they never override Lane A.
+    """
+    retrieval = RetrievalService(project_id, upload_root=upload_root)
+
+    queries: List[str] = []
+    if brief.research_goal:
+        queries.append(brief.research_goal)
+    for claim in brief.claims:
+        claim = claim.strip()
+        if claim:
+            queries.append(claim)
+    for concept in brief.product_concept_assets:
+        concept = concept.strip()
+        if concept:
+            queries.append(concept)
+
+    findings: List[ResearchFinding] = []
+    traces: List[RetrievalTrace] = []
+    seen_ids: set[str] = set()
+
+    for query in queries:
+        result = retrieval.retrieve_dual(query, top_k_a=0, top_k_b=5, provider=lane_b_provider)
+        lane_b_results = result["lane_b"]
+        lane_b_trace = result["traces"][1] if len(result["traces"]) > 1 else None
+
+        if lane_b_trace is not None:
+            traces.append(lane_b_trace)
+
+        chunks = [chunk for chunk, score in lane_b_results if score > 0]
+        if not chunks:
+            continue
+
+        query_findings = distill_findings_from_chunks(
+            chunks=chunks,
+            lane=ResearchSourceLane.LaneB,
+            trace_id=lane_b_trace.trace_id if lane_b_trace else None,
+        )
+        for finding in query_findings:
+            if finding.finding_id not in seen_ids:
+                findings.append(finding)
+                seen_ids.add(finding.finding_id)
+
+    return findings, traces
+
+
 def resolve_research_findings(
     brief: ConsumerBusinessBrief,
     provider: Optional[Callable[[ConsumerBusinessBrief], List[ResearchFinding]]] = None,
     project_id: Optional[str] = None,
     upload_root: Optional[str] = None,
+    enable_lane_b: bool = False,
+    lane_b_provider: Optional[PublicWebSearchProvider] = None,
 ) -> List[ResearchFinding]:
     """Resolve the final research findings list for a brief.
 
@@ -312,6 +373,18 @@ def resolve_research_findings(
                 result.append(finding)
                 seen_ids.add(finding.finding_id)
 
+    if enable_lane_b and project_id is not None:
+        lane_b_findings, _ = build_lane_b_findings(
+            project_id=project_id,
+            brief=brief,
+            upload_root=upload_root,
+            lane_b_provider=lane_b_provider,
+        )
+        for finding in lane_b_findings:
+            if finding.finding_id not in seen_ids:
+                result.append(finding)
+                seen_ids.add(finding.finding_id)
+
     return result
 
 
@@ -320,6 +393,8 @@ def build_research_snapshot(
     brief: Optional[ConsumerBusinessBrief] = None,
     upload_root: Optional[str] = None,
     provider: Optional[Callable[[ConsumerBusinessBrief], List[ResearchFinding]]] = None,
+    enable_lane_b: bool = False,
+    lane_b_provider: Optional[PublicWebSearchProvider] = None,
 ) -> ResearchSnapshot:
     """Build a research snapshot for a project from its research workspace.
 
@@ -335,16 +410,23 @@ def build_research_snapshot(
     chunks = ingest.load_chunks()
 
     findings: List[ResearchFinding] = []
+    retrieval_traces: List[RetrievalTrace] = []
     if brief is not None:
         findings = resolve_research_findings(
             brief=brief,
             provider=provider,
             project_id=project_id,
             upload_root=upload_root,
+            enable_lane_b=enable_lane_b,
+            lane_b_provider=lane_b_provider,
         )
     else:
         # No brief provided: just return workspace findings
         findings = build_workspace_findings(project_id, upload_root=upload_root)
+
+    # Load any persisted retrieval traces
+    retrieval = RetrievalService(project_id, upload_root=upload_root)
+    retrieval_traces = retrieval.load_traces()
 
     return ResearchSnapshot(
         snapshot_id=f"rsnap_{project_id}",
@@ -354,5 +436,6 @@ def build_research_snapshot(
         documents=documents,
         chunks=chunks,
         findings=findings,
+        retrieval_traces=retrieval_traces,
         summary=build_research_summary(findings),
     )
