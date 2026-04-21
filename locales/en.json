@@ -305,6 +305,49 @@
     "requestFailed": "Request failed",
     "selectAgentFirst": "Please select a simulated individual first"
   },
+  "consumer": {
+    "badge": "CONSUMER TEST",
+    "projectMode": "Project Mode",
+    "projectModeValue": "consumer_test",
+    "personaPack": "Persona Pack",
+    "pinnedBriefSummary": "Pinned Brief Summary",
+    "reportTag": "Consumer Propagation Report",
+    "representativeVoc": "Representative VOC",
+    "recommendedFollowUps": "Recommended Follow-ups",
+    "vocHighlights": "VOC Highlights",
+    "metrics": {
+      "initialAcceptance": "Initial Acceptance",
+      "postPropagationAcceptance": "Post-Propagation Acceptance",
+      "attitudeShift": "Attitude Shift",
+      "capturedEvents": "Captured Events"
+    },
+    "vocBuckets": {
+      "resonance": "Resonance",
+      "risk": "Risk",
+      "misread": "Misread"
+    },
+    "quickPrompts": {
+      "resonance": "Why did \"{point}\" become a top resonance point?",
+      "risk": "Why did \"{point}\" get amplified during propagation?",
+      "misread": "How did \"{point}\" turn into a misread?"
+    },
+    "step2": {
+      "bannerTitle": "Audience personas are being prepared from the consumer brief.",
+      "bannerPersonaPack": "Persona pack: {id}"
+    },
+    "step3": {
+      "round0": {
+        "label": "Round 0",
+        "title": "First Impression",
+        "description": "Agents only react to the brief's concept and copy before deeper graph risks are unlocked."
+      },
+      "propagation": {
+        "label": "Round 1-N",
+        "title": "Propagation",
+        "description": "Search-prone and high-cognition segments begin amplifying resonance, objections, and misreads."
+      }
+    }
+  },
   "graph": {
     "panelTitle": "Graph Relationship Visualization",
     "refreshGraph": "Refresh Graph",

@@ -8,7 +8,7 @@
           <!-- Report Header -->
           <div class="report-header-block">
             <div class="report-meta">
-              <span class="report-tag">Prediction Report</span>
+              <span class="report-tag">{{ isConsumerMode ? $t('consumer.reportTag') : 'Prediction Report' }}</span>
               <span class="report-id">ID: {{ reportId || 'REF-2024-X92' }}</span>
             </div>
             <h1 class="main-title">{{ reportOutline.title }}</h1>
@@ -216,6 +216,35 @@
             </div>
           </div>
 
+          <div
+            v-if="chatTarget === 'report_agent' && isConsumerMode && (consumerQuickPrompts.length > 0 || consumerVocHighlights.length > 0)"
+            class="consumer-chat-brief"
+          >
+            <div v-if="consumerQuickPrompts.length > 0" class="consumer-chat-section">
+              <div class="consumer-chat-label">{{ $t('consumer.recommendedFollowUps') }}</div>
+              <div class="consumer-chat-prompts">
+                <button
+                  v-for="prompt in consumerQuickPrompts"
+                  :key="prompt"
+                  class="consumer-prompt-chip"
+                  @click="applyQuickPrompt(prompt)"
+                >
+                  {{ prompt }}
+                </button>
+              </div>
+            </div>
+
+            <div v-if="consumerVocHighlights.length > 0" class="consumer-chat-section">
+              <div class="consumer-chat-label">{{ $t('consumer.vocHighlights') }}</div>
+              <div class="consumer-chat-quotes">
+                <div v-for="quote in consumerVocHighlights" :key="quote.bucket" class="consumer-chat-quote">
+                  <span class="consumer-chat-bucket">{{ quote.label }}</span>
+                  <span class="consumer-chat-text">"{{ quote.quote }}"</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- Agent Profile Card -->
           <div v-if="chatTarget === 'agent' && selectedAgent" class="agent-profile-card">
             <div class="profile-card-header">
@@ -415,12 +444,19 @@ import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { chatWithReport, getReport, getAgentLog } from '../api/report'
 import { interviewAgents, getSimulationProfilesRealtime } from '../api/simulation'
+import {
+  buildConsumerQuickPrompts,
+  isConsumerProject,
+  pickTopVocQuotes,
+} from '../utils/consumerMode'
 
 const { t } = useI18n()
 
 const props = defineProps({
   reportId: String,
-  simulationId: String
+  simulationId: String,
+  reportData: Object,
+  projectData: Object
 })
 
 const emit = defineEmits(['add-log', 'update-status'])
@@ -455,6 +491,22 @@ const collapsedSections = ref(new Set())
 const currentSectionIndex = ref(null)
 const profiles = ref([])
 
+const isConsumerMode = computed(() => (
+  isConsumerProject(props.reportData) || isConsumerProject(props.projectData)
+))
+
+const consumerQuickPrompts = computed(() => (
+  isConsumerMode.value && props.reportData?.report_context
+    ? buildConsumerQuickPrompts(props.reportData.report_context, t)
+    : []
+))
+
+const consumerVocHighlights = computed(() => (
+  isConsumerMode.value && props.reportData?.report_context
+    ? pickTopVocQuotes(props.reportData.report_context, t)
+    : []
+))
+
 // Helper Methods
 const isSectionCompleted = (sectionIndex) => {
   return !!generatedSections.value[sectionIndex]
@@ -467,6 +519,15 @@ const rightPanel = ref(null)
 // Methods
 const addLog = (msg) => {
   emit('add-log', msg)
+}
+
+const applyQuickPrompt = (prompt) => {
+  chatInput.value = prompt
+  activeTab.value = 'chat'
+  chatTarget.value = 'report_agent'
+  nextTick(() => {
+    chatInputRef.value?.focus()
+  })
 }
 
 const toggleSectionCollapse = (idx) => {
@@ -1490,6 +1551,77 @@ watch(() => props.simulationId, (newId) => {
 .report-agent-tools-card {
   border-bottom: 1px solid #E5E7EB;
   background: linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 100%);
+}
+
+.consumer-chat-brief {
+  border-bottom: 1px solid #E5E7EB;
+  background: #FFFDFB;
+  padding: 18px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.consumer-chat-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.consumer-chat-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #6B7280;
+}
+
+.consumer-chat-prompts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.consumer-prompt-chip {
+  border: 1px solid #FED7AA;
+  background: #FFF7ED;
+  color: #9A3412;
+  padding: 8px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s ease;
+}
+
+.consumer-prompt-chip:hover {
+  background: #FFEDD5;
+  border-color: #FB923C;
+}
+
+.consumer-chat-quotes {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.consumer-chat-quote {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.consumer-chat-bucket {
+  min-width: 82px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #FF4500;
+}
+
+.consumer-chat-text {
+  color: #374151;
+  line-height: 1.6;
 }
 
 .tools-card-header {

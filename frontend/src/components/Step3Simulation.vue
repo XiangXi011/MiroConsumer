@@ -103,6 +103,35 @@
       </div>
     </div>
 
+    <div v-if="isConsumerMode" class="consumer-summary-shell">
+      <div class="consumer-round-guide">
+        <div class="consumer-round-card">
+          <span class="consumer-round-label">{{ $t('consumer.step3.round0.label') }}</span>
+          <span class="consumer-round-title">{{ $t('consumer.step3.round0.title') }}</span>
+          <p class="consumer-round-desc">{{ $t('consumer.step3.round0.description') }}</p>
+        </div>
+        <div class="consumer-round-card">
+          <span class="consumer-round-label">{{ $t('consumer.step3.propagation.label') }}</span>
+          <span class="consumer-round-title">{{ $t('consumer.step3.propagation.title') }}</span>
+          <p class="consumer-round-desc">{{ $t('consumer.step3.propagation.description') }}</p>
+        </div>
+      </div>
+
+      <div v-if="consumerMetricCards.length > 0" class="consumer-metric-grid">
+        <div v-for="card in consumerMetricCards" :key="card.key" class="consumer-metric-card">
+          <span class="consumer-metric-label">{{ card.label }}</span>
+          <span class="consumer-metric-value mono">{{ card.value }}</span>
+        </div>
+      </div>
+
+      <div v-if="consumerVocHighlights.length > 0" class="consumer-voc-banner">
+        <div v-for="quote in consumerVocHighlights" :key="quote.bucket" class="consumer-voc-chip">
+          <span class="consumer-voc-kind">{{ quote.label }}</span>
+          <span class="consumer-voc-copy">"{{ quote.quote }}"</span>
+        </div>
+      </div>
+    </div>
+
     <!-- Main Content: Dual Timeline -->
     <div class="main-content-area" ref="scrollContainer">
       <!-- Timeline Header -->
@@ -293,9 +322,15 @@ import {
   startSimulation,
   stopSimulation,
   getRunStatus,
-  getRunStatusDetail
+  getRunStatusDetail,
+  getConsumerSummary
 } from '../api/simulation'
 import { generateReport } from '../api/report'
+import {
+  buildConsumerMetricCards,
+  isConsumerProject,
+  pickTopVocQuotes
+} from '../utils/consumerMode'
 
 const { t } = useI18n()
 
@@ -325,6 +360,7 @@ const runStatus = ref({})
 const allActions = ref([]) // 所有动作（增量累积）
 const actionIds = ref(new Set()) // 用于去重的动作ID集合
 const scrollContainer = ref(null)
+const consumerSummary = ref(null)
 
 // Computed
 // 按时间顺序显示动作（最新的在最后面，即底部）
@@ -360,15 +396,46 @@ const redditElapsedTime = computed(() => {
   return formatElapsedTime(runStatus.value.reddit_current_round || 0)
 })
 
+const isConsumerMode = computed(() => isConsumerProject(props.projectData))
+
+const consumerMetricCards = computed(() => (
+  isConsumerMode.value && consumerSummary.value
+    ? buildConsumerMetricCards(consumerSummary.value, t)
+    : []
+))
+
+const consumerVocHighlights = computed(() => (
+  isConsumerMode.value && consumerSummary.value
+    ? pickTopVocQuotes(consumerSummary.value, t)
+    : []
+))
+
 // Methods
 const addLog = (msg) => {
   emit('add-log', msg)
+}
+
+const loadConsumerSummary = async () => {
+  if (!props.simulationId || !isConsumerMode.value) {
+    consumerSummary.value = null
+    return
+  }
+
+  try {
+    const res = await getConsumerSummary(props.simulationId)
+    if (res.success && res.data) {
+      consumerSummary.value = res.data
+    }
+  } catch (err) {
+    // Snapshots are expected to be missing in the earliest polling cycles.
+  }
 }
 
 // 重置所有状态（用于重新启动模拟）
 const resetAllState = () => {
   phase.value = 0
   runStatus.value = {}
+  consumerSummary.value = null
   allActions.value = []
   actionIds.value = new Set()
   prevTwitterRound.value = 0
@@ -585,6 +652,7 @@ const fetchRunStatusDetail = async () => {
       
       // 不自动滚动，让用户自由查看时间轴
       // 新动作会在底部追加
+      await loadConsumerSummary()
     }
   } catch (err) {
     console.warn('获取详细状态失败:', err)
@@ -719,6 +787,106 @@ onUnmounted(() => {
   border-bottom: 1px solid #EAEAEA;
   z-index: 10;
   height: 64px;
+}
+
+.consumer-summary-shell {
+  border-bottom: 1px solid #EAEAEA;
+  background: linear-gradient(180deg, #FFFBF7 0%, #FFFFFF 100%);
+  padding: 18px 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.consumer-round-guide {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.consumer-round-card {
+  border: 1px solid #F3E8DD;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.consumer-round-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #9CA3AF;
+}
+
+.consumer-round-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.consumer-round-desc {
+  margin: 0;
+  color: #4B5563;
+  line-height: 1.6;
+  font-size: 13px;
+}
+
+.consumer-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.consumer-metric-card {
+  border: 1px solid #E5E7EB;
+  background: #FFFFFF;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.consumer-metric-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #6B7280;
+}
+
+.consumer-metric-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.consumer-voc-banner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.consumer-voc-chip {
+  border: 1px solid #FED7AA;
+  background: #FFF7ED;
+  padding: 10px 12px;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.consumer-voc-kind {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #C2410C;
+}
+
+.consumer-voc-copy {
+  color: #7C2D12;
+  line-height: 1.5;
 }
 
 .status-group {

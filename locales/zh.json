@@ -311,6 +311,49 @@
     "requestFailed": "请求失败",
     "selectAgentFirst": "请先选择一个模拟个体"
   },
+  "consumer": {
+    "badge": "消费者测试",
+    "projectMode": "项目模式",
+    "projectModeValue": "consumer_test",
+    "personaPack": "画像包",
+    "pinnedBriefSummary": "置顶 Brief 摘要",
+    "reportTag": "消费者传播测试报告",
+    "representativeVoc": "代表性 VOC 原声",
+    "recommendedFollowUps": "建议追问",
+    "vocHighlights": "VOC 重点摘录",
+    "metrics": {
+      "initialAcceptance": "初始接受度",
+      "postPropagationAcceptance": "传播后接受度",
+      "attitudeShift": "态度转向率",
+      "capturedEvents": "捕获事件数"
+    },
+    "vocBuckets": {
+      "resonance": "共鸣",
+      "risk": "风险",
+      "misread": "误读"
+    },
+    "quickPrompts": {
+      "resonance": "为什么“{point}”会成为高共鸣点？",
+      "risk": "为什么“{point}”会在传播中被放大？",
+      "misread": "“{point}”是如何被误读出来的？"
+    },
+    "step2": {
+      "bannerTitle": "系统正在根据消费者 Brief 准备受众画像。",
+      "bannerPersonaPack": "画像包：{id}"
+    },
+    "step3": {
+      "round0": {
+        "label": "第 0 轮",
+        "title": "初见反应",
+        "description": "在深层图谱风险解锁前，Agent 只会基于 Brief 中的概念与文案做第一反应。"
+      },
+      "propagation": {
+        "label": "第 1-N 轮",
+        "title": "传播演化",
+        "description": "高搜索倾向和高认知人群会逐步放大共鸣点、质疑点与误读点。"
+      }
+    }
+  },
   "graph": {
     "panelTitle": "Graph Relationship Visualization",
     "refreshGraph": "刷新图谱",

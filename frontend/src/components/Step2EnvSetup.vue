@@ -1,6 +1,13 @@
 <template>
   <div class="env-setup-panel">
     <div class="scroll-container">
+      <div v-if="isConsumerMode" class="consumer-step-banner">
+        <span class="consumer-step-badge">{{ $t('consumer.badge') }}</span>
+        <div class="consumer-step-copy">
+          <strong>{{ $t('consumer.step2.bannerTitle') }}</strong>
+          <span v-if="personaPackId"> {{ $t('consumer.step2.bannerPersonaPack', { id: personaPackId }) }}</span>
+        </div>
+      </div>
       <!-- Step 01: 模拟实例 -->
       <div class="step-card" :class="{ 'active': phase === 0, 'completed': phase > 0 }">
         <div class="card-header">
@@ -36,6 +43,14 @@
             <div class="info-row">
               <span class="info-label">Task ID</span>
               <span class="info-value mono">{{ taskId || $t('step2.asyncTaskDone') }}</span>
+            </div>
+            <div v-if="isConsumerMode" class="info-row">
+              <span class="info-label">{{ $t('consumer.projectMode') }}</span>
+              <span class="info-value mono">{{ $t('consumer.projectModeValue') }}</span>
+            </div>
+            <div v-if="isConsumerMode && personaPackId" class="info-row">
+              <span class="info-label">{{ $t('consumer.personaPack') }}</span>
+              <span class="info-value mono">{{ personaPackId }}</span>
             </div>
           </div>
         </div>
@@ -135,6 +150,10 @@
           
           <!-- Config Preview -->
           <div v-if="simulationConfig" class="config-detail-panel">
+            <div v-if="isConsumerMode && pinnedBriefSummary" class="consumer-brief-panel">
+              <div class="consumer-brief-label">{{ $t('consumer.pinnedBriefSummary') }}</div>
+              <p class="consumer-brief-text">{{ pinnedBriefSummary }}</p>
+            </div>
             <!-- 时间配置 -->
             <div class="config-block">
               <div class="config-grid">
@@ -641,6 +660,7 @@ import {
   getSimulationConfig,
   getSimulationConfigRealtime
 } from '../api/simulation'
+import { isConsumerProject } from '../utils/consumerMode'
 
 const { t } = useI18n()
 
@@ -663,6 +683,7 @@ const profiles = ref([])
 const entityTypes = ref([])
 const expectedTotal = ref(null)
 const simulationConfig = ref(null)
+const consumerConfigMeta = ref({})
 const selectedProfile = ref(null)
 const showProfilesDetail = ref(true)
 
@@ -718,6 +739,34 @@ const displayProfiles = computed(() => {
   }
   return profiles.value.slice(0, 6)
 })
+
+const isConsumerMode = computed(() => isConsumerProject(props.projectData))
+
+const personaPackId = computed(() => consumerConfigMeta.value.persona_pack_id || '')
+
+const pinnedBriefSummary = computed(() => consumerConfigMeta.value.pinned_brief_summary || '')
+
+const applyConsumerConfigMeta = (...sources) => {
+  const nextMeta = { ...consumerConfigMeta.value }
+
+  sources.forEach((source) => {
+    if (!source || typeof source !== 'object') {
+      return
+    }
+
+    if (Object.prototype.hasOwnProperty.call(source, 'consumer_mode')) {
+      nextMeta.consumer_mode = Boolean(source.consumer_mode)
+    }
+    if (source.persona_pack_id) {
+      nextMeta.persona_pack_id = source.persona_pack_id
+    }
+    if (source.pinned_brief_summary) {
+      nextMeta.pinned_brief_summary = source.pinned_brief_summary
+    }
+  })
+
+  consumerConfigMeta.value = nextMeta
+}
 
 // 根据agent_id获取对应的username
 const getAgentUsername = (agentId) => {
@@ -777,6 +826,7 @@ const startPrepareSimulation = async () => {
   }
   
   // 标记第一步完成，开始第二步
+  consumerConfigMeta.value = {}
   phase.value = 1
   addLog(t('log.simInstanceCreated', { id: props.simulationId }))
   addLog(t('log.preparingSimEnv'))
@@ -857,6 +907,7 @@ const pollPrepareStatus = async () => {
     
     if (res.success && res.data) {
       const data = res.data
+      applyConsumerConfigMeta(data.prepare_info, data)
       
       // 更新进度
       prepareProgress.value = data.progress || 0
@@ -1032,6 +1083,7 @@ const loadPreparedData = async () => {
   try {
     const res = await getSimulationConfigRealtime(props.simulationId)
     if (res.success && res.data) {
+      applyConsumerConfigMeta(res.data.prepare_info, res.data.config, res.data)
       if (res.data.config_generated && res.data.config) {
         simulationConfig.value = res.data.config
         addLog(t('log.configLoadSuccess'))
@@ -1099,6 +1151,30 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 20px;
+}
+
+.consumer-step-banner {
+  border: 1px solid #FED7AA;
+  background: linear-gradient(135deg, #FFF7ED 0%, #FFFFFF 100%);
+  padding: 16px 18px;
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+
+.consumer-step-badge {
+  background: #FF4500;
+  color: #FFF;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 6px 8px;
+}
+
+.consumer-step-copy {
+  color: #7C2D12;
+  line-height: 1.6;
 }
 
 /* Step Card */
@@ -1424,6 +1500,28 @@ onUnmounted(() => {
 /* Config Detail Panel */
 .config-detail-panel {
   margin-top: 16px;
+}
+
+.consumer-brief-panel {
+  border: 1px solid #FED7AA;
+  background: #FFF7ED;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+
+.consumer-brief-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9A3412;
+  margin-bottom: 8px;
+}
+
+.consumer-brief-text {
+  margin: 0;
+  color: #7C2D12;
+  line-height: 1.7;
 }
 
 .config-block {

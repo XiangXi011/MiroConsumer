@@ -8,12 +8,29 @@
           <!-- Report Header -->
           <div class="report-header-block">
             <div class="report-meta">
-              <span class="report-tag">Prediction Report</span>
+              <span class="report-tag">{{ isConsumerMode ? $t('consumer.reportTag') : 'Prediction Report' }}</span>
               <span class="report-id">ID: {{ reportId || 'REF-2024-X92' }}</span>
             </div>
             <h1 class="main-title">{{ reportOutline.title }}</h1>
             <p class="sub-title">{{ reportOutline.summary }}</p>
             <div class="header-divider"></div>
+
+            <div v-if="isConsumerMode && consumerMetricCards.length > 0" class="consumer-header-grid">
+              <div v-for="card in consumerMetricCards" :key="card.key" class="consumer-header-card">
+                <span class="consumer-header-label">{{ card.label }}</span>
+                <span class="consumer-header-value mono">{{ card.value }}</span>
+              </div>
+            </div>
+
+            <div v-if="isConsumerMode && consumerVocHighlights.length > 0" class="consumer-voc-strip">
+              <div class="consumer-voc-header">{{ $t('consumer.representativeVoc') }}</div>
+              <div class="consumer-voc-list">
+                <div v-for="quote in consumerVocHighlights" :key="quote.bucket" class="consumer-voc-item">
+                  <span class="consumer-voc-bucket">{{ quote.label }}</span>
+                  <span class="consumer-voc-text">"{{ quote.quote }}"</span>
+                </div>
+              </div>
+            </div>
           </div>
 
           <!-- Sections List -->
@@ -394,6 +411,11 @@ import { ref, computed, watch, onMounted, onUnmounted, nextTick, h, reactive } f
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { getAgentLog, getConsoleLog } from '../api/report'
+import {
+  buildConsumerMetricCards,
+  isConsumerProject,
+  pickTopVocQuotes,
+} from '../utils/consumerMode'
 
 const router = useRouter()
 const { t } = useI18n()
@@ -401,6 +423,8 @@ const { t } = useI18n()
 const props = defineProps({
   reportId: String,
   simulationId: String,
+  reportData: Object,
+  projectData: Object,
   systemLogs: Array
 })
 
@@ -430,6 +454,22 @@ const leftPanel = ref(null)
 const rightPanel = ref(null)
 const logContent = ref(null)
 const showRawResult = reactive({})
+
+const isConsumerMode = computed(() => (
+  isConsumerProject(props.reportData) || isConsumerProject(props.projectData)
+))
+
+const consumerMetricCards = computed(() => (
+  isConsumerMode.value && props.reportData?.report_context
+    ? buildConsumerMetricCards(props.reportData.report_context, t)
+    : []
+))
+
+const consumerVocHighlights = computed(() => (
+  isConsumerMode.value && props.reportData?.report_context
+    ? pickTopVocQuotes(props.reportData.report_context, t)
+    : []
+))
 
 // Toggle functions
 const toggleRawResult = (timestamp, event) => {
@@ -2413,6 +2453,76 @@ watch(() => props.reportId, (newId) => {
   height: 1px;
   background: #E5E7EB;
   width: 100%;
+}
+
+.consumer-header-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.consumer-header-card {
+  border: 1px solid #E5E7EB;
+  background: #FAFAFA;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.consumer-header-label {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #6B7280;
+}
+
+.consumer-header-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.consumer-voc-strip {
+  margin-top: 18px;
+  border: 1px solid #E5E7EB;
+  background: #FCFCFC;
+  padding: 16px 18px;
+}
+
+.consumer-voc-header {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #6B7280;
+  margin-bottom: 10px;
+}
+
+.consumer-voc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.consumer-voc-item {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.consumer-voc-bucket {
+  min-width: 82px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #FF4500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.consumer-voc-text {
+  color: #374151;
+  line-height: 1.6;
 }
 
 /* Sections List */

@@ -54,6 +54,8 @@
         <Step4Report
           :reportId="currentReportId"
           :simulationId="simulationId"
+          :reportData="reportData"
+          :projectData="projectData"
           :systemLogs="systemLogs"
           @add-log="addLog"
           @update-status="updateStatus"
@@ -89,6 +91,7 @@ const viewMode = ref('workbench')
 // Data State
 const currentReportId = ref(route.params.reportId)
 const simulationId = ref(null)
+const reportData = ref(null)
 const projectData = ref(null)
 const graphData = ref(null)
 const graphLoading = ref(false)
@@ -149,8 +152,8 @@ const loadReportData = async () => {
     // 获取 report 信息以获取 simulation_id
     const reportRes = await getReport(currentReportId.value)
     if (reportRes.success && reportRes.data) {
-      const reportData = reportRes.data
-      simulationId.value = reportData.simulation_id
+      reportData.value = reportRes.data
+      simulationId.value = reportData.value.simulation_id
 
       if (simulationId.value) {
         // 获取 simulation 信息

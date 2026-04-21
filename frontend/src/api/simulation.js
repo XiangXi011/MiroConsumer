@@ -68,6 +68,14 @@ export const getSimulationConfigRealtime = (simulationId) => {
 }
 
 /**
+ * 获取消费者传播摘要
+ * @param {string} simulationId
+ */
+export const getConsumerSummary = (simulationId) => {
+  return service.get(`/api/simulation/${simulationId}/consumer-summary`)
+}
+
+/**
  * 列出所有模拟
  * @param {string} projectId - 可选，按项目ID过滤
  */
