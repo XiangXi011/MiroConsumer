@@ -130,3 +130,43 @@ def test_to_dict_includes_counts(tmp_path):
     assert d["source_count"] == 2
     assert d["lane_a_count"] == 1
     assert d["lane_b_count"] == 1
+
+
+def test_get_or_register_source_dedupes_by_uri(tmp_path):
+    registry = SourceRegistry("proj_dedup", upload_root=str(tmp_path / "uploads"))
+
+    src1 = registry.get_or_register_source(
+        lane=ResearchSourceLane.LaneB,
+        source_type=ResearchSourceType.PublicWeb,
+        label="Web article",
+        uri="https://example.com/article",
+    )
+    src2 = registry.get_or_register_source(
+        lane=ResearchSourceLane.LaneB,
+        source_type=ResearchSourceType.PublicWeb,
+        label="Different label",
+        uri="https://example.com/article",
+    )
+
+    assert src1.source_id == src2.source_id
+    assert registry.source_count(lane=ResearchSourceLane.LaneB) == 1
+
+
+def test_get_or_register_source_creates_new_when_uri_differs(tmp_path):
+    registry = SourceRegistry("proj_new", upload_root=str(tmp_path / "uploads"))
+
+    src1 = registry.get_or_register_source(
+        lane=ResearchSourceLane.LaneB,
+        source_type=ResearchSourceType.PublicWeb,
+        label="Article A",
+        uri="https://example.com/a",
+    )
+    src2 = registry.get_or_register_source(
+        lane=ResearchSourceLane.LaneB,
+        source_type=ResearchSourceType.PublicWeb,
+        label="Article B",
+        uri="https://example.com/b",
+    )
+
+    assert src1.source_id != src2.source_id
+    assert registry.source_count(lane=ResearchSourceLane.LaneB) == 2

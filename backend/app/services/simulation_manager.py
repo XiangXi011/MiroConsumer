@@ -17,6 +17,7 @@ from ..utils.logger import get_logger
 from .consumer.brief_adapter import ConsumerBriefAdapter
 from .consumer.models import ConsumerBusinessBrief
 from .consumer.persona_pack import load_default_persona_pack, map_persona_to_agent_traits
+from .consumer.lane_b_provider import build_lane_b_provider
 from .consumer.research_ingest import (
     build_research_snapshot,
     build_research_summary,
@@ -495,6 +496,8 @@ class SimulationManager:
         twitter_profiles: List[Dict[str, Any]] = []
         agent_configs: List[AgentActivityConfig] = []
 
+        lane_b_provider = build_lane_b_provider(state.project_id, upload_root=Config.UPLOAD_FOLDER)
+
         total_personas = len(persona_pack)
         if progress_callback:
             progress_callback(
@@ -566,6 +569,7 @@ class SimulationManager:
             project_id=state.project_id,
             upload_root=Config.UPLOAD_FOLDER,
             enable_lane_b=brief.enable_lane_b,
+            lane_b_provider=lane_b_provider,
         )
         snapshot = build_research_snapshot(
             state.project_id,
@@ -573,6 +577,7 @@ class SimulationManager:
             upload_root=Config.UPLOAD_FOLDER,
             provider=default_auto_research_provider,
             enable_lane_b=brief.enable_lane_b,
+            lane_b_provider=lane_b_provider,
         )
         self._write_json(
             os.path.join(sim_dir, "consumer_config.json"),

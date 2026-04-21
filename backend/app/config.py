@@ -62,6 +62,10 @@ class Config:
     REPORT_AGENT_MAX_TOOL_CALLS = int(os.environ.get('REPORT_AGENT_MAX_TOOL_CALLS', '5'))
     REPORT_AGENT_MAX_REFLECTION_ROUNDS = int(os.environ.get('REPORT_AGENT_MAX_REFLECTION_ROUNDS', '2'))
     REPORT_AGENT_TEMPERATURE = float(os.environ.get('REPORT_AGENT_TEMPERATURE', '0.5'))
+
+    # Lane B public-web search configuration
+    ENABLE_LANE_B_WEB_SEARCH = os.environ.get('ENABLE_LANE_B_WEB_SEARCH', 'False').lower() == 'true'
+    LANE_B_SEARCH_MODEL = os.environ.get('LANE_B_SEARCH_MODEL', LLM_MODEL_NAME)
     
     @classmethod
     def validate(cls):

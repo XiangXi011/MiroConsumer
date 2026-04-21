@@ -110,6 +110,34 @@ class SourceRegistry:
         self._save(kept)
         return removed
 
+    def get_or_register_source(
+        self,
+        lane: ResearchSourceLane,
+        source_type: ResearchSourceType,
+        label: str,
+        uri: str = "",
+        metadata: Optional[Dict[str, Any]] = None,
+        source_id: Optional[str] = None,
+    ) -> ResearchSource:
+        """Return existing source matching URI+lane, or register a new one."""
+        sources = self._load()
+        if uri:
+            for s in sources:
+                if s.uri == uri and s.lane == lane:
+                    return s
+        if source_id:
+            for s in sources:
+                if s.source_id == source_id:
+                    return s
+        return self.register_source(
+            lane=lane,
+            source_type=source_type,
+            label=label,
+            uri=uri,
+            metadata=metadata,
+            source_id=source_id,
+        )
+
     def source_count(self, lane: Optional[ResearchSourceLane] = None) -> int:
         return len(self.list_sources(lane=lane))
 

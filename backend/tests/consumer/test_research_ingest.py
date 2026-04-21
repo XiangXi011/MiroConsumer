@@ -283,3 +283,196 @@ def test_build_research_snapshot_includes_retrieval_traces(tmp_path):
     assert len(snapshot.retrieval_traces) >= 0
     # Snapshot should include traces even if they are from Lane A only
 
+
+def test_build_lane_b_findings_with_real_provider_persists_workspace(tmp_path):
+    """Lane B findings built with a provider that persists should reuse workspace artifacts."""
+    from unittest.mock import MagicMock
+
+    root = str(tmp_path / "uploads")
+
+    class PersistingProvider:
+        """A provider that registers sources and ingests chunks like OpenAIWebSearchProvider."""
+
+        def __init__(self, project_id: str, upload_root: str):
+            self.registry = SourceRegistry(project_id, upload_root=upload_root)
+            self.ingest = DocumentIngestService(project_id, upload_root=upload_root)
+
+        def __call__(self, query: str, top_k: int):
+            src = self.registry.get_or_register_source(
+                lane=ResearchSourceLane.LaneB,
+                source_type=ResearchSourceType.PublicWeb,
+                label="Web result",
+                uri="https://example.com/article",
+            )
+            chunk = DocumentChunk(
+                chunk_id="chk_persist_1",
+                doc_id="doc_persist_1",
+                source_id=src.source_id,
+                text="A new competitor entered the protein bar market this quarter.",
+                index=0,
+                char_start=0,
+                char_end=60,
+            )
+            self.ingest.ingest_chunks([chunk])
+            return [chunk]
+
+    brief = ConsumerBriefAdapter.from_payload(
+        {
+            "task_type": "concept_test",
+            "product_concept_assets": ["Protein bar"],
+            "claims": ["High protein snack"],
+            "research_goal": "Find competitor signals",
+        }
+    )
+
+    provider = PersistingProvider("proj_persist_lb", root)
+    findings, traces = build_lane_b_findings(
+        project_id="proj_persist_lb",
+        brief=brief,
+        upload_root=root,
+        lane_b_provider=provider,
+    )
+
+    assert len(findings) > 0
+    assert all(f.source_label == "public_web" for f in findings)
+    assert all(f.retrieval_trace_id != "" for f in findings)
+    assert len(traces) > 0
+
+    # Verify workspace artifacts exist
+    registry = SourceRegistry("proj_persist_lb", upload_root=root)
+    assert registry.source_count(lane=ResearchSourceLane.LaneB) >= 1
+
+
+def test_resolve_research_findings_uses_lane_b_provider_when_enabled(tmp_path):
+    """When enable_lane_b=True and a provider is passed, findings should include provider results."""
+    root = str(tmp_path / "uploads")
+
+    def fake_provider(query: str, top_k: int):
+        return [
+            DocumentChunk(
+                chunk_id="chk_web_1",
+                doc_id="doc_web",
+                source_id="src_web",
+                text="Competitor launched a rival protein bar this month.",
+                index=0,
+            )
+        ]
+
+    brief = ConsumerBriefAdapter.from_payload(
+        {
+            "task_type": "concept_test",
+            "product_concept_assets": ["Protein bar"],
+            "claims": ["High protein snack"],
+            "research_goal": "Find competitor signals",
+        }
+    )
+
+    findings = resolve_research_findings(
+        brief,
+        project_id="proj_resolve_provider",
+        upload_root=root,
+        enable_lane_b=True,
+        lane_b_provider=fake_provider,
+    )
+
+    assert any(f.source_label == "public_web" for f in findings)
+
+
+def test_build_research_snapshot_uses_lane_b_provider_when_enabled(tmp_path):
+    """When enable_lane_b=True and a provider is passed, snapshot should include provider findings."""
+    root = str(tmp_path / "uploads")
+
+    def fake_provider(query: str, top_k: int):
+        return [
+            DocumentChunk(
+                chunk_id="chk_web_1",
+                doc_id="doc_web",
+                source_id="src_web",
+                text="Competitor launched a rival protein bar this month.",
+                index=0,
+            )
+        ]
+
+    brief = ConsumerBriefAdapter.from_payload(
+        {
+            "task_type": "concept_test",
+            "product_concept_assets": ["Protein bar"],
+            "claims": ["High protein snack"],
+            "research_goal": "Find competitor signals",
+        }
+    )
+
+    snapshot = build_research_snapshot(
+        "proj_snap_provider",
+        brief=brief,
+        upload_root=root,
+        enable_lane_b=True,
+        lane_b_provider=fake_provider,
+    )
+
+    assert any(f.source_label == "public_web" for f in snapshot.findings)
+
+
+def test_build_lane_b_findings_dedup_on_repeat_queries(tmp_path):
+    """Repeated queries with the same provider result should not duplicate workspace artifacts."""
+    root = str(tmp_path / "uploads")
+
+    class RepeatProvider:
+        def __init__(self, project_id: str, upload_root: str):
+            self.registry = SourceRegistry(project_id, upload_root=upload_root)
+            self.ingest = DocumentIngestService(project_id, upload_root=upload_root)
+            self.call_count = 0
+
+        def __call__(self, query: str, top_k: int):
+            self.call_count += 1
+            src = self.registry.get_or_register_source(
+                lane=ResearchSourceLane.LaneB,
+                source_type=ResearchSourceType.PublicWeb,
+                label="Repeat Web",
+                uri="https://repeat.example.com",
+            )
+            chunk = DocumentChunk(
+                chunk_id="chk_repeat_1",
+                doc_id="doc_repeat_1",
+                source_id=src.source_id,
+                text="Same result every time.",
+                index=0,
+                char_start=0,
+                char_end=23,
+            )
+            self.ingest.ingest_chunks([chunk])
+            return [chunk]
+
+    brief = ConsumerBriefAdapter.from_payload(
+        {
+            "task_type": "concept_test",
+            "product_concept_assets": ["Protein bar"],
+            "research_goal": "Find signals",
+        }
+    )
+
+    provider = RepeatProvider("proj_dedup_lb", root)
+
+    # First call
+    findings1, _ = build_lane_b_findings(
+        project_id="proj_dedup_lb",
+        brief=brief,
+        upload_root=root,
+        lane_b_provider=provider,
+    )
+
+    # Second call with same brief (same queries)
+    findings2, _ = build_lane_b_findings(
+        project_id="proj_dedup_lb",
+        brief=brief,
+        upload_root=root,
+        lane_b_provider=provider,
+    )
+
+    # Findings may be deduped by finding_id; workspace should not duplicate
+    registry = SourceRegistry("proj_dedup_lb", upload_root=root)
+    ingest = DocumentIngestService("proj_dedup_lb", upload_root=root)
+
+    assert registry.source_count(lane=ResearchSourceLane.LaneB) == 1
+    assert len(ingest.load_chunks()) == 1
+

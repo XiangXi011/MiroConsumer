@@ -110,3 +110,58 @@ def test_document_chunk_model():
     )
     assert chunk.chunk_id == "chk_001"
     assert chunk.text == "Hello world"
+
+
+def test_ingest_chunks_skips_duplicates(tmp_path):
+    service = DocumentIngestService("proj_dedup", upload_root=str(tmp_path / "uploads"))
+
+    chunks = [
+        DocumentChunk(
+            chunk_id="chk_a",
+            doc_id="doc_1",
+            source_id="src_1",
+            text="First chunk",
+            index=0,
+            char_start=0,
+            char_end=11,
+        ),
+        DocumentChunk(
+            chunk_id="chk_b",
+            doc_id="doc_1",
+            source_id="src_1",
+            text="Second chunk",
+            index=1,
+            char_start=12,
+            char_end=24,
+        ),
+    ]
+
+    inserted = service.ingest_chunks(chunks)
+    assert inserted == 2
+    assert len(service.load_chunks()) == 2
+
+    # Re-ingest same chunks
+    inserted = service.ingest_chunks(chunks)
+    assert inserted == 0
+    assert len(service.load_chunks()) == 2
+
+    # Add one new chunk
+    new_chunks = [
+        DocumentChunk(
+            chunk_id="chk_c",
+            doc_id="doc_1",
+            source_id="src_1",
+            text="Third chunk",
+            index=2,
+            char_start=25,
+            char_end=36,
+        ),
+    ]
+    inserted = service.ingest_chunks(new_chunks)
+    assert inserted == 1
+    assert len(service.load_chunks()) == 3
+
+
+def test_ingest_chunks_empty_list(tmp_path):
+    service = DocumentIngestService("proj_empty", upload_root=str(tmp_path / "uploads"))
+    assert service.ingest_chunks([]) == 0

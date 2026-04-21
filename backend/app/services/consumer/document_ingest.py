@@ -184,6 +184,15 @@ class DocumentIngestService:
                 f.write("\n")
         return True
 
+    def ingest_chunks(self, chunks: List[DocumentChunk]) -> int:
+        """Append chunks, skipping duplicates by chunk_id."""
+        if not chunks:
+            return 0
+        existing_ids = {c.chunk_id for c in self.load_chunks()}
+        new_chunks = [c for c in chunks if c.chunk_id not in existing_ids]
+        self._append_chunks(new_chunks)
+        return len(new_chunks)
+
     def clear_all(self) -> None:
         if self._docs_path.exists():
             self._docs_path.unlink()

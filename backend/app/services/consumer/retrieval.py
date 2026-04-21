@@ -134,14 +134,21 @@ class RetrievalService:
     ) -> List[Tuple[DocumentChunk, float]]:
         """Retrieve top-k chunks from Lane B (public-web supplemental).
 
-        If a provider is supplied, it is invoked directly.  Otherwise a
-        deterministic repo-local fallback searches any Lane B sources
+        If a provider is supplied, it is invoked first.  The provider is
+        expected to normalize its own results into the project workspace.
+        If the provider raises an exception, we gracefully fall back to the
+        deterministic repo-local fallback.  When no provider is supplied (or
+        it is None), the deterministic fallback searches any Lane B sources
         already present in the workspace.  If no Lane B corpus exists,
         returns an empty list (still traceable).
         """
         if provider is not None:
-            chunks = provider(query, top_k)
-            return _rank_chunks(query, chunks)[:top_k]
+            try:
+                chunks = provider(query, top_k)
+                return _rank_chunks(query, chunks)[:top_k]
+            except Exception:
+                # Graceful fallback: continue to deterministic workspace search
+                pass
 
         # Deterministic fallback: search within workspace Lane B corpus
         lane_b_ids = self._lane_source_ids(ResearchSourceLane.LaneB)

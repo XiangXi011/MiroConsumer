@@ -14,6 +14,7 @@ from ..config import Config
 from ..services.consumer import ConsumerBriefAdapter, ConsumerGraphBuilder, load_default_persona_pack
 from ..services.consumer.document_ingest import DocumentIngestService
 from ..services.consumer.models import ResearchSourceLane, ResearchSourceType
+from ..services.consumer.lane_b_provider import build_lane_b_provider
 from ..services.consumer.research_ingest import build_research_summary, resolve_research_findings, default_auto_research_provider, build_research_snapshot
 from ..services.consumer.source_registry import SourceRegistry
 from ..services.ontology_generator import OntologyGenerator
@@ -84,12 +85,14 @@ def _build_consumer_graph(project, text: str):
         raise ValueError("consumer_brief is required for consumer_test graph builds")
 
     brief = ConsumerBriefAdapter.from_payload(project.consumer_brief)
+    lane_b_provider = build_lane_b_provider(project.project_id, upload_root=Config.UPLOAD_FOLDER)
     research_findings = resolve_research_findings(
         brief,
         provider=default_auto_research_provider,
         project_id=project.project_id,
         upload_root=Config.UPLOAD_FOLDER,
         enable_lane_b=brief.enable_lane_b,
+        lane_b_provider=lane_b_provider,
     )
     graph_payload = ConsumerGraphBuilder().build(
         brief=brief,
@@ -110,6 +113,7 @@ def _build_consumer_graph(project, text: str):
         upload_root=Config.UPLOAD_FOLDER,
         provider=default_auto_research_provider,
         enable_lane_b=brief.enable_lane_b,
+        lane_b_provider=lane_b_provider,
     )
 
     # Persist research context for downstream simulation/reporting

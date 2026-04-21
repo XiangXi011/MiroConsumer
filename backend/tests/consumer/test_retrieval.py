@@ -206,6 +206,75 @@ def test_stats_counts_traces(tmp_path):
     assert stats["lane_b_trace_count"] >= 1
 
 
+def test_retrieve_lane_b_fallback_on_provider_failure(tmp_path):
+    """If the provider raises, retrieval should gracefully fall back to workspace Lane B."""
+    root = str(tmp_path / "uploads")
+    registry = SourceRegistry("proj_fallback_fail", upload_root=root)
+    ingest = DocumentIngestService("proj_fallback_fail", upload_root=root)
+    retrieval = RetrievalService("proj_fallback_fail", upload_root=root)
+
+    src = registry.register_source(
+        lane=ResearchSourceLane.LaneB,
+        source_type=ResearchSourceType.PublicWeb,
+        label="Web article",
+    )
+    ingest.ingest_text(
+        source_id=src.source_id,
+        text="Rising trend: plant-based protein alternatives are surging.",
+        chunk_size=30,
+    )
+
+    def failing_provider(query: str, top_k: int) -> list:
+        raise RuntimeError("provider down")
+
+    results = retrieval.retrieve_lane_b("protein trend", top_k=3, provider=failing_provider)
+    assert len(results) > 0
+    assert all(score > 0 for _, score in results)
+
+
+def test_retrieve_lane_b_with_real_provider_persists_to_workspace(tmp_path):
+    """A real provider that persists into workspace should return rankable chunks."""
+    from unittest.mock import MagicMock
+
+    root = str(tmp_path / "uploads")
+    retrieval = RetrievalService("proj_real", upload_root=root)
+
+    class FakeProvider:
+        def __init__(self, root_path: str):
+            self.root = root_path
+            self.registry = SourceRegistry("proj_real", upload_root=root_path)
+            self.ingest = DocumentIngestService("proj_real", upload_root=root_path)
+
+        def __call__(self, query: str, top_k: int):
+            src = self.registry.get_or_register_source(
+                lane=ResearchSourceLane.LaneB,
+                source_type=ResearchSourceType.PublicWeb,
+                label="Fake Web",
+                uri="https://fake.example.com",
+            )
+            chunk = DocumentChunk(
+                chunk_id="chk_fake_1",
+                doc_id="doc_fake_1",
+                source_id=src.source_id,
+                text="Competitor news about protein bars.",
+                index=0,
+                char_start=0,
+                char_end=35,
+            )
+            self.ingest.ingest_chunks([chunk])
+            return [chunk]
+
+    provider = FakeProvider(root)
+    results = retrieval.retrieve_lane_b("competitor protein", top_k=3, provider=provider)
+    assert len(results) == 1
+    assert results[0][0].chunk_id == "chk_fake_1"
+    assert results[0][1] > 0
+
+    # Verify workspace has the persisted source and chunk
+    registry = SourceRegistry("proj_real", upload_root=root)
+    assert registry.source_count(lane=ResearchSourceLane.LaneB) == 1
+
+
 def test_provider_contract_type_alias():
     """PublicWebSearchProvider should accept a callable with the right signature."""
 
