@@ -374,3 +374,150 @@ def test_list_interventions_for_simulation_rejects_non_consumer(tmp_path, monkey
 
     response = client.get("/api/simulation/sim_li/interventions")
     assert response.status_code == 400
+
+
+def test_resume_branch_route_returns_200_and_starts_run(tmp_path, monkeypatch):
+    _seed_simulation(tmp_path, monkeypatch, "sim_resume")
+    simulations_dir = tmp_path / "uploads" / "simulations"
+    sim_dir = simulations_dir / "sim_resume"
+    sim_dir.mkdir(parents=True, exist_ok=True)
+    (sim_dir / "simulation_config.json").write_text(
+        json.dumps(
+            {
+                "project_id": "proj_test",
+                "project_type": "consumer_test",
+                "consumer_mode": True,
+                "pinned_brief_summary": "Brief",
+                "time_config": {"total_simulation_hours": 1, "minutes_per_round": 30},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    # Prevent real background thread from running
+    monkeypatch.setattr(SimulationRunner, "run_branch_simulation", lambda *a, **k: None)
+
+    app = _create_test_app()
+    client = app.test_client()
+
+    branch_resp = client.post(
+        "/api/simulation/sim_resume/branches",
+        json={"name": "Test Branch", "fork_round": 0},
+    )
+    branch_id = branch_resp.get_json()["data"]["branch_id"]
+
+    response = client.post(f"/api/simulation/sim_resume/branches/{branch_id}/resume")
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["success"] is True
+    assert payload["data"]["status"] == "running"
+    assert payload["data"]["branch_id"] == branch_id
+
+
+def test_resume_branch_rejects_missing_branch(tmp_path, monkeypatch):
+    _seed_simulation(tmp_path, monkeypatch, "sim_res_missing")
+    simulations_dir = tmp_path / "uploads" / "simulations"
+    sim_dir = simulations_dir / "sim_res_missing"
+    sim_dir.mkdir(parents=True, exist_ok=True)
+    (sim_dir / "simulation_config.json").write_text(
+        json.dumps(
+            {
+                "project_id": "proj_test",
+                "project_type": "consumer_test",
+                "consumer_mode": True,
+                "pinned_brief_summary": "Brief",
+                "time_config": {"total_simulation_hours": 1, "minutes_per_round": 30},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    app = _create_test_app()
+    client = app.test_client()
+
+    response = client.post("/api/simulation/sim_res_missing/branches/no-such-branch/resume")
+    assert response.status_code == 404
+    payload = response.get_json()
+    assert payload["success"] is False
+
+
+def test_resume_branch_rejects_non_consumer_simulation(tmp_path, monkeypatch):
+    _seed_simulation(tmp_path, monkeypatch, "sim_res_default", project_type="default")
+
+    app = _create_test_app()
+    client = app.test_client()
+
+    response = client.post("/api/simulation/sim_res_default/branches/any/resume")
+    assert response.status_code == 400
+    payload = response.get_json()
+    assert payload["success"] is False
+
+
+def test_resume_branch_rejects_already_running(tmp_path, monkeypatch):
+    from app.services.consumer.intervention_manager import ConsumerInterventionManager
+
+    _seed_simulation(tmp_path, monkeypatch, "sim_res_busy")
+    simulations_dir = tmp_path / "uploads" / "simulations"
+    sim_dir = simulations_dir / "sim_res_busy"
+    sim_dir.mkdir(parents=True, exist_ok=True)
+    (sim_dir / "simulation_config.json").write_text(
+        json.dumps(
+            {
+                "project_id": "proj_test",
+                "project_type": "consumer_test",
+                "consumer_mode": True,
+                "pinned_brief_summary": "Brief",
+                "time_config": {"total_simulation_hours": 1, "minutes_per_round": 30},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    app = _create_test_app()
+    client = app.test_client()
+
+    branch_resp = client.post(
+        "/api/simulation/sim_res_busy/branches",
+        json={"name": "Busy Branch", "fork_round": 0},
+    )
+    branch_id = branch_resp.get_json()["data"]["branch_id"]
+
+    # Mark branch as running
+    mgr = ConsumerInterventionManager()
+    mgr.update_branch_run_status("sim_res_busy", branch_id, {"status": "running"})
+
+    response = client.post(f"/api/simulation/sim_res_busy/branches/{branch_id}/resume")
+    assert response.status_code == 409
+    payload = response.get_json()
+    assert payload["success"] is False
+    assert "already running" in payload["error"].lower()
+
+
+def test_get_branch_status_route(tmp_path, monkeypatch):
+    _seed_simulation(tmp_path, monkeypatch, "sim_status")
+
+    app = _create_test_app()
+    client = app.test_client()
+
+    branch_resp = client.post(
+        "/api/simulation/sim_status/branches",
+        json={"name": "Status Branch", "fork_round": 0},
+    )
+    branch_id = branch_resp.get_json()["data"]["branch_id"]
+
+    response = client.get(f"/api/simulation/sim_status/branches/{branch_id}/status")
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["success"] is True
+    assert payload["data"]["status"] == "idle"
+    assert payload["data"]["branch_status"] == "active"
+
+
+def test_get_branch_status_404_for_missing_branch(tmp_path, monkeypatch):
+    _seed_simulation(tmp_path, monkeypatch, "sim_st_404")
+
+    app = _create_test_app()
+    client = app.test_client()
+
+    response = client.get("/api/simulation/sim_st_404/branches/no-such/status")
+    assert response.status_code == 404

@@ -1418,6 +1418,102 @@ def get_branch_comparison(simulation_id: str, branch_id: str):
         return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
 
 
+@simulation_bp.route('/<simulation_id>/branches/<branch_id>/resume', methods=['POST'])
+def resume_branch(simulation_id: str, branch_id: str):
+    """Run or resume a branch simulation (consumer_test only).
+
+    The branch runs independently of the base simulation run_state.
+    Output is persisted under branches/<branch_id>/rounds.jsonl.
+    """
+    import json
+    import threading
+    try:
+        state, err = _require_consumer_simulation(simulation_id)
+        if err:
+            return err
+
+        mgr = ConsumerInterventionManager()
+        branch = mgr.get_branch(simulation_id, branch_id)
+        if branch is None:
+            return jsonify({"success": False, "error": "Branch not found"}), 404
+
+        # Check if branch is already running
+        run_status = mgr.get_branch_run_status(simulation_id, branch_id)
+        if run_status.get("status") == "running":
+            return jsonify({"success": False, "error": "Branch is already running"}), 409
+
+        # Load simulation config
+        sim_dir = os.path.join(Config.OASIS_SIMULATION_DATA_DIR, simulation_id)
+        config_path = os.path.join(sim_dir, "simulation_config.json")
+        if not os.path.exists(config_path):
+            return jsonify({"success": False, "error": "Simulation config not found"}), 400
+
+        with open(config_path, "r", encoding="utf-8") as f:
+            config = json.load(f)
+
+        # Enforce max_rounds if provided
+        data = request.get_json(silent=True) or {}
+        max_rounds = data.get("max_rounds")
+        time_config = config.get("time_config", {})
+        total_hours = time_config.get("total_simulation_hours", 72)
+        minutes_per_round = time_config.get("minutes_per_round", 30)
+        total_rounds = int(total_hours * 60 / minutes_per_round)
+        if max_rounds is not None and max_rounds > 0:
+            total_rounds = min(total_rounds, max_rounds)
+        config["total_rounds"] = total_rounds
+
+        mgr.update_branch_status(simulation_id, branch_id, "running")
+
+        current_locale = get_locale()
+
+        def run_branch():
+            set_locale(current_locale)
+            SimulationRunner.run_branch_simulation(simulation_id, branch_id, config)
+
+        thread = threading.Thread(target=run_branch, daemon=True)
+        thread.start()
+
+        return jsonify({
+            "success": True,
+            "data": {
+                "simulation_id": simulation_id,
+                "branch_id": branch_id,
+                "status": "running",
+                "fork_round": branch.fork_round,
+                "total_rounds": total_rounds,
+            },
+        })
+    except Exception as e:
+        logger.error(f"启动分支模拟失败: {str(e)}")
+        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+
+
+@simulation_bp.route('/<simulation_id>/branches/<branch_id>/status', methods=['GET'])
+def get_branch_run_status_route(simulation_id: str, branch_id: str):
+    """Get branch simulation run status."""
+    try:
+        state, err = _require_consumer_simulation(simulation_id)
+        if err:
+            return err
+
+        mgr = ConsumerInterventionManager()
+        branch = mgr.get_branch(simulation_id, branch_id)
+        if branch is None:
+            return jsonify({"success": False, "error": "Branch not found"}), 404
+
+        run_status = mgr.get_branch_run_status(simulation_id, branch_id)
+        return jsonify({
+            "success": True,
+            "data": {
+                **run_status,
+                "branch_status": branch.status,
+            },
+        })
+    except Exception as e:
+        logger.error(f"获取分支状态失败: {str(e)}")
+        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+
+
 @simulation_bp.route('/<simulation_id>/config/realtime', methods=['GET'])
 def get_simulation_config_realtime(simulation_id: str):
     """

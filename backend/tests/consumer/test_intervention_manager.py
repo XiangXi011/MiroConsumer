@@ -302,3 +302,69 @@ def test_list_interventions_rejects_missing_branch(tmp_path):
     mgr = ConsumerInterventionManager(branches_dir=str(tmp_path))
     with pytest.raises(ValueError, match="Branch not found"):
         mgr.list_interventions("sim_012", branch_id="missing_branch")
+
+
+def test_build_comparison_context_without_parent_uses_base_simulation(tmp_path, monkeypatch):
+    from app.config import Config
+
+    branches_dir = tmp_path / "simulations"
+    monkeypatch.setattr(Config, "UPLOAD_FOLDER", str(tmp_path / "uploads"))
+    mgr = ConsumerInterventionManager(branches_dir=str(branches_dir))
+
+    branch = mgr.create_branch(simulation_id="sim_013", name="Variant", fork_round=1)
+
+    # Seed base simulation rounds (not branch rounds)
+    base_rounds_path = tmp_path / "uploads" / "simulations" / "sim_013" / "consumer_rounds.jsonl"
+    base_rounds_path.parent.mkdir(parents=True, exist_ok=True)
+    base_rounds_path.write_text(
+        json.dumps(
+            {"round_num": 0, "agent_id": "a1", "attitude_label": "neutral", "bucket": "question"}
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    # Seed branch rounds (branches_dir is used directly as the branches root)
+    branch_rounds_path = branches_dir / branch.branch_id / "rounds.jsonl"
+    branch_rounds_path.parent.mkdir(parents=True, exist_ok=True)
+    branch_rounds_path.write_text(
+        json.dumps(
+            {"round_num": 0, "agent_id": "a1", "attitude_label": "positive", "bucket": "resonance"}
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    ctx = mgr.build_comparison_context("sim_013", branch.branch_id)
+
+    assert ctx["branch_id"] == branch.branch_id
+    assert ctx["base_branch_id"] is None
+    assert ctx["base_summary"]["has_data"] is True
+    assert ctx["branch_summary"]["has_data"] is True
+
+
+def test_branch_run_status_round_trip(tmp_path):
+    branches_dir = tmp_path / "simulations"
+    mgr = ConsumerInterventionManager(branches_dir=str(branches_dir))
+    branch = mgr.create_branch(simulation_id="sim_014", name="Test", fork_round=0)
+
+    status = mgr.get_branch_run_status("sim_014", branch.branch_id)
+    assert status["status"] == "idle"
+
+    mgr.update_branch_run_status("sim_014", branch.branch_id, {"status": "running", "current_round": 2})
+    status = mgr.get_branch_run_status("sim_014", branch.branch_id)
+    assert status["status"] == "running"
+    assert status["current_round"] == 2
+
+
+def test_branch_run_status_file_isolated_per_branch(tmp_path):
+    branches_dir = tmp_path / "simulations"
+    mgr = ConsumerInterventionManager(branches_dir=str(branches_dir))
+    b1 = mgr.create_branch(simulation_id="sim_015", name="B1", fork_round=0)
+    b2 = mgr.create_branch(simulation_id="sim_015", name="B2", fork_round=0)
+
+    mgr.update_branch_run_status("sim_015", b1.branch_id, {"status": "completed"})
+    mgr.update_branch_run_status("sim_015", b2.branch_id, {"status": "failed"})
+
+    assert mgr.get_branch_run_status("sim_015", b1.branch_id)["status"] == "completed"
+    assert mgr.get_branch_run_status("sim_015", b2.branch_id)["status"] == "failed"

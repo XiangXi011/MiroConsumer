@@ -75,6 +75,13 @@ class ConsumerInterventionManager:
     def _rounds_file(self, simulation_id: str, branch_id: str) -> Path:
         return self._branch_path(simulation_id, branch_id) / "rounds.jsonl"
 
+    def _branch_run_status_file(self, simulation_id: str, branch_id: str) -> Path:
+        return self._branch_path(simulation_id, branch_id) / "run_status.json"
+
+    def _base_simulation_rounds_path(self, simulation_id: str) -> Path:
+        from ...config import Config
+        return Path(Config.UPLOAD_FOLDER) / "simulations" / simulation_id / "consumer_rounds.jsonl"
+
     def create_branch(
         self,
         simulation_id: str,
@@ -131,6 +138,17 @@ class ConsumerInterventionManager:
         branch.status = status
         self._persist_branch(branch)
         return branch
+
+    def get_branch_run_status(self, simulation_id: str, branch_id: str) -> Dict[str, Any]:
+        path = self._branch_run_status_file(simulation_id, branch_id)
+        if not path.exists():
+            return {"status": "idle", "branch_id": branch_id, "simulation_id": simulation_id}
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    def update_branch_run_status(self, simulation_id: str, branch_id: str, status_data: Dict[str, Any]) -> None:
+        path = self._branch_run_status_file(simulation_id, branch_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(status_data, ensure_ascii=False, indent=2), encoding="utf-8")
 
     def add_intervention(
         self,
@@ -200,11 +218,12 @@ class ConsumerInterventionManager:
             raise ValueError("Branch not found")
 
         base_branch_id = branch.parent_branch_id
-        if base_branch_id is None:
-            # If no explicit parent, treat the branch itself as base for summary
-            base_branch_id = branch.branch_id
+        if base_branch_id is not None:
+            base_summary = self._summarize_branch_rounds(simulation_id, base_branch_id)
+        else:
+            # If no explicit parent, use the base simulation run as base
+            base_summary = self._summarize_base_simulation_rounds(simulation_id)
 
-        base_summary = self._summarize_branch_rounds(simulation_id, base_branch_id)
         branch_summary = self._summarize_branch_rounds(simulation_id, branch_id)
         interventions = self.list_interventions(simulation_id, branch_id=branch_id)
 
@@ -219,8 +238,7 @@ class ConsumerInterventionManager:
             "branch_summary": branch_summary,
         }
 
-    def _summarize_branch_rounds(self, simulation_id: str, branch_id: str) -> Dict[str, Any]:
-        rounds_path = self._rounds_file(simulation_id, branch_id)
+    def _summarize_rounds_at_path(self, rounds_path: Path) -> Dict[str, Any]:
         if not rounds_path.exists():
             return {"events_count": 0, "has_data": False}
 
@@ -253,6 +271,12 @@ class ConsumerInterventionManager:
             "top_risk_quotes": evidence.top_risk_quotes[:3],
             "top_misread_quotes": evidence.top_misread_quotes[:3],
         }
+
+    def _summarize_branch_rounds(self, simulation_id: str, branch_id: str) -> Dict[str, Any]:
+        return self._summarize_rounds_at_path(self._rounds_file(simulation_id, branch_id))
+
+    def _summarize_base_simulation_rounds(self, simulation_id: str) -> Dict[str, Any]:
+        return self._summarize_rounds_at_path(self._base_simulation_rounds_path(simulation_id))
 
 
 __all__ = [

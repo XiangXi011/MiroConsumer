@@ -221,6 +221,20 @@
           <div v-else class="consumer-intervention-empty">
             {{ $t('consumer.branchPanel.noInterventions') }}
           </div>
+
+          <div class="consumer-branch-run-section">
+            <button
+              class="consumer-branch-btn primary"
+              :disabled="runningBranch || (branchRunStatus && branchRunStatus.status === 'running')"
+              @click="doRunBranch"
+            >
+              <span v-if="runningBranch" class="loading-spinner-small"></span>
+              {{ runningBranch ? $t('consumer.branchPanel.running') : $t('consumer.branchPanel.runBranch') }}
+            </button>
+            <span v-if="branchRunStatus && branchRunStatus.status" class="branch-run-status-badge" :class="'status-' + branchRunStatus.status">
+              {{ branchRunStatus.status }}
+            </span>
+          </div>
         </div>
       </div>
     </div>
@@ -421,6 +435,8 @@ import {
   createBranch,
   listInterventions,
   addIntervention,
+  runBranch,
+  getBranchStatus,
 } from '../api/simulation'
 import { generateReport } from '../api/report'
 import {
@@ -481,6 +497,10 @@ const newInterventionType = ref('')
 const newInterventionPayload = ref('')
 const newInterventionTargetRound = ref(null)
 const addingIntervention = ref(false)
+
+const runningBranch = ref(false)
+const branchRunStatus = ref(null)
+let branchStatusTimer = null
 
 const interventionPayloadPlaceholder = computed(() => {
   const map = {
@@ -608,8 +628,14 @@ const loadBranches = async () => {
 const onBranchChange = async () => {
   saveSelectedBranch(props.simulationId, selectedBranchId.value || null)
   branchInterventions.value = []
+  branchRunStatus.value = null
+  stopBranchStatusPolling()
   if (selectedBranchId.value) {
     await loadInterventions()
+    await fetchBranchStatus()
+    if (branchRunStatus.value && branchRunStatus.value.status === 'running') {
+      startBranchStatusPolling()
+    }
   }
 }
 
@@ -678,6 +704,60 @@ const doAddIntervention = async () => {
     addLog(`Add intervention error: ${err.message}`)
   } finally {
     addingIntervention.value = false
+  }
+}
+
+const startBranchStatusPolling = () => {
+  if (branchStatusTimer) {
+    clearInterval(branchStatusTimer)
+  }
+  branchStatusTimer = setInterval(fetchBranchStatus, 2000)
+}
+
+const stopBranchStatusPolling = () => {
+  if (branchStatusTimer) {
+    clearInterval(branchStatusTimer)
+    branchStatusTimer = null
+  }
+}
+
+const fetchBranchStatus = async () => {
+  if (!props.simulationId || !selectedBranchId.value) return
+  try {
+    const res = await getBranchStatus(props.simulationId, selectedBranchId.value)
+    if (res.success && res.data) {
+      branchRunStatus.value = res.data
+      if (res.data.status === 'completed' || res.data.status === 'failed') {
+        stopBranchStatusPolling()
+        runningBranch.value = false
+        if (res.data.status === 'completed') {
+          addLog(`Branch run completed: ${selectedBranch.value?.name}`)
+        } else {
+          addLog(`Branch run failed: ${selectedBranch.value?.name}`)
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('fetchBranchStatus failed:', err)
+  }
+}
+
+const doRunBranch = async () => {
+  if (!props.simulationId || !selectedBranchId.value) return
+  runningBranch.value = true
+  try {
+    const res = await runBranch(props.simulationId, selectedBranchId.value)
+    if (res.success && res.data) {
+      addLog(`Branch run started: ${selectedBranch.value?.name} (R${res.data.fork_round})`)
+      branchRunStatus.value = { status: 'running' }
+      startBranchStatusPolling()
+    } else {
+      addLog(`Branch run failed: ${res.error || 'unknown'}`)
+      runningBranch.value = false
+    }
+  } catch (err) {
+    addLog(`Branch run error: ${err.message}`)
+    runningBranch.value = false
   }
 }
 
@@ -1023,6 +1103,7 @@ watch(() => props.simulationId, () => {
 
 onUnmounted(() => {
   stopPolling()
+  stopBranchStatusPolling()
 })
 </script>
 

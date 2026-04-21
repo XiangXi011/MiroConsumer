@@ -241,3 +241,22 @@ export const getBranchComparison = (simulationId, branchId) => {
   return service.get(`/api/simulation/${simulationId}/branches/${branchId}/comparison`)
 }
 
+/**
+ * 运行分支模拟
+ * @param {string} simulationId
+ * @param {string} branchId
+ * @param {Object} data - { max_rounds? }
+ */
+export const runBranch = (simulationId, branchId, data = {}) => {
+  return service.post(`/api/simulation/${simulationId}/branches/${branchId}/resume`, data)
+}
+
+/**
+ * 获取分支运行状态
+ * @param {string} simulationId
+ * @param {string} branchId
+ */
+export const getBranchStatus = (simulationId, branchId) => {
+  return service.get(`/api/simulation/${simulationId}/branches/${branchId}/status`)
+}
+

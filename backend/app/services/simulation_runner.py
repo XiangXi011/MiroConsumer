@@ -635,7 +635,237 @@ class SimulationRunner:
             cls._save_run_state(state)
         finally:
             cls._monitor_threads.pop(simulation_id, None)
-    
+
+    @classmethod
+    def run_branch_simulation(
+        cls,
+        simulation_id: str,
+        branch_id: str,
+        config: Dict[str, Any],
+    ) -> None:
+        """Run a consumer branch simulation with fork semantics and interventions.
+
+        This does NOT touch the base simulation's run_state.
+        Output is persisted under RUN_STATE_DIR/<sim_id>/branches/<branch_id>/.
+        """
+        from .consumer.intervention_manager import ConsumerInterventionManager
+
+        locale = get_locale()
+        mgr = ConsumerInterventionManager()
+
+        try:
+            branch = mgr.get_branch(simulation_id, branch_id)
+            if branch is None:
+                raise ValueError(f"Branch not found: {branch_id}")
+
+            interventions = mgr.list_interventions(simulation_id, branch_id=branch_id)
+            fork_round = branch.fork_round
+            total_rounds = config.get("total_rounds", 0)
+            if total_rounds <= 0:
+                time_config = config.get("time_config", {})
+                total_hours = time_config.get("total_simulation_hours", 72)
+                minutes_per_round = time_config.get("minutes_per_round", 30)
+                total_rounds = int(total_hours * 60 / minutes_per_round)
+
+            branch_dir = os.path.join(cls.RUN_STATE_DIR, simulation_id, "branches", branch_id)
+            os.makedirs(branch_dir, exist_ok=True)
+            output_path = os.path.join(branch_dir, "rounds.jsonl")
+            if os.path.exists(output_path):
+                os.remove(output_path)
+
+            mgr.update_branch_run_status(
+                simulation_id,
+                branch_id,
+                {
+                    "status": "running",
+                    "branch_id": branch_id,
+                    "simulation_id": simulation_id,
+                    "fork_round": fork_round,
+                    "total_rounds": total_rounds,
+                    "current_round": fork_round,
+                    "started_at": datetime.now().isoformat(),
+                },
+            )
+            project_id = config.get("project_id", "")
+            project = ProjectManager.get_project(project_id)
+            if not project:
+                raise ValueError(f"Project not found: {project_id}")
+
+            graph_payload = ProjectManager.load_consumer_graph_payload(project_id)
+            if not graph_payload or not graph_payload.get("nodes"):
+                raise ValueError(f"Consumer graph not found: {project_id}")
+
+            brief_summary = str(
+                config.get("pinned_brief_summary")
+                or "Pinned BusinessBrief Summary: consumer brief unavailable"
+            ).strip()
+
+            orchestrator = ConsumerSimulationOrchestrator(output_path=output_path)
+            graph_nodes = graph_payload.get("nodes", [])
+            personas = load_default_persona_pack()
+
+            research_findings: List[ResearchFinding] = []
+            consumer_config_path = os.path.join(cls.RUN_STATE_DIR, simulation_id, "consumer_config.json")
+            if os.path.exists(consumer_config_path):
+                with open(consumer_config_path, "r", encoding="utf-8") as f:
+                    consumer_config = json.load(f)
+                for finding_data in consumer_config.get("research_findings", []):
+                    research_findings.append(ResearchFinding(**finding_data))
+
+            previous_attitudes: Dict[str, str] = {}
+
+            # Fork semantics: seed pre-fork rounds from base simulation or parent branch
+            if fork_round > 0:
+                seed_source_path: Optional[str] = None
+                if branch.parent_branch_id:
+                    parent_rounds = os.path.join(
+                        cls.RUN_STATE_DIR, simulation_id, "branches", branch.parent_branch_id, "rounds.jsonl"
+                    )
+                    if os.path.exists(parent_rounds):
+                        seed_source_path = parent_rounds
+
+                if seed_source_path is None:
+                    base_rounds = os.path.join(cls.RUN_STATE_DIR, simulation_id, "consumer_rounds.jsonl")
+                    if os.path.exists(base_rounds):
+                        seed_source_path = base_rounds
+
+                if seed_source_path:
+                    with open(seed_source_path, "r", encoding="utf-8") as f:
+                        for line in f:
+                            line = line.strip()
+                            if not line:
+                                continue
+                            snap = json.loads(line)
+                            snap_round = snap.get("round_num", 0)
+                            if snap_round < fork_round:
+                                orchestrator.persist_round_snapshot(snap)
+                                agent_id = snap.get("agent_id", "")
+                                attitude = snap.get("attitude_label", "")
+                                if agent_id:
+                                    previous_attitudes[agent_id] = attitude
+
+            for round_num in range(fork_round, total_rounds):
+                round_summary = RoundSummary(
+                    round_num=round_num,
+                    start_time=datetime.now().isoformat(),
+                    simulated_hour=int(((round_num + 1) / max(total_rounds, 1)) * config.get("time_config", {}).get("total_simulation_hours", 72)),
+                )
+
+                for index, persona in enumerate(personas):
+                    agent_traits = map_persona_to_agent_traits(persona)
+                    agent_id = agent_traits["persona_id"]
+                    snapshot = orchestrator.build_round_snapshot(
+                        round_num=round_num,
+                        agent_traits={
+                            **agent_traits["propagation_profile"],
+                            "influence_weight": agent_traits["influence_weight"],
+                        },
+                        brief_summary=brief_summary,
+                        visible_graph_nodes=graph_nodes,
+                        agent_id=agent_id,
+                        agent_name=agent_traits["label"],
+                        research_findings=research_findings,
+                    )
+
+                    # Inject active interventions into the snapshot prompt
+                    active_interventions = [
+                        i for i in interventions
+                        if i.target_round is None or i.target_round == round_num
+                    ]
+                    if active_interventions:
+                        prompt_lines = snapshot["prompt"].split("\n")
+                        prompt_lines.append("Interventions:")
+                        for intervention in active_interventions:
+                            payload_text = ""
+                            if intervention.intervention_type == "clarification_injection":
+                                payload_text = str(intervention.payload.get("message", "")).strip()
+                            elif intervention.intervention_type == "revised_claim_injection":
+                                payload_text = str(intervention.payload.get("claim", "")).strip()
+                            elif intervention.intervention_type == "evidence_reveal":
+                                payload_text = str(intervention.payload.get("evidence", "")).strip()
+                            if payload_text:
+                                prompt_lines.append(f"- [{intervention.intervention_type}] {payload_text}")
+                        snapshot["prompt"] = "\n".join(prompt_lines)
+
+                    previous_attitude = previous_attitudes.get(agent_id)
+                    current_attitude = snapshot["attitude_label"]
+                    propagation_events = orchestrator.build_propagation_events_for_transition(
+                        round_num=round_num,
+                        agent_id=agent_id,
+                        previous_attitude=previous_attitude,
+                        current_attitude=current_attitude,
+                        current_bucket=snapshot["bucket"],
+                        visible_finding_ids=snapshot.get("visible_finding_ids", []),
+                        quote=snapshot["quote"],
+                        research_findings=research_findings,
+                    )
+                    snapshot["propagation_events"] = propagation_events
+                    orchestrator.persist_round_snapshot(snapshot)
+                    previous_attitudes[agent_id] = current_attitude
+
+                    action = AgentAction(
+                        round_num=round_num,
+                        timestamp=datetime.now().isoformat(),
+                        platform="reddit",
+                        agent_id=index,
+                        agent_name=agent_traits["label"],
+                        action_type="CONSUMER_REACTION",
+                        action_args={
+                            "attitude_label": snapshot["attitude_label"],
+                            "bucket": snapshot["bucket"],
+                            "engagement": snapshot["engagement"],
+                        },
+                        result=snapshot["quote"],
+                        success=True,
+                    )
+                    round_summary.actions.append(action)
+                    round_summary.reddit_actions += 1
+                    round_summary.active_agents.append(index)
+
+                round_summary.end_time = datetime.now().isoformat()
+                mgr.update_branch_run_status(
+                    simulation_id,
+                    branch_id,
+                    {
+                        "status": "running",
+                        "branch_id": branch_id,
+                        "simulation_id": simulation_id,
+                        "fork_round": fork_round,
+                        "total_rounds": total_rounds,
+                        "current_round": round_num + 1,
+                        "updated_at": datetime.now().isoformat(),
+                    },
+                )
+
+            mgr.update_branch_run_status(
+                simulation_id,
+                branch_id,
+                {
+                    "status": "completed",
+                    "branch_id": branch_id,
+                    "simulation_id": simulation_id,
+                    "fork_round": fork_round,
+                    "total_rounds": total_rounds,
+                    "current_round": total_rounds,
+                    "completed_at": datetime.now().isoformat(),
+                },
+            )
+            mgr.update_branch_status(simulation_id, branch_id, "completed")
+        except Exception as e:
+            logger.error(f"Branch simulation failed: {simulation_id}/{branch_id}, error={str(e)}")
+            mgr.update_branch_run_status(
+                simulation_id,
+                branch_id,
+                {
+                    "status": "failed",
+                    "branch_id": branch_id,
+                    "simulation_id": simulation_id,
+                    "error": str(e),
+                    "failed_at": datetime.now().isoformat(),
+                },
+            )
+            mgr.update_branch_status(simulation_id, branch_id, "failed")
+
     @classmethod
     def _monitor_simulation(cls, simulation_id: str, locale: str = 'zh'):
         """监控模拟进程，解析动作日志"""
