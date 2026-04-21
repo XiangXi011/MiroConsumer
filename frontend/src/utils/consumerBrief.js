@@ -29,6 +29,7 @@ export function buildConsumerBrief(formData = {}) {
     usage_scene: splitItems(formData.consumerScene),
     research_goal: normalizeText(formData.consumerResearchGoal),
     research_mode: normalizeText(formData.consumerResearchMode) || 'manual_only',
+    enable_lane_b: Boolean(formData.consumerEnableLaneB),
   }
 
   if (claims.length > 0) {

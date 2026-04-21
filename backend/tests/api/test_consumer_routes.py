@@ -69,6 +69,20 @@ def _consumer_brief_payload():
     }
 
 
+def _consumer_brief_payload_with_lane_b():
+    """Brief with enable_lane_b set to True."""
+    return {
+        "task_type": "concept_test",
+        "product_concept_assets": ["Glow serum stick"],
+        "copy_material": ["Brighter skin in one swipe"],
+        "claims": ["Derm-tested glow boost"],
+        "target_audience": ["busy commuters"],
+        "usage_scene": ["morning commute"],
+        "research_goal": "Understand first-impression appeal",
+        "enable_lane_b": True,
+    }
+
+
 def _consumer_brief_payload_auto_enrich():
     """Brief with auto_enrich and NO manual background materials."""
     return {
@@ -718,6 +732,89 @@ def test_prepare_consumer_simulation_auto_enrich_persists_findings(tmp_path, mon
     assert any(
         f["source_label"] == "auto_enrich" for f in consumer_config["research_findings"]
     )
+
+
+def test_consumer_build_persists_enable_lane_b(tmp_path, monkeypatch):
+    uploads_dir = tmp_path / "uploads"
+    projects_dir = uploads_dir / "projects"
+    monkeypatch.setattr(graph_api.Config, "UPLOAD_FOLDER", str(uploads_dir))
+    monkeypatch.setattr(graph_api.Config, "ZEP_API_KEY", None)
+    monkeypatch.setattr(ProjectManager, "PROJECTS_DIR", str(projects_dir))
+    _reset_task_manager()
+
+    class ExplodingGraphBuilderService:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError("Zep GraphBuilderService should not be used for consumer_test projects")
+
+    monkeypatch.setattr(graph_api, "GraphBuilderService", ExplodingGraphBuilderService)
+
+    project = ProjectManager.create_project(name="Consumer Lane B")
+    project.project_type = "consumer_test"
+    project.status = ProjectStatus.ONTOLOGY_GENERATED
+    project.ontology = {"entity_types": [{"name": "ProductConcept", "attributes": []}], "edge_types": []}
+    project.consumer_brief = _consumer_brief_payload_with_lane_b()
+    ProjectManager.save_project(project)
+    ProjectManager.save_extracted_text(project.project_id, "Some extracted text.")
+
+    app = _create_test_app()
+    client = app.test_client()
+
+    build_response = client.post("/api/graph/build", json={"project_id": project.project_id})
+
+    assert build_response.status_code == 200
+    saved_project = ProjectManager.get_project(project.project_id)
+
+    assert saved_project is not None
+    assert saved_project.consumer_context is not None
+    assert saved_project.consumer_context.get("enable_lane_b") is True
+
+
+def test_prepare_consumer_simulation_persists_enable_lane_b(tmp_path, monkeypatch):
+    uploads_dir = tmp_path / "uploads"
+    projects_dir = uploads_dir / "projects"
+    simulations_dir = _configure_simulation_storage(tmp_path, monkeypatch)
+    monkeypatch.setattr(graph_api.Config, "UPLOAD_FOLDER", str(uploads_dir))
+    monkeypatch.setattr(ProjectManager, "PROJECTS_DIR", str(projects_dir))
+    _reset_task_manager()
+
+    class ExplodingZepEntityReader:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError("Consumer prepare should not initialize ZepEntityReader")
+
+    class ImmediateThread:
+        def __init__(self, target=None, daemon=None):
+            self._target = target
+            self.daemon = daemon
+
+        def start(self):
+            self._target()
+
+    monkeypatch.setattr(simulation_api, "ZepEntityReader", ExplodingZepEntityReader)
+    monkeypatch.setattr(threading, "Thread", ImmediateThread)
+
+    project = ProjectManager.create_project(name="Consumer Lane B Prepare")
+    project.project_type = "consumer_test"
+    project.graph_id = f"consumer_{project.project_id}"
+    project.consumer_brief = _consumer_brief_payload_with_lane_b()
+    ProjectManager.save_project(project)
+    ProjectManager.save_extracted_text(project.project_id, "Some extracted text.")
+
+    app = _create_test_app()
+    client = app.test_client()
+
+    create_response = client.post("/api/simulation/create", json={"project_id": project.project_id})
+    assert create_response.status_code == 200
+    simulation_id = create_response.get_json()["data"]["simulation_id"]
+
+    prepare_response = client.post("/api/simulation/prepare", json={"simulation_id": simulation_id})
+
+    assert prepare_response.status_code == 200
+    simulation_dir = simulations_dir / simulation_id
+    consumer_config = json.loads((simulation_dir / "consumer_config.json").read_text(encoding="utf-8"))
+
+    assert consumer_config["enable_lane_b"] is True
+    state_payload = json.loads((simulation_dir / "state.json").read_text(encoding="utf-8"))
+    assert state_payload["enable_lane_b"] is True
 
 
 def test_consumer_summary_route_returns_voc_and_shift(tmp_path, monkeypatch):

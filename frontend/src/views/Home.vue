@@ -305,6 +305,28 @@
                   <p class="research-mode-hint">{{ $t('home.consumerResearchModeHint') }}</p>
                 </div>
                 <div class="brief-field brief-field-wide">
+                  <label>{{ $t('home.consumerEnableLaneBLabel') }}</label>
+                  <div class="research-mode-switch">
+                    <button
+                      class="mode-btn"
+                      :class="{ active: !formData.consumerEnableLaneB }"
+                      @click="formData.consumerEnableLaneB = false"
+                      :disabled="loading"
+                    >
+                      {{ $t('home.consumerEnableLaneBOff') }}
+                    </button>
+                    <button
+                      class="mode-btn"
+                      :class="{ active: formData.consumerEnableLaneB }"
+                      @click="formData.consumerEnableLaneB = true"
+                      :disabled="loading"
+                    >
+                      {{ $t('home.consumerEnableLaneBOn') }}
+                    </button>
+                  </div>
+                  <p class="research-mode-hint">{{ $t('home.consumerEnableLaneBHint') }}</p>
+                </div>
+                <div class="brief-field brief-field-wide">
                   <label>{{ $t('home.consumerBackgroundMaterialsLabel') }}</label>
                   <textarea
                     v-model="formData.consumerBackgroundMaterials"
@@ -365,6 +387,7 @@ const formData = ref({
   consumerScene: '',
   consumerResearchGoal: '',
   consumerResearchMode: 'manual_only',
+  consumerEnableLaneB: false,
   consumerBackgroundMaterials: ''
 })
 
@@ -473,7 +496,8 @@ const startSimulation = () => {
       simulationRequirement: resolvedSimulationRequirement.value,
       projectType: formData.value.projectType,
       consumerBrief: isConsumerMode.value ? buildConsumerBrief(formData.value) : null,
-      researchMode: isConsumerMode.value ? (formData.value.consumerResearchMode || 'manual_only') : 'manual_only'
+      researchMode: isConsumerMode.value ? (formData.value.consumerResearchMode || 'manual_only') : 'manual_only',
+      enableLaneB: isConsumerMode.value ? Boolean(formData.value.consumerEnableLaneB) : false
     })
     
     // 立即跳转到Process页面（使用特殊标识表示新建项目）

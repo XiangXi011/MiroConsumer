@@ -78,6 +78,70 @@
                 </div>
               </div>
             </div>
+
+            <div v-if="isConsumerMode && consumerResearchSnapshot" class="consumer-findings-strip">
+              <div class="consumer-findings-header">{{ $t('consumer.researchSnapshot') }}</div>
+              <div class="snapshot-grid report">
+                <div class="snapshot-item">
+                  <span class="snapshot-value">{{ consumerResearchSnapshot.source_count || 0 }}</span>
+                  <span class="snapshot-label">{{ $t('consumer.snapshotSources') }}</span>
+                </div>
+                <div class="snapshot-item">
+                  <span class="snapshot-value">{{ consumerResearchSnapshot.document_count || 0 }}</span>
+                  <span class="snapshot-label">{{ $t('consumer.snapshotDocuments') }}</span>
+                </div>
+                <div class="snapshot-item">
+                  <span class="snapshot-value">{{ consumerResearchSnapshot.chunk_count || 0 }}</span>
+                  <span class="snapshot-label">{{ $t('consumer.snapshotChunks') }}</span>
+                </div>
+                <div class="snapshot-item">
+                  <span class="snapshot-value">{{ consumerResearchSnapshot.finding_count || 0 }}</span>
+                  <span class="snapshot-label">{{ $t('consumer.snapshotFindings') }}</span>
+                </div>
+                <div class="snapshot-item">
+                  <span class="snapshot-value">{{ consumerResearchSnapshot.retrieval_trace_count || 0 }}</span>
+                  <span class="snapshot-label">{{ $t('consumer.snapshotTraces') }}</span>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="isConsumerMode && consumerCitationReadyFindings.length > 0" class="consumer-findings-strip">
+              <div class="consumer-findings-header">{{ $t('consumer.citationReadyFindings') }}</div>
+              <div class="consumer-findings-list">
+                <div
+                  v-for="(f, idx) in consumerCitationReadyFindings"
+                  :key="idx"
+                  class="consumer-finding-item"
+                  :class="'type-' + f.findingType"
+                >
+                  <span class="finding-type">{{ f.findingType }}</span>
+                  <span class="finding-text">{{ f.summary }}</span>
+                  <div v-if="f.sourceLabel || f.sourceId || f.retrievalTraceId" class="finding-provenance">
+                    <span v-if="f.sourceLabel" class="prov-badge">{{ f.sourceLabel }}</span>
+                    <span v-if="f.sourceId" class="prov-id">src:{{ f.sourceId }}</span>
+                    <span v-if="f.snippetId" class="prov-id">snip:{{ f.snippetId }}</span>
+                    <span v-if="f.retrievalTraceId" class="prov-id">trace:{{ f.retrievalTraceId }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="isConsumerMode && consumerRetrievalTraces.length > 0" class="consumer-findings-strip">
+              <div class="consumer-findings-header">{{ $t('consumer.retrievalTraces') }}</div>
+              <div class="consumer-findings-list">
+                <div
+                  v-for="(trace, idx) in consumerRetrievalTraces"
+                  :key="idx"
+                  class="consumer-finding-item"
+                >
+                  <span class="finding-text">{{ trace.query }}</span>
+                  <div class="finding-provenance">
+                    <span class="prov-badge">{{ trace.lane }}</span>
+                    <span class="prov-id">{{ (trace.chunk_ids || []).length }} chunks</span>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
 
           <!-- Sections List -->
@@ -563,6 +627,34 @@ const consumerCausalChains = computed(() => {
     .filter(c => c && c.finding_summary)
     .map(c => ({
       description: `${c.finding_summary} → ${(c.event_types || []).join(', ')}`,
+    }))
+})
+
+const consumerResearchSnapshot = computed(() => {
+  if (!isConsumerMode.value || !props.reportData?.report_context) return null
+  return props.reportData.report_context.research_snapshot || null
+})
+
+const consumerRetrievalTraces = computed(() => {
+  if (!isConsumerMode.value || !props.reportData?.report_context) return []
+  return props.reportData.report_context.retrieval_traces || []
+})
+
+const consumerCitationReadyFindings = computed(() => {
+  if (!isConsumerMode.value || !props.reportData?.report_context) return []
+  const findings = props.reportData.report_context.research_findings || []
+  return findings
+    .filter(f => f && f.summary)
+    .map(f => ({
+      findingId: f.finding_id || '',
+      findingType: f.finding_type || '',
+      summary: f.summary,
+      sourceLabel: f.source_label || '',
+      sourceId: f.source_id || '',
+      snippetId: f.snippet_id || '',
+      retrievalTraceId: f.retrieval_trace_id || '',
+      confidence: f.confidence || 0,
+      visibility: f.visibility || '',
     }))
 })
 
@@ -5357,6 +5449,60 @@ watch(() => props.reportId, (newId) => {
 .log-msg.error { color: #EF5350; }
 .log-msg.warning { color: #FFA726; }
 .log-msg.success { color: #66BB6A; }
+
+/* Research snapshot grid for report */
+.snapshot-grid.report {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.snapshot-grid.report .snapshot-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px;
+  background: #FAFAFA;
+  border: 1px solid #EEE;
+  border-radius: 4px;
+}
+
+.snapshot-grid.report .snapshot-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #1E293B;
+}
+
+.snapshot-grid.report .snapshot-label {
+  font-size: 0.65rem;
+  color: #94A3B8;
+  margin-top: 2px;
+}
+
+/* Finding provenance badges */
+.finding-provenance {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.prov-badge {
+  font-size: 0.65rem;
+  font-family: 'JetBrains Mono', monospace;
+  padding: 2px 6px;
+  background: #E0F2FE;
+  color: #0369A1;
+  border-radius: 4px;
+}
+
+.prov-id {
+  font-size: 0.65rem;
+  font-family: 'JetBrains Mono', monospace;
+  color: #94A3B8;
+}
 </style>
 
 <style>

@@ -25,6 +25,7 @@ const createDefaultState = () => ({
   projectType: 'default',
   consumerBrief: null,
   researchMode: 'manual_only',
+  enableLaneB: false,
   isPending: false
 })
 
@@ -43,6 +44,7 @@ export function setPendingUpload(filesOrPayload, requirement) {
   state.projectType = payload.projectType || 'default'
   state.consumerBrief = payload.consumerBrief || null
   state.researchMode = payload.researchMode || 'manual_only'
+  state.enableLaneB = payload.enableLaneB || false
   state.isPending = true
 }
 
@@ -53,6 +55,7 @@ export function getPendingUpload() {
     projectType: state.projectType,
     consumerBrief: state.consumerBrief,
     researchMode: state.researchMode,
+    enableLaneB: state.enableLaneB,
     isPending: state.isPending
   }
 }

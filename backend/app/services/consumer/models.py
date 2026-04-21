@@ -174,6 +174,18 @@ def _normalize_research_mode(value: Any) -> str:
     return "manual_only"
 
 
+def _normalize_enable_lane_b(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"true", "1", "yes"}
+    if isinstance(value, (int, float)):
+        return bool(value)
+    return False
+
+
 @dataclass
 class ConsumerBusinessBrief:
     task_type: ConsumerTaskType
@@ -186,6 +198,7 @@ class ConsumerBusinessBrief:
     optional_background_materials: List[str] = field(default_factory=list)
     graph_visibility: GraphVisibility = GraphVisibility.Initial
     research_mode: str = "manual_only"
+    enable_lane_b: bool = False
     supported_task_types: ClassVar[set[ConsumerTaskType]] = {
         ConsumerTaskType.ConceptTest,
         ConsumerTaskType.CopyFeedback,
@@ -212,6 +225,7 @@ class ConsumerBusinessBrief:
         self.research_goal = _normalize_required_text(self.research_goal, "research_goal")
         self.graph_visibility = _normalize_graph_visibility(self.graph_visibility)
         self.research_mode = _normalize_research_mode(self.research_mode)
+        self.enable_lane_b = _normalize_enable_lane_b(self.enable_lane_b)
 
     def to_summary(self) -> Dict[str, Any]:
         return {
@@ -225,4 +239,5 @@ class ConsumerBusinessBrief:
             "optional_background_materials": self.optional_background_materials,
             "graph_visibility": self.graph_visibility.value,
             "research_mode": self.research_mode,
+            "enable_lane_b": self.enable_lane_b,
         }

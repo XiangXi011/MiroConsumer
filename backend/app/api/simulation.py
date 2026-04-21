@@ -348,6 +348,7 @@ def _check_simulation_prepared(simulation_id: str) -> tuple:
                 "consumer_mode": state_data.get("consumer_mode", False),
                 "persona_pack_id": state_data.get("persona_pack_id", ""),
                 "pinned_brief_summary": state_data.get("pinned_brief_summary", ""),
+                "enable_lane_b": state_data.get("enable_lane_b", False),
                 "created_at": state_data.get("created_at"),
                 "updated_at": state_data.get("updated_at"),
                 "existing_files": existing_files

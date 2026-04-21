@@ -74,6 +74,7 @@ class SimulationState:
     config_reasoning: str = ""
     persona_pack_id: str = ""
     pinned_brief_summary: str = ""
+    enable_lane_b: bool = False
 
     current_round: int = 0
     twitter_status: str = "not_started"
@@ -101,6 +102,7 @@ class SimulationState:
             "config_reasoning": self.config_reasoning,
             "persona_pack_id": self.persona_pack_id,
             "pinned_brief_summary": self.pinned_brief_summary,
+            "enable_lane_b": self.enable_lane_b,
             "current_round": self.current_round,
             "twitter_status": self.twitter_status,
             "reddit_status": self.reddit_status,
@@ -123,6 +125,7 @@ class SimulationState:
             "config_generated": self.config_generated,
             "persona_pack_id": self.persona_pack_id,
             "pinned_brief_summary": self.pinned_brief_summary,
+            "enable_lane_b": self.enable_lane_b,
             "error": self.error,
         }
 
@@ -182,6 +185,7 @@ class SimulationManager:
             config_reasoning=data.get("config_reasoning", ""),
             persona_pack_id=data.get("persona_pack_id", ""),
             pinned_brief_summary=data.get("pinned_brief_summary", ""),
+            enable_lane_b=data.get("enable_lane_b", False),
             current_round=data.get("current_round", 0),
             twitter_status=data.get("twitter_status", "not_started"),
             reddit_status=data.get("reddit_status", "not_started"),
@@ -476,6 +480,7 @@ class SimulationManager:
         state.entities_count = len(persona_pack)
         state.persona_pack_id = "default_persona_pack"
         state.pinned_brief_summary = self._build_consumer_brief_summary(brief)
+        state.enable_lane_b = brief.enable_lane_b
 
         if progress_callback:
             progress_callback(
@@ -560,12 +565,14 @@ class SimulationManager:
             provider=default_auto_research_provider,
             project_id=state.project_id,
             upload_root=Config.UPLOAD_FOLDER,
+            enable_lane_b=brief.enable_lane_b,
         )
         snapshot = build_research_snapshot(
             state.project_id,
             brief=brief,
             upload_root=Config.UPLOAD_FOLDER,
             provider=default_auto_research_provider,
+            enable_lane_b=brief.enable_lane_b,
         )
         self._write_json(
             os.path.join(sim_dir, "consumer_config.json"),
@@ -577,6 +584,7 @@ class SimulationManager:
                 "profiles_count": state.profiles_count,
                 "consumer_brief": brief.to_summary(),
                 "research_mode": brief.research_mode,
+                "enable_lane_b": brief.enable_lane_b,
                 "research_summary": build_research_summary(research_findings),
                 "research_findings": [f.model_dump() for f in research_findings],
                 "research_findings_count": len(research_findings),

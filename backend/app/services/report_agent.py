@@ -1882,8 +1882,10 @@ class ReportAgent:
             for event_data in snap.get("propagation_events", []):
                 all_events.append(event_data)
 
-        # Load research findings
+        # Load research findings and snapshot
         research_findings = []
+        retrieval_traces = []
+        research_snapshot = {}
         consumer_config_path = os.path.join(
             Config.UPLOAD_FOLDER, "simulations", self.simulation_id, "consumer_config.json"
         )
@@ -1891,6 +1893,13 @@ class ReportAgent:
             with open(consumer_config_path, "r", encoding="utf-8") as f:
                 consumer_config = json.load(f)
             research_findings = consumer_config.get("research_findings", [])
+            retrieval_traces = consumer_config.get("retrieval_traces", [])
+            research_snapshot = consumer_config.get("research_snapshot", {})
+
+        # Include research snapshot and findings in report context
+        context["research_snapshot"] = research_snapshot
+        context["research_findings"] = research_findings
+        context["retrieval_traces"] = retrieval_traces
 
         # Merge Phase 2 fields when events exist
         if all_events:
@@ -1915,12 +1924,14 @@ class ReportAgent:
                 summary=phase2_summary,
                 findings=research_findings,
                 events=all_events,
+                traces=retrieval_traces,
             )
 
             context["event_counts"] = phase2_summary.event_counts
             context["top_risk_findings"] = phase2_summary.top_risk_findings
             context["causal_chains"] = phase2_context["causal_chains"]
             context["event_led_reversals"] = phase2_context["event_led_reversals"]
+            context["retrieval_provenance"] = phase2_context.get("retrieval_provenance")
 
         return context
 

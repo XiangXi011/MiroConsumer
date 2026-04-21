@@ -169,6 +169,32 @@
               </div>
               <p class="research-access-hint">{{ $t('consumer.accessPolicy.round0Hint') }} · {{ $t('consumer.accessPolicy.propagationHint') }}</p>
             </div>
+            <div v-if="isConsumerMode && Object.keys(consumerResearchSnapshot).length > 0" class="consumer-research-panel">
+              <div class="consumer-research-label">{{ $t('consumer.researchSnapshot') }}</div>
+              <div class="snapshot-grid">
+                <div class="snapshot-item">
+                  <span class="snapshot-value">{{ consumerResearchSnapshot.source_count || 0 }}</span>
+                  <span class="snapshot-label">{{ $t('consumer.snapshotSources') }}</span>
+                </div>
+                <div class="snapshot-item">
+                  <span class="snapshot-value">{{ consumerResearchSnapshot.document_count || 0 }}</span>
+                  <span class="snapshot-label">{{ $t('consumer.snapshotDocuments') }}</span>
+                </div>
+                <div class="snapshot-item">
+                  <span class="snapshot-value">{{ consumerResearchSnapshot.chunk_count || 0 }}</span>
+                  <span class="snapshot-label">{{ $t('consumer.snapshotChunks') }}</span>
+                </div>
+                <div class="snapshot-item">
+                  <span class="snapshot-value">{{ consumerResearchSnapshot.finding_count || 0 }}</span>
+                  <span class="snapshot-label">{{ $t('consumer.snapshotFindings') }}</span>
+                </div>
+                <div class="snapshot-item">
+                  <span class="snapshot-value">{{ consumerResearchSnapshot.retrieval_trace_count || 0 }}</span>
+                  <span class="snapshot-label">{{ $t('consumer.snapshotTraces') }}</span>
+                </div>
+              </div>
+              <div v-if="consumerEnableLaneB" class="snapshot-lane-b-badge">{{ $t('consumer.laneBEnabled') }}</div>
+            </div>
             <!-- 时间配置 -->
             <div class="config-block">
               <div class="config-grid">
@@ -763,6 +789,10 @@ const pinnedBriefSummary = computed(() => consumerConfigMeta.value.pinned_brief_
 
 const consumerResearchFindings = computed(() => consumerConfigMeta.value.research_findings || [])
 
+const consumerResearchSnapshot = computed(() => consumerConfigMeta.value.research_snapshot || {})
+
+const consumerEnableLaneB = computed(() => consumerConfigMeta.value.enable_lane_b || false)
+
 const findingTypeLabel = (type) => {
   const map = {
     category_context: t('consumer.findingType.category_context'),
@@ -798,6 +828,15 @@ const applyConsumerConfigMeta = (...sources) => {
     }
     if (source.pinned_brief_summary) {
       nextMeta.pinned_brief_summary = source.pinned_brief_summary
+    }
+    if (source.research_findings) {
+      nextMeta.research_findings = source.research_findings
+    }
+    if (source.enable_lane_b !== undefined) {
+      nextMeta.enable_lane_b = Boolean(source.enable_lane_b)
+    }
+    if (source.research_snapshot) {
+      nextMeta.research_snapshot = source.research_snapshot
     }
   })
 
@@ -2735,5 +2774,47 @@ onUnmounted(() => {
 .modal-leave-to .profile-modal {
   transform: scale(0.95) translateY(10px);
   opacity: 0;
+}
+
+/* Research snapshot grid */
+.snapshot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.snapshot-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px;
+  background: #F9F9F9;
+  border: 1px solid #EEE;
+  border-radius: 4px;
+}
+
+.snapshot-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: #1E293B;
+}
+
+.snapshot-label {
+  font-size: 0.7rem;
+  color: #94A3B8;
+  margin-top: 4px;
+}
+
+.snapshot-lane-b-badge {
+  margin-top: 10px;
+  padding: 4px 10px;
+  background: #E0F2FE;
+  color: #0369A1;
+  font-size: 0.75rem;
+  font-family: 'JetBrains Mono', monospace;
+  border-radius: 4px;
+  display: inline-block;
 }
 </style>

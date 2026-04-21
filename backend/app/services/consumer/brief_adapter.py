@@ -3,6 +3,7 @@ from typing import Any, Mapping
 from .models import (
     ConsumerBusinessBrief,
     GraphVisibility,
+    _normalize_enable_lane_b,
     _normalize_graph_visibility,
     _normalize_research_mode,
     _normalize_string_list,
@@ -52,4 +53,5 @@ class ConsumerBriefAdapter:
             ),
             graph_visibility=_normalize_graph_visibility(payload.get("graph_visibility")),
             research_mode=_normalize_research_mode(payload.get("research_mode")),
+            enable_lane_b=_normalize_enable_lane_b(payload.get("enable_lane_b")),
         )

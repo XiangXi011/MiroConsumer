@@ -29,6 +29,7 @@ test('buildConsumerBrief normalizes multiline and delimited fields', () => {
     usage_scene: ['weekday breakfast', 'commute snack'],
     research_goal: 'Identify resonance and misread risks',
     research_mode: 'manual_only',
+    enable_lane_b: false,
   })
 })
 
@@ -88,4 +89,39 @@ test('buildConsumerBrief defaults research mode to manual_only when omitted', ()
   })
 
   assert.equal(brief.research_mode, 'manual_only')
+})
+
+test('buildConsumerBrief defaults enable_lane_b to false when omitted', () => {
+  const brief = buildConsumerBrief({
+    consumerConcept: 'Protein yogurt',
+    consumerCopy: '14g protein',
+    consumerAudience: 'fitness beginners',
+    consumerResearchGoal: 'Find resonance',
+  })
+
+  assert.equal(brief.enable_lane_b, false)
+})
+
+test('buildConsumerBrief carries enable_lane_b when true', () => {
+  const brief = buildConsumerBrief({
+    consumerConcept: 'Protein yogurt',
+    consumerCopy: '14g protein',
+    consumerAudience: 'fitness beginners',
+    consumerResearchGoal: 'Find resonance',
+    consumerEnableLaneB: true,
+  })
+
+  assert.equal(brief.enable_lane_b, true)
+})
+
+test('buildConsumerBrief carries enable_lane_b when false', () => {
+  const brief = buildConsumerBrief({
+    consumerConcept: 'Protein yogurt',
+    consumerCopy: '14g protein',
+    consumerAudience: 'fitness beginners',
+    consumerResearchGoal: 'Find resonance',
+    consumerEnableLaneB: false,
+  })
+
+  assert.equal(brief.enable_lane_b, false)
 })

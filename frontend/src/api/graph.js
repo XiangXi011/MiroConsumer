@@ -23,7 +23,11 @@ export function buildOntologyFormData(payload = {}) {
   }
 
   if (payload.consumerBrief) {
-    formData.append('consumer_brief', JSON.stringify(payload.consumerBrief))
+    const brief = { ...payload.consumerBrief }
+    if (payload.enableLaneB !== undefined) {
+      brief.enable_lane_b = Boolean(payload.enableLaneB)
+    }
+    formData.append('consumer_brief', JSON.stringify(brief))
   }
 
   return formData

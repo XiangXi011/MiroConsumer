@@ -143,6 +143,54 @@ def test_adapter_rejects_invalid_graph_visibility():
         )
 
 
+def test_enable_lane_b_defaults_to_false():
+    brief = ConsumerBriefAdapter.from_payload(
+        {
+            "task_type": "concept_test",
+            "product_concept_assets": ["prototype.png"],
+            "research_goal": "Understand appeal",
+        }
+    )
+    assert brief.enable_lane_b is False
+
+
+def test_enable_lane_b_true_from_boolean():
+    brief = ConsumerBriefAdapter.from_payload(
+        {
+            "task_type": "concept_test",
+            "product_concept_assets": ["prototype.png"],
+            "research_goal": "Understand appeal",
+            "enable_lane_b": True,
+        }
+    )
+    assert brief.enable_lane_b is True
+
+
+def test_enable_lane_b_true_from_string():
+    brief = ConsumerBriefAdapter.from_payload(
+        {
+            "task_type": "concept_test",
+            "product_concept_assets": ["prototype.png"],
+            "research_goal": "Understand appeal",
+            "enable_lane_b": "true",
+        }
+    )
+    assert brief.enable_lane_b is True
+
+
+def test_enable_lane_b_in_summary():
+    brief = ConsumerBriefAdapter.from_payload(
+        {
+            "task_type": "concept_test",
+            "product_concept_assets": ["prototype.png"],
+            "research_goal": "Understand appeal",
+            "enable_lane_b": True,
+        }
+    )
+    summary = brief.to_summary()
+    assert summary["enable_lane_b"] is True
+
+
 def test_model_rejects_invalid_task_type_and_graph_visibility():
     with pytest.raises(ValueError, match="Unsupported task_type"):
         ConsumerBusinessBrief(

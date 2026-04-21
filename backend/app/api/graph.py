@@ -89,6 +89,7 @@ def _build_consumer_graph(project, text: str):
         provider=default_auto_research_provider,
         project_id=project.project_id,
         upload_root=Config.UPLOAD_FOLDER,
+        enable_lane_b=brief.enable_lane_b,
     )
     graph_payload = ConsumerGraphBuilder().build(
         brief=brief,
@@ -108,11 +109,13 @@ def _build_consumer_graph(project, text: str):
         brief=brief,
         upload_root=Config.UPLOAD_FOLDER,
         provider=default_auto_research_provider,
+        enable_lane_b=brief.enable_lane_b,
     )
 
     # Persist research context for downstream simulation/reporting
     project.consumer_context = {
         "research_mode": brief.research_mode,
+        "enable_lane_b": brief.enable_lane_b,
         "research_summary": build_research_summary(research_findings),
         "research_findings_count": len(research_findings),
         "auto_enrich_count": sum(
@@ -133,6 +136,7 @@ def _build_consumer_graph(project, text: str):
             "document_count": len(snapshot.documents),
             "chunk_count": len(snapshot.chunks),
             "finding_count": len(snapshot.findings),
+            "retrieval_trace_count": len(snapshot.retrieval_traces),
         },
     }
     ProjectManager.save_project(project)

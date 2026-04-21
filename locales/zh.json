@@ -95,6 +95,10 @@
     "consumerResearchModeManual": "仅手动",
     "consumerResearchModeAuto": "自动增强",
     "consumerResearchModeHint": "自动增强会自动运行预研，为模拟注入品类语境和风险信号。",
+    "consumerEnableLaneBLabel": "公开网络补充研究",
+    "consumerEnableLaneBOff": "关闭",
+    "consumerEnableLaneBOn": "开启",
+    "consumerEnableLaneBHint": "开启公开网络补充研究，以外部来源填补信息缺口。",
     "consumerBackgroundMaterialsLabel": "背景材料",
     "consumerBackgroundMaterialsPlaceholder": "选填。粘贴任何背景研究、竞品信号或已知风险点，每行一条。"
   },
@@ -351,6 +355,15 @@
       "clarification_recovery": "澄清恢复"
     },
     "researchFindings": "研究发现",
+    "researchSnapshot": "研究快照",
+    "snapshotSources": "来源数",
+    "snapshotDocuments": "文档数",
+    "snapshotChunks": "分块数",
+    "snapshotFindings": "发现数",
+    "snapshotTraces": "检索轨迹",
+    "laneBEnabled": "Lane B（公开网络）已启用",
+    "citationReadyFindings": "可引用发现",
+    "retrievalTraces": "检索轨迹",
     "findingType": {
       "category_context": "品类语境",
       "competitor_signal": "竞品信号",
