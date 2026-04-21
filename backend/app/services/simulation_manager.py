@@ -18,6 +18,7 @@ from .consumer.brief_adapter import ConsumerBriefAdapter
 from .consumer.models import ConsumerBusinessBrief
 from .consumer.persona_pack import load_default_persona_pack, map_persona_to_agent_traits
 from .consumer.lane_b_provider import build_lane_b_provider
+from .consumer.project_research_persistence import persist_findings, persist_snapshot
 from .consumer.research_ingest import (
     build_research_snapshot,
     build_research_summary,
@@ -587,6 +588,11 @@ class SimulationManager:
             enable_lane_b=brief.enable_lane_b,
             lane_b_provider=lane_b_provider,
         )
+
+        # Persist/refresh formal project-level research artifacts
+        persist_findings(state.project_id, research_findings, upload_root=Config.UPLOAD_FOLDER)
+        persist_snapshot(state.project_id, snapshot, upload_root=Config.UPLOAD_FOLDER)
+
         self._write_json(
             os.path.join(sim_dir, "consumer_config.json"),
             {

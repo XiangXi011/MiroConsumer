@@ -997,3 +997,241 @@ def test_generate_consumer_report_includes_voc_quotes(tmp_path, monkeypatch):
     assert "This actually sounds like a real breakfast fix." in report.markdown_content
     assert "Low sugar? I don't trust that claim" in report.markdown_content
     assert reports_dir.exists()
+
+
+def test_consumer_build_persists_project_level_research_artifacts(tmp_path, monkeypatch):
+    uploads_dir = tmp_path / "uploads"
+    projects_dir = uploads_dir / "projects"
+    monkeypatch.setattr(graph_api.Config, "UPLOAD_FOLDER", str(uploads_dir))
+    monkeypatch.setattr(graph_api.Config, "ZEP_API_KEY", None)
+    monkeypatch.setattr(ProjectManager, "PROJECTS_DIR", str(projects_dir))
+    _reset_task_manager()
+
+    class ExplodingGraphBuilderService:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError("Zep GraphBuilderService should not be used for consumer_test projects")
+
+    monkeypatch.setattr(graph_api, "GraphBuilderService", ExplodingGraphBuilderService)
+
+    project = ProjectManager.create_project(name="Consumer Build Artifacts")
+    project.project_type = "consumer_test"
+    project.status = ProjectStatus.ONTOLOGY_GENERATED
+    project.ontology = {"entity_types": [{"name": "ProductConcept", "attributes": []}], "edge_types": []}
+    project.consumer_brief = _consumer_brief_payload()
+    ProjectManager.save_project(project)
+    ProjectManager.save_extracted_text(project.project_id, "Some extracted text.")
+
+    app = _create_test_app()
+    client = app.test_client()
+
+    build_response = client.post("/api/graph/build", json={"project_id": project.project_id})
+
+    assert build_response.status_code == 200
+    research_dir = uploads_dir / "projects" / project.project_id / "research"
+    assert (research_dir / "findings.json").exists()
+    assert (research_dir / "research_snapshot.json").exists()
+
+    findings_data = json.loads((research_dir / "findings.json").read_text(encoding="utf-8"))
+    assert findings_data["project_id"] == project.project_id
+    assert findings_data["finding_count"] > 0
+
+    snapshot_data = json.loads((research_dir / "research_snapshot.json").read_text(encoding="utf-8"))
+    assert snapshot_data["project_id"] == project.project_id
+    assert snapshot_data["snapshot_id"] == f"rsnap_{project.project_id}"
+
+
+def test_prepare_consumer_simulation_refreshes_project_level_artifacts(tmp_path, monkeypatch):
+    uploads_dir = tmp_path / "uploads"
+    projects_dir = uploads_dir / "projects"
+    simulations_dir = _configure_simulation_storage(tmp_path, monkeypatch)
+    monkeypatch.setattr(graph_api.Config, "UPLOAD_FOLDER", str(uploads_dir))
+    monkeypatch.setattr(ProjectManager, "PROJECTS_DIR", str(projects_dir))
+    _reset_task_manager()
+
+    class ExplodingZepEntityReader:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError("Consumer prepare should not initialize ZepEntityReader")
+
+    class ImmediateThread:
+        def __init__(self, target=None, daemon=None):
+            self._target = target
+            self.daemon = daemon
+
+        def start(self):
+            self._target()
+
+    monkeypatch.setattr(simulation_api, "ZepEntityReader", ExplodingZepEntityReader)
+    monkeypatch.setattr(threading, "Thread", ImmediateThread)
+
+    project = ProjectManager.create_project(name="Consumer Prepare Artifacts")
+    project.project_type = "consumer_test"
+    project.graph_id = f"consumer_{project.project_id}"
+    project.consumer_brief = _consumer_brief_payload()
+    ProjectManager.save_project(project)
+    ProjectManager.save_extracted_text(project.project_id, "Some extracted text.")
+
+    # Pre-seed old artifacts to verify they get refreshed
+    from app.services.consumer.project_research_persistence import persist_findings, persist_snapshot
+    from app.services.consumer.models import ResearchSnapshot
+    persist_findings(project.project_id, [], upload_root=str(uploads_dir))
+    persist_snapshot(
+        project.project_id,
+        ResearchSnapshot(snapshot_id="old_snap", project_id=project.project_id, created_at="2026-04-21T10:00:00+00:00"),
+        upload_root=str(uploads_dir),
+    )
+
+    app = _create_test_app()
+    client = app.test_client()
+
+    create_response = client.post("/api/simulation/create", json={"project_id": project.project_id})
+    assert create_response.status_code == 200
+    simulation_id = create_response.get_json()["data"]["simulation_id"]
+
+    prepare_response = client.post("/api/simulation/prepare", json={"simulation_id": simulation_id})
+    assert prepare_response.status_code == 200
+
+    research_dir = uploads_dir / "projects" / project.project_id / "research"
+    findings_data = json.loads((research_dir / "findings.json").read_text(encoding="utf-8"))
+    assert findings_data["finding_count"] > 0
+
+    snapshot_data = json.loads((research_dir / "research_snapshot.json").read_text(encoding="utf-8"))
+    assert snapshot_data["snapshot_id"] == f"rsnap_{project.project_id}"
+    assert snapshot_data["finding_count"] > 0
+
+
+def test_report_context_prefers_project_level_artifacts(tmp_path, monkeypatch):
+    uploads_dir = tmp_path / "uploads"
+    projects_dir = uploads_dir / "projects"
+    simulations_dir = _configure_simulation_storage(tmp_path, monkeypatch)
+    monkeypatch.setattr(graph_api.Config, "UPLOAD_FOLDER", str(uploads_dir))
+    monkeypatch.setattr(ProjectManager, "PROJECTS_DIR", str(projects_dir))
+
+    project = ProjectManager.create_project(name="Consumer Report Project Artifacts")
+    project.project_type = "consumer_test"
+    project.graph_id = f"consumer_{project.project_id}"
+    project.consumer_brief = _consumer_brief_payload()
+    ProjectManager.save_project(project)
+
+    state = SimulationManager().create_simulation(
+        project_id=project.project_id,
+        graph_id=project.graph_id,
+        project_type="consumer_test",
+    )
+    _write_consumer_rounds(simulations_dir, state.simulation_id)
+
+    # Write consumer_config.json with OLD findings
+    simulation_dir = simulations_dir / state.simulation_id
+    simulation_dir.mkdir(parents=True, exist_ok=True)
+    (simulation_dir / "consumer_config.json").write_text(
+        json.dumps(
+            {
+                "research_findings": [
+                    {
+                        "finding_id": "old_f1",
+                        "finding_type": "risk_signal",
+                        "summary": "Old simulation finding",
+                        "evidence_snippets": ["Old simulation finding"],
+                        "source_label": "brief_background",
+                        "visibility": "Restricted",
+                        "confidence": 0.6,
+                    }
+                ],
+                "research_snapshot": {"snapshot_id": "old_snap", "finding_count": 1},
+                "retrieval_traces": [],
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    # Write project-level artifacts with NEW findings
+    from app.services.consumer.project_research_persistence import persist_findings, persist_snapshot
+    from app.services.consumer.models import ResearchFinding, ResearchSnapshot, GraphVisibility
+    new_findings = [
+        ResearchFinding(
+            finding_id="new_f1",
+            finding_type="trend_signal",
+            summary="New project-level finding",
+            visibility=GraphVisibility.Propagation_Only,
+            source_label="auto_enrich",
+        )
+    ]
+    new_snapshot = ResearchSnapshot(
+        snapshot_id=f"rsnap_{project.project_id}",
+        project_id=project.project_id,
+        created_at="2026-04-21T10:00:00+00:00",
+        findings=new_findings,
+    )
+    persist_findings(project.project_id, new_findings, upload_root=str(uploads_dir))
+    persist_snapshot(project.project_id, new_snapshot, upload_root=str(uploads_dir))
+
+    from app.services.report_agent import ReportAgent
+    agent = ReportAgent(
+        graph_id=project.graph_id,
+        simulation_id=state.simulation_id,
+        simulation_requirement="Test",
+        project_id=project.project_id,
+    )
+    context = agent._build_consumer_report_context()
+
+    assert context["research_findings"][0]["finding_id"] == "new_f1"
+    assert context["research_snapshot"]["snapshot_id"] == f"rsnap_{project.project_id}"
+
+
+def test_report_context_falls_back_to_consumer_config_when_project_artifacts_missing(tmp_path, monkeypatch):
+    uploads_dir = tmp_path / "uploads"
+    projects_dir = uploads_dir / "projects"
+    simulations_dir = _configure_simulation_storage(tmp_path, monkeypatch)
+    monkeypatch.setattr(graph_api.Config, "UPLOAD_FOLDER", str(uploads_dir))
+    monkeypatch.setattr(ProjectManager, "PROJECTS_DIR", str(projects_dir))
+
+    project = ProjectManager.create_project(name="Consumer Report Fallback")
+    project.project_type = "consumer_test"
+    project.graph_id = f"consumer_{project.project_id}"
+    project.consumer_brief = _consumer_brief_payload()
+    ProjectManager.save_project(project)
+
+    state = SimulationManager().create_simulation(
+        project_id=project.project_id,
+        graph_id=project.graph_id,
+        project_type="consumer_test",
+    )
+    _write_consumer_rounds(simulations_dir, state.simulation_id)
+
+    simulation_dir = simulations_dir / state.simulation_id
+    simulation_dir.mkdir(parents=True, exist_ok=True)
+    (simulation_dir / "consumer_config.json").write_text(
+        json.dumps(
+            {
+                "research_findings": [
+                    {
+                        "finding_id": "fallback_f1",
+                        "finding_type": "risk_signal",
+                        "summary": "Fallback finding",
+                        "evidence_snippets": ["Fallback finding"],
+                        "source_label": "brief_background",
+                        "visibility": "Restricted",
+                        "confidence": 0.6,
+                    }
+                ],
+                "research_snapshot": {"snapshot_id": "fallback_snap", "finding_count": 1},
+                "retrieval_traces": [],
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    from app.services.report_agent import ReportAgent
+    agent = ReportAgent(
+        graph_id=project.graph_id,
+        simulation_id=state.simulation_id,
+        simulation_requirement="Test",
+        project_id=project.project_id,
+    )
+    context = agent._build_consumer_report_context()
+
+    assert context["research_findings"][0]["finding_id"] == "fallback_f1"
+    assert context["research_snapshot"]["snapshot_id"] == "fallback_snap"

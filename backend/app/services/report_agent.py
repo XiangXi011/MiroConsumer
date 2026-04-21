@@ -23,6 +23,11 @@ from ..utils.llm_client import LLMClient
 from ..utils.logger import get_logger
 from ..utils.locale import get_language_instruction, t
 from .consumer.report_context import ConsumerReportContextBuilder
+from .consumer.project_research_persistence import (
+    artifacts_exist,
+    load_persisted_findings,
+    load_persisted_snapshot,
+)
 from .zep_tools import (
     ZepToolsService, 
     SearchResult, 
@@ -1883,18 +1888,55 @@ class ReportAgent:
                 all_events.append(event_data)
 
         # Load research findings and snapshot
-        research_findings = []
-        retrieval_traces = []
-        research_snapshot = {}
-        consumer_config_path = os.path.join(
-            Config.UPLOAD_FOLDER, "simulations", self.simulation_id, "consumer_config.json"
-        )
-        if os.path.exists(consumer_config_path):
-            with open(consumer_config_path, "r", encoding="utf-8") as f:
-                consumer_config = json.load(f)
-            research_findings = consumer_config.get("research_findings", [])
-            retrieval_traces = consumer_config.get("retrieval_traces", [])
-            research_snapshot = consumer_config.get("research_snapshot", {})
+        # Prefer project-level persisted artifacts when available
+        research_findings: List[Any] = []
+        retrieval_traces: List[Any] = []
+        research_snapshot: Dict[str, Any] = {}
+
+        project_id = self.project_id
+        if project_id is None:
+            # Fall back to reading project_id from simulation state
+            state_path = os.path.join(
+                Config.UPLOAD_FOLDER, "simulations", self.simulation_id, "state.json"
+            )
+            if os.path.exists(state_path):
+                with open(state_path, "r", encoding="utf-8") as f:
+                    state_data = json.load(f)
+                project_id = state_data.get("project_id")
+
+        loaded_from_project = False
+        if project_id and artifacts_exist(project_id, upload_root=Config.UPLOAD_FOLDER):
+            persisted_findings = load_persisted_findings(
+                project_id, upload_root=Config.UPLOAD_FOLDER
+            )
+            persisted_snapshot = load_persisted_snapshot(
+                project_id, upload_root=Config.UPLOAD_FOLDER
+            )
+            if persisted_findings is not None and persisted_snapshot is not None:
+                research_findings = [f.model_dump() for f in persisted_findings]
+                research_snapshot = {
+                    "snapshot_id": persisted_snapshot.snapshot_id,
+                    "source_count": len(persisted_snapshot.sources),
+                    "document_count": len(persisted_snapshot.documents),
+                    "chunk_count": len(persisted_snapshot.chunks),
+                    "finding_count": len(persisted_snapshot.findings),
+                    "retrieval_trace_count": len(persisted_snapshot.retrieval_traces),
+                }
+                retrieval_traces = [
+                    t.model_dump() for t in persisted_snapshot.retrieval_traces
+                ]
+                loaded_from_project = True
+
+        if not loaded_from_project:
+            consumer_config_path = os.path.join(
+                Config.UPLOAD_FOLDER, "simulations", self.simulation_id, "consumer_config.json"
+            )
+            if os.path.exists(consumer_config_path):
+                with open(consumer_config_path, "r", encoding="utf-8") as f:
+                    consumer_config = json.load(f)
+                research_findings = consumer_config.get("research_findings", [])
+                retrieval_traces = consumer_config.get("retrieval_traces", [])
+                research_snapshot = consumer_config.get("research_snapshot", {})
 
         # Include research snapshot and findings in report context
         context["research_snapshot"] = research_snapshot

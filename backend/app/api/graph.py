@@ -15,6 +15,7 @@ from ..services.consumer import ConsumerBriefAdapter, ConsumerGraphBuilder, load
 from ..services.consumer.document_ingest import DocumentIngestService
 from ..services.consumer.models import ResearchSourceLane, ResearchSourceType
 from ..services.consumer.lane_b_provider import build_lane_b_provider
+from ..services.consumer.project_research_persistence import persist_findings, persist_snapshot
 from ..services.consumer.research_ingest import build_research_summary, resolve_research_findings, default_auto_research_provider, build_research_snapshot
 from ..services.consumer.source_registry import SourceRegistry
 from ..services.consumer.url_ingest import ingest_background_url_sources
@@ -124,6 +125,10 @@ def _build_consumer_graph(project, text: str):
         enable_lane_b=brief.enable_lane_b,
         lane_b_provider=lane_b_provider,
     )
+
+    # Persist formal project-level research artifacts
+    persist_findings(project.project_id, research_findings, upload_root=Config.UPLOAD_FOLDER)
+    persist_snapshot(project.project_id, snapshot, upload_root=Config.UPLOAD_FOLDER)
 
     # Persist research context for downstream simulation/reporting
     project.consumer_context = {
