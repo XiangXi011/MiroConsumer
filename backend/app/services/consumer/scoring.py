@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass, field
-from typing import Any, Dict, Iterable, List, Mapping
+from typing import Any, Dict, Iterable, List, Mapping, Optional
 
 
 @dataclass
@@ -136,8 +136,145 @@ class ConsumerScoringService:
         }
 
 
+@dataclass
+class ConsumerPhase2Summary:
+    """Phase 2 enriched consumer summary with event-driven evidence."""
+
+    attitude_summary: ConsumerAttitudeSummary
+    event_counts: Dict[str, int]
+    top_risk_findings: List[Dict[str, Any]]
+    top_clarification_opportunities: List[Dict[str, Any]]
+    causal_voc_quotes: List[Dict[str, Any]]
+    evidence_bundle: ConsumerEvidenceBundle
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "attitude_summary": self.attitude_summary.to_dict(),
+            "event_counts": self.event_counts,
+            "top_risk_findings": self.top_risk_findings,
+            "top_clarification_opportunities": self.top_clarification_opportunities,
+            "causal_voc_quotes": self.causal_voc_quotes,
+            "evidence_bundle": self.evidence_bundle.to_dict(),
+        }
+
+
+def build_consumer_summary(
+    events: Iterable[Any],
+    findings: Iterable[Any],
+    initial_labels: Optional[Iterable[str]] = None,
+    final_labels: Optional[Iterable[str]] = None,
+) -> ConsumerPhase2Summary:
+    """Build a Phase 2 consumer summary from propagation events and research findings.
+
+    Args:
+        events: PropagationEvent objects or dicts.
+        findings: ResearchFinding objects or dicts.
+        initial_labels: Optional initial attitude labels for baseline metrics.
+        final_labels: Optional final attitude labels for shift metrics.
+
+    Returns:
+        A ConsumerPhase2Summary with event counts, risk findings, and VOC quotes.
+    """
+    from .models import PropagationEvent, ResearchFinding
+
+    # Normalize events
+    typed_events: List[PropagationEvent] = []
+    for e in events:
+        if isinstance(e, PropagationEvent):
+            typed_events.append(e)
+        elif isinstance(e, dict):
+            typed_events.append(PropagationEvent(**e))
+
+    # Normalize findings
+    typed_findings: List[ResearchFinding] = []
+    for f in findings:
+        if isinstance(f, ResearchFinding):
+            typed_findings.append(f)
+        elif isinstance(f, dict):
+            typed_findings.append(ResearchFinding(**f))
+
+    # Count events by type
+    event_counts: Dict[str, int] = {}
+    for event in typed_events:
+        event_counts[event.event_type] = event_counts.get(event.event_type, 0) + 1
+
+    # Build top risk findings from events that triggered negative turns
+    risk_finding_ids: set[str] = set()
+    for event in typed_events:
+        if event.event_type in {"risk_discovery", "misread_amplification", "skeptical_challenge"}:
+            risk_finding_ids.update(event.trigger_finding_ids)
+
+    top_risk_findings: List[Dict[str, Any]] = []
+    for finding in typed_findings:
+        if finding.finding_id in risk_finding_ids:
+            top_risk_findings.append({
+                "finding_id": finding.finding_id,
+                "finding_type": finding.finding_type,
+                "summary": finding.summary,
+                "visibility": finding.visibility.value if hasattr(finding.visibility, "value") else str(finding.visibility),
+            })
+
+    # Build clarification opportunities from recovery events
+    clarification_finding_ids: set[str] = set()
+    for event in typed_events:
+        if event.event_type == "clarification_recovery":
+            clarification_finding_ids.update(event.trigger_finding_ids)
+
+    top_clarification_opportunities: List[Dict[str, Any]] = []
+    for finding in typed_findings:
+        if finding.finding_id in clarification_finding_ids:
+            top_clarification_opportunities.append({
+                "finding_id": finding.finding_id,
+                "finding_type": finding.finding_type,
+                "summary": finding.summary,
+            })
+
+    # Causal VOC quotes from events
+    causal_voc_quotes: List[Dict[str, Any]] = []
+    for event in typed_events:
+        if event.supporting_quote:
+            causal_voc_quotes.append({
+                "event_id": event.event_id,
+                "event_type": event.event_type,
+                "quote": event.supporting_quote,
+                "actor_id": event.actor_id,
+                "round_index": event.round_index,
+            })
+
+    # Build attitude summary if labels provided
+    if initial_labels is not None and final_labels is not None:
+        service = ConsumerScoringService()
+        attitude_summary = service.summarize(initial_labels, final_labels)
+    else:
+        attitude_summary = ConsumerAttitudeSummary(
+            initial_acceptance={"positive": 0.0, "neutral": 0.0, "negative": 0.0},
+            post_propagation_acceptance={"positive": 0.0, "neutral": 0.0, "negative": 0.0},
+            attitude_shift_rate=0.0,
+            initial_counts={"positive": 0, "neutral": 0, "negative": 0},
+            final_counts={"positive": 0, "neutral": 0, "negative": 0},
+        )
+
+    evidence_bundle = ConsumerEvidenceBundle(
+        top_resonance_quotes=[],
+        top_risk_quotes=[],
+        top_misread_quotes=[],
+        quote_metadata=[],
+    )
+
+    return ConsumerPhase2Summary(
+        attitude_summary=attitude_summary,
+        event_counts=event_counts,
+        top_risk_findings=top_risk_findings,
+        top_clarification_opportunities=top_clarification_opportunities,
+        causal_voc_quotes=causal_voc_quotes,
+        evidence_bundle=evidence_bundle,
+    )
+
+
 __all__ = [
     "ConsumerAttitudeSummary",
     "ConsumerEvidenceBundle",
+    "ConsumerPhase2Summary",
     "ConsumerScoringService",
+    "build_consumer_summary",
 ]

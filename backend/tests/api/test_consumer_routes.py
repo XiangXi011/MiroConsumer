@@ -67,6 +67,20 @@ def _consumer_brief_payload():
     }
 
 
+def _consumer_brief_payload_auto_enrich():
+    """Brief with auto_enrich and NO manual background materials."""
+    return {
+        "task_type": "concept_test",
+        "product_concept_assets": ["Glow serum stick"],
+        "copy_material": ["Brighter skin in one swipe"],
+        "claims": ["Derm-tested glow boost"],
+        "target_audience": ["busy commuters"],
+        "usage_scene": ["morning commute"],
+        "research_goal": "Understand first-impression appeal",
+        "research_mode": "auto_enrich",
+    }
+
+
 def _write_consumer_rounds(simulations_dir, simulation_id):
     simulation_dir = simulations_dir / simulation_id
     simulation_dir.mkdir(parents=True, exist_ok=True)
@@ -211,7 +225,9 @@ def test_consumer_build_route_stores_graph_and_graph_data_is_retrievable(tmp_pat
     project_meta = json.loads(project_meta_path.read_text(encoding="utf-8"))
     graph_payload_path = projects_dir / project.project_id / "consumer_graph.json"
 
-    assert saved_project.consumer_context in (None, {})
+    assert saved_project.consumer_context is not None
+    assert saved_project.consumer_context.get("research_mode") == "manual_only"
+    assert saved_project.consumer_context.get("research_findings_count", 0) >= 0
     assert "graph_payload" not in json.dumps(project_meta, ensure_ascii=False)
     assert graph_payload_path.exists()
     assert json.loads(graph_payload_path.read_text(encoding="utf-8"))["graph_id"] == saved_project.graph_id
@@ -221,6 +237,49 @@ def test_consumer_build_route_stores_graph_and_graph_data_is_retrievable(tmp_pat
         node["visibility"] != "Initial"
         for node in graph_response.get_json()["data"]["nodes"]
         if "RiskPoint" in node["labels"]
+    )
+
+
+def test_consumer_build_auto_enrich_produces_findings_without_manual_background(
+    tmp_path, monkeypatch
+):
+    uploads_dir = tmp_path / "uploads"
+    projects_dir = uploads_dir / "projects"
+    monkeypatch.setattr(graph_api.Config, "UPLOAD_FOLDER", str(uploads_dir))
+    monkeypatch.setattr(graph_api.Config, "ZEP_API_KEY", None)
+    monkeypatch.setattr(ProjectManager, "PROJECTS_DIR", str(projects_dir))
+    _reset_task_manager()
+
+    project = ProjectManager.create_project(name="Consumer Auto Enrich")
+    project.project_type = "consumer_test"
+    project.status = ProjectStatus.ONTOLOGY_GENERATED
+    project.ontology = {"entity_types": [{"name": "ProductConcept", "attributes": []}], "edge_types": []}
+    project.consumer_brief = _consumer_brief_payload_auto_enrich()
+    ProjectManager.save_project(project)
+    ProjectManager.save_extracted_text(project.project_id, "Some extracted text.")
+
+    app = _create_test_app()
+    client = app.test_client()
+
+    build_response = client.post("/api/graph/build", json={"project_id": project.project_id})
+
+    assert build_response.status_code == 200
+    saved_project = ProjectManager.get_project(project.project_id)
+
+    assert saved_project is not None
+    assert saved_project.consumer_context is not None
+    assert saved_project.consumer_context.get("research_mode") == "auto_enrich"
+    assert saved_project.consumer_context.get("research_findings_count", 0) > 0
+    assert saved_project.consumer_context.get("auto_enrich_count", 0) > 0
+    assert saved_project.consumer_context.get("manual_background_count", 0) == 0
+
+    graph_response = client.get(f"/api/graph/data/{saved_project.graph_id}")
+    graph_data = graph_response.get_json()["data"]
+    research_nodes = [n for n in graph_data["nodes"] if "ResearchFinding" in n["labels"]]
+    assert len(research_nodes) > 0
+    assert any(
+        n["attributes"].get("provenance", {}).get("source_label") == "auto_enrich"
+        for n in research_nodes
     )
 
 
@@ -492,6 +551,59 @@ def test_prepare_consumer_simulation_uses_persona_pack_and_writes_consumer_artif
     assert (simulation_dir / "twitter_profiles.csv").exists()
 
 
+def test_prepare_consumer_simulation_auto_enrich_persists_findings(tmp_path, monkeypatch):
+    uploads_dir = tmp_path / "uploads"
+    projects_dir = uploads_dir / "projects"
+    simulations_dir = _configure_simulation_storage(tmp_path, monkeypatch)
+    monkeypatch.setattr(graph_api.Config, "UPLOAD_FOLDER", str(uploads_dir))
+    monkeypatch.setattr(ProjectManager, "PROJECTS_DIR", str(projects_dir))
+    _reset_task_manager()
+
+    class ExplodingZepEntityReader:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError("Consumer prepare should not initialize ZepEntityReader")
+
+    class ImmediateThread:
+        def __init__(self, target=None, daemon=None):
+            self._target = target
+            self.daemon = daemon
+
+        def start(self):
+            self._target()
+
+    monkeypatch.setattr(simulation_api, "ZepEntityReader", ExplodingZepEntityReader)
+    monkeypatch.setattr(threading, "Thread", ImmediateThread)
+
+    project = ProjectManager.create_project(name="Consumer Auto Enrich Prepare")
+    project.project_type = "consumer_test"
+    project.graph_id = f"consumer_{project.project_id}"
+    project.consumer_brief = _consumer_brief_payload_auto_enrich()
+    ProjectManager.save_project(project)
+    ProjectManager.save_extracted_text(project.project_id, "Some extracted text.")
+
+    app = _create_test_app()
+    client = app.test_client()
+
+    create_response = client.post("/api/simulation/create", json={"project_id": project.project_id})
+    assert create_response.status_code == 200
+    simulation_id = create_response.get_json()["data"]["simulation_id"]
+
+    prepare_response = client.post("/api/simulation/prepare", json={"simulation_id": simulation_id})
+
+    assert prepare_response.status_code == 200
+    simulation_dir = simulations_dir / simulation_id
+    consumer_config = json.loads((simulation_dir / "consumer_config.json").read_text(encoding="utf-8"))
+
+    assert consumer_config["research_mode"] == "auto_enrich"
+    assert consumer_config["research_findings_count"] > 0
+    assert consumer_config["auto_enrich_count"] > 0
+    assert consumer_config["manual_background_count"] == 0
+    assert len(consumer_config["research_findings"]) > 0
+    assert any(
+        f["source_label"] == "auto_enrich" for f in consumer_config["research_findings"]
+    )
+
+
 def test_consumer_summary_route_returns_voc_and_shift(tmp_path, monkeypatch):
     uploads_dir = tmp_path / "uploads"
     projects_dir = uploads_dir / "projects"
@@ -521,6 +633,106 @@ def test_consumer_summary_route_returns_voc_and_shift(tmp_path, monkeypatch):
     payload = response.get_json()["data"]
     assert payload["summary"]["attitude_shift_rate"] > 0
     assert payload["representative_voc_quotes"]["risk"][0]["quote"].startswith("Low sugar")
+
+
+def _write_consumer_rounds_with_events(simulations_dir, simulation_id):
+    simulation_dir = simulations_dir / simulation_id
+    simulation_dir.mkdir(parents=True, exist_ok=True)
+    events = [
+        {
+            "round_num": 0,
+            "agent_id": "persona_a",
+            "agent_name": "Value Seeker",
+            "attitude_label": "positive",
+            "bucket": "resonance",
+            "engagement": 9,
+            "quote": "This actually sounds like a real breakfast fix.",
+            "prompt": "Pinned BusinessBrief Summary: breakfast yogurt pouch",
+            "visible_nodes": [{"type": "ProductConcept", "text": "breakfast yogurt pouch"}],
+            "visible_finding_ids": [],
+            "propagation_events": [],
+        },
+        {
+            "round_num": 1,
+            "agent_id": "persona_a",
+            "agent_name": "Value Seeker",
+            "attitude_label": "negative",
+            "bucket": "risk",
+            "engagement": 8,
+            "quote": "Low sugar? I don't trust that claim after the debate.",
+            "prompt": "Pinned BusinessBrief Summary: breakfast yogurt pouch",
+            "visible_nodes": [{"type": "RiskPoint", "text": "sweetener debate"}],
+            "visible_finding_ids": ["r1"],
+            "propagation_events": [
+                {
+                    "event_id": "evt_persona_a_r1_ris",
+                    "event_type": "risk_discovery",
+                    "actor_id": "persona_a",
+                    "target_ids": [],
+                    "trigger_finding_ids": ["r1"],
+                    "supporting_quote": "Low sugar? I don't trust that claim after the debate.",
+                    "round_index": 1,
+                }
+            ],
+        },
+    ]
+    (simulation_dir / "consumer_rounds.jsonl").write_text(
+        "\n".join(json.dumps(event, ensure_ascii=False) for event in events) + "\n",
+        encoding="utf-8",
+    )
+    (simulation_dir / "consumer_config.json").write_text(
+        json.dumps(
+            {
+                "research_findings": [
+                    {
+                        "finding_id": "r1",
+                        "finding_type": "risk_signal",
+                        "summary": "Sweetener concern",
+                        "evidence_snippets": ["Sweetener concern"],
+                        "source_label": "brief_background",
+                        "visibility": "Restricted",
+                        "confidence": 0.6,
+                    }
+                ],
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_consumer_summary_route_exposes_phase2_fields(tmp_path, monkeypatch):
+    uploads_dir = tmp_path / "uploads"
+    projects_dir = uploads_dir / "projects"
+    simulations_dir = _configure_simulation_storage(tmp_path, monkeypatch)
+    monkeypatch.setattr(graph_api.Config, "UPLOAD_FOLDER", str(uploads_dir))
+    monkeypatch.setattr(ProjectManager, "PROJECTS_DIR", str(projects_dir))
+
+    project = ProjectManager.create_project(name="Consumer Phase2")
+    project.project_type = "consumer_test"
+    project.graph_id = f"consumer_{project.project_id}"
+    project.consumer_brief = _consumer_brief_payload()
+    ProjectManager.save_project(project)
+
+    state = SimulationManager().create_simulation(
+        project_id=project.project_id,
+        graph_id=project.graph_id,
+        project_type="consumer_test",
+    )
+    _write_consumer_rounds_with_events(simulations_dir, state.simulation_id)
+
+    app = _create_test_app()
+    client = app.test_client()
+
+    response = client.get(f"/api/simulation/{state.simulation_id}/consumer-summary")
+
+    assert response.status_code == 200
+    payload = response.get_json()["data"]
+    assert "event_counts" in payload
+    assert "top_risk_findings" in payload
+    assert payload["event_counts"]["risk_discovery"] == 1
+    assert payload["top_risk_findings"][0]["finding_id"] == "r1"
 
 
 def test_generate_consumer_report_includes_voc_quotes(tmp_path, monkeypatch):

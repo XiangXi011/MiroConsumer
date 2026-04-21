@@ -28,6 +28,7 @@ test('buildConsumerBrief normalizes multiline and delimited fields', () => {
     target_audience: ['working moms', 'fitness beginners'],
     usage_scene: ['weekday breakfast', 'commute snack'],
     research_goal: 'Identify resonance and misread risks',
+    research_mode: 'manual_only',
   })
 })
 
@@ -64,4 +65,27 @@ test('resolveSimulationRequirement only applies consumer fallback in consumer mo
   )
   assert.equal(resolveSimulationRequirement('default', '  Legacy prompt  ', 'fallback'), 'Legacy prompt')
   assert.equal(resolveSimulationRequirement('default', '', 'fallback'), '')
+})
+
+test('buildConsumerBrief preserves research mode when provided', () => {
+  const brief = buildConsumerBrief({
+    consumerConcept: 'Protein yogurt',
+    consumerCopy: '14g protein',
+    consumerAudience: 'fitness beginners',
+    consumerResearchGoal: 'Find resonance',
+    consumerResearchMode: 'auto_enrich',
+  })
+
+  assert.equal(brief.research_mode, 'auto_enrich')
+})
+
+test('buildConsumerBrief defaults research mode to manual_only when omitted', () => {
+  const brief = buildConsumerBrief({
+    consumerConcept: 'Protein yogurt',
+    consumerCopy: '14g protein',
+    consumerAudience: 'fitness beginners',
+    consumerResearchGoal: 'Find resonance',
+  })
+
+  assert.equal(brief.research_mode, 'manual_only')
 })

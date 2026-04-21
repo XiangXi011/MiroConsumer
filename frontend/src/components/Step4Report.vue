@@ -31,6 +31,53 @@
                 </div>
               </div>
             </div>
+
+            <div v-if="isConsumerMode && consumerEventCounts.length > 0" class="consumer-events-strip">
+              <div class="consumer-events-header">{{ $t('consumer.eventCounts') }}</div>
+              <div class="consumer-events-grid report">
+                <div
+                  v-for="evt in consumerEventCounts"
+                  :key="evt.type"
+                  class="consumer-event-chip report"
+                  :class="'event-' + evt.type"
+                >
+                  <span class="event-type-label">{{ evt.label }}</span>
+                  <span class="event-type-count">{{ evt.count }}</span>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="isConsumerMode && consumerRiskFindings.length > 0" class="consumer-findings-strip">
+              <div class="consumer-findings-header">{{ $t('consumer.step4.riskFindingsTitle') }}</div>
+              <div class="consumer-findings-list">
+                <div v-for="(f, idx) in consumerRiskFindings" :key="idx" class="consumer-finding-item risk">
+                  <span class="finding-type">{{ f.typeLabel }}</span>
+                  <span class="finding-text">{{ f.text }}</span>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="isConsumerMode && consumerClarificationOpportunities.length > 0" class="consumer-findings-strip">
+              <div class="consumer-findings-header">{{ $t('consumer.step4.clarificationTitle') }}</div>
+              <div class="consumer-findings-list">
+                <div
+                  v-for="(c, idx) in consumerClarificationOpportunities"
+                  :key="idx"
+                  class="consumer-finding-item recovery"
+                >
+                  <span class="finding-text">{{ c.text }}</span>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="isConsumerMode && consumerCausalChains.length > 0" class="consumer-causal-strip">
+              <div class="consumer-causal-header">{{ $t('consumer.step4.causalReportTitle') }}</div>
+              <div class="consumer-causal-list">
+                <div v-for="(chain, idx) in consumerCausalChains" :key="idx" class="consumer-causal-item">
+                  <span class="causal-chain-text">{{ chain.description }}</span>
+                </div>
+              </div>
+            </div>
           </div>
 
           <!-- Sections List -->
@@ -413,8 +460,10 @@ import { useI18n } from 'vue-i18n'
 import { getAgentLog, getConsoleLog } from '../api/report'
 import {
   buildConsumerMetricCards,
+  getConsumerEventLabel,
   isConsumerProject,
   pickTopVocQuotes,
+  translate,
 } from '../utils/consumerMode'
 
 const router = useRouter()
@@ -470,6 +519,52 @@ const consumerVocHighlights = computed(() => (
     ? pickTopVocQuotes(props.reportData.report_context, t)
     : []
 ))
+
+const consumerEventCounts = computed(() => {
+  if (!isConsumerMode.value || !props.reportData?.report_context) return []
+  const counts = props.reportData.report_context.event_counts || {}
+  return Object.entries(counts)
+    .filter(([, count]) => count > 0)
+    .map(([type, count]) => ({
+      type,
+      count,
+      label: getConsumerEventLabel(type, t),
+    }))
+})
+
+const consumerRiskFindings = computed(() => {
+  if (!isConsumerMode.value || !props.reportData?.report_context) return []
+  const findings = props.reportData.report_context.top_risk_findings || []
+  return findings
+    .filter(f => f && f.summary)
+    .map(f => ({
+      text: f.summary,
+      type: f.finding_type || '',
+      typeLabel: f.finding_type
+        ? translate(t, `consumer.findingType.${f.finding_type}`, f.finding_type)
+        : '',
+    }))
+})
+
+const consumerClarificationOpportunities = computed(() => {
+  if (!isConsumerMode.value || !props.reportData?.report_context) return []
+  const items = props.reportData.report_context.top_clarification_opportunities || []
+  return items
+    .filter(c => c && c.summary)
+    .map(c => ({
+      text: c.summary,
+    }))
+})
+
+const consumerCausalChains = computed(() => {
+  if (!isConsumerMode.value || !props.reportData?.report_context) return []
+  const chains = props.reportData.report_context.causal_chains || []
+  return chains
+    .filter(c => c && c.finding_summary)
+    .map(c => ({
+      description: `${c.finding_summary} → ${(c.event_types || []).join(', ')}`,
+    }))
+})
 
 // Toggle functions
 const toggleRawResult = (timestamp, event) => {

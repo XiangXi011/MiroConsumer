@@ -7,7 +7,7 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from app.services.consumer.graph_builder import ConsumerGraphBuilder
-from app.services.consumer.models import ConsumerBusinessBrief, ConsumerTaskType, GraphVisibility
+from app.services.consumer.models import ConsumerBusinessBrief, ConsumerTaskType, GraphVisibility, ResearchFinding
 
 
 def _build_brief() -> ConsumerBusinessBrief:
@@ -74,3 +74,24 @@ def test_consumer_graph_builder_rejects_malformed_persona_pack_records():
         assert "missing required fields" in str(exc).lower()
     else:
         raise AssertionError("Expected malformed persona pack to raise ValueError")
+
+
+def test_graph_builder_adds_research_findings_with_visibility():
+    graph = ConsumerGraphBuilder().build(
+        brief=_build_brief(),
+        background_text="Background risk.",
+        persona_pack=[],
+        graph_id="consumer_proj_research",
+        research_findings=[
+            ResearchFinding(
+                finding_id="r1",
+                finding_type="risk_signal",
+                summary="Sweetener concern",
+                visibility=GraphVisibility.Restricted,
+            )
+        ],
+    )
+
+    research_nodes = [node for node in graph["nodes"] if "ResearchFinding" in node["labels"]]
+    assert research_nodes[0]["visibility"] == "Restricted"
+    assert research_nodes[0]["attributes"]["provenance"]["source_label"] == "brief_background"

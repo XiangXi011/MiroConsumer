@@ -6,11 +6,28 @@ function formatPercent(value) {
   return `${Math.round(numeric * 100)}%`
 }
 
-function translate(t, key, fallback, params = {}) {
+export function translate(t, key, fallback, params = {}) {
   if (typeof t !== 'function') {
     return fallback
   }
   return t(key, params)
+}
+
+const EVENT_LABEL_FALLBACKS = {
+  positive_relay: 'Positive Relay',
+  skeptical_challenge: 'Skeptical Challenge',
+  misread_amplification: 'Misread Amplification',
+  risk_discovery: 'Risk Discovery',
+  clarification_recovery: 'Clarification Recovery',
+}
+
+export function getConsumerEventLabel(eventType, t = null) {
+  const key = `consumer.eventTypes.${eventType}`
+  const fallback = EVENT_LABEL_FALLBACKS[eventType] || eventType
+  if (typeof t === 'function') {
+    return t(key, fallback)
+  }
+  return fallback
 }
 
 export function isConsumerProject(projectLike) {
@@ -100,6 +117,34 @@ export function buildConsumerQuickPrompts(reportContext = {}, t = null) {
       'consumer.quickPrompts.misread',
       `How did "${misread}" turn into a misread?`,
       { point: misread },
+    ))
+  }
+
+  const riskFindings = reportContext.top_risk_findings || []
+  const causalChains = reportContext.causal_chains || []
+  const clarifications = reportContext.top_clarification_opportunities || []
+  const reversals = reportContext.event_led_reversals || []
+  const personaSignals = reportContext.persona_group_signals || {}
+
+  if (riskFindings.length > 0 || causalChains.length > 0) {
+    prompts.push(translate(
+      t,
+      'consumer.step5.causalPromptTrigger',
+      'Which finding triggered the negative turn?',
+    ))
+  }
+  if (Object.keys(personaSignals).length > 0) {
+    prompts.push(translate(
+      t,
+      'consumer.step5.causalPromptSpread',
+      'Why did this signal spread among these personas?',
+    ))
+  }
+  if (clarifications.length > 0 || reversals.length > 0) {
+    prompts.push(translate(
+      t,
+      'consumer.step5.causalPromptRecovery',
+      'What helped the clarification recover acceptance?',
     ))
   }
 

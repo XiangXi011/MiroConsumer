@@ -28,10 +28,16 @@ export function buildConsumerBrief(formData = {}) {
     target_audience: splitItems(formData.consumerAudience),
     usage_scene: splitItems(formData.consumerScene),
     research_goal: normalizeText(formData.consumerResearchGoal),
+    research_mode: normalizeText(formData.consumerResearchMode) || 'manual_only',
   }
 
   if (claims.length > 0) {
     brief.claims = claims
+  }
+
+  const background = splitLines(formData.consumerBackgroundMaterials)
+  if (background.length > 0) {
+    brief.optional_background_materials = background
   }
 
   return brief

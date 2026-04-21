@@ -14,7 +14,8 @@ from ..services.oasis_profile_generator import OasisProfileGenerator
 from ..services.simulation_manager import SimulationManager, SimulationStatus
 from ..services.simulation_runner import SimulationRunner, RunnerStatus
 from ..services.consumer.persona_pack import load_default_persona_pack
-from ..services.consumer.report_context import ConsumerReportContextBuilder
+from ..services.consumer.report_context import ConsumerReportContextBuilder, build_consumer_report_context
+from ..services.consumer.scoring import build_consumer_summary
 from ..utils.logger import get_logger
 from ..utils.locale import t, get_locale, set_locale
 from ..models.project import ProjectManager
@@ -1169,16 +1170,65 @@ def get_consumer_summary(simulation_id: str):
 
         rounds_path = os.path.join(Config.UPLOAD_FOLDER, 'simulations', simulation_id, 'consumer_rounds.jsonl')
         builder = ConsumerReportContextBuilder()
-        events = builder.load_events(rounds_path)
-        if not events:
+        snapshots = builder.load_events(rounds_path)
+        if not snapshots:
             return jsonify({
                 "success": False,
                 "error": f"consumer round snapshots not found for simulation {simulation_id}"
             }), 404
 
+        # Build Phase 1 context (backward compatible)
+        context = builder.build(snapshots)
+
+        # Extract propagation events from snapshots for Phase 2 enrichment
+        all_events = []
+        for snap in snapshots:
+            for event_data in snap.get("propagation_events", []):
+                all_events.append(event_data)
+
+        # Load research findings from consumer_config
+        research_findings = []
+        consumer_config_path = os.path.join(Config.UPLOAD_FOLDER, 'simulations', simulation_id, 'consumer_config.json')
+        if os.path.exists(consumer_config_path):
+            import json
+            with open(consumer_config_path, "r", encoding="utf-8") as f:
+                consumer_config = json.load(f)
+            research_findings = consumer_config.get("research_findings", [])
+
+        # Merge Phase 2 fields when events are present
+        if all_events:
+            initial_labels = [s.get("attitude_label", "neutral") for s in snapshots if s.get("round_num") == 0]
+            # Use latest attitude per agent for final labels
+            latest_attitudes: Dict[str, str] = {}
+            for s in snapshots:
+                agent_id = s.get("agent_id", "")
+                if agent_id:
+                    latest_attitudes[agent_id] = s.get("attitude_label", "neutral")
+            final_labels = list(latest_attitudes.values())
+
+            phase2_summary = build_consumer_summary(
+                events=all_events,
+                findings=research_findings,
+                initial_labels=initial_labels,
+                final_labels=final_labels,
+            )
+            phase2_context = build_consumer_report_context(
+                summary=phase2_summary,
+                findings=research_findings,
+                events=all_events,
+            )
+
+            context["event_counts"] = phase2_summary.event_counts
+            context["top_risk_findings"] = phase2_summary.top_risk_findings
+            context["top_clarification_opportunities"] = phase2_summary.top_clarification_opportunities
+            context["causal_voc_quotes"] = phase2_summary.causal_voc_quotes
+            context["causal_chains"] = phase2_context["causal_chains"]
+            context["event_led_reversals"] = phase2_context["event_led_reversals"]
+            context["persona_group_signals"] = phase2_context["persona_group_signals"]
+
         return jsonify({
             "success": True,
-            "data": builder.build(events)
+            "data": context
         })
     except Exception as e:
         logger.error(f"获取消费者传播摘要失败: {str(e)}")

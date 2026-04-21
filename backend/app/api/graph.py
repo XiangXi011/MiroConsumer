@@ -12,6 +12,7 @@ from flask import request, jsonify
 from . import graph_bp
 from ..config import Config
 from ..services.consumer import ConsumerBriefAdapter, ConsumerGraphBuilder, load_default_persona_pack
+from ..services.consumer.research_ingest import build_research_summary, resolve_research_findings, default_auto_research_provider
 from ..services.ontology_generator import OntologyGenerator
 from ..services.graph_builder import GraphBuilderService
 from ..services.text_processor import TextProcessor
@@ -56,16 +57,32 @@ def _build_consumer_graph(project, text: str):
         raise ValueError("consumer_brief is required for consumer_test graph builds")
 
     brief = ConsumerBriefAdapter.from_payload(project.consumer_brief)
+    research_findings = resolve_research_findings(
+        brief, provider=default_auto_research_provider
+    )
     graph_payload = ConsumerGraphBuilder().build(
         brief=brief,
         background_text=text,
         persona_pack=load_default_persona_pack(),
         graph_id=_consumer_graph_id(project.project_id),
+        research_findings=research_findings,
     )
 
     ProjectManager.save_consumer_graph_payload(project.project_id, graph_payload)
     project.graph_id = graph_payload["graph_id"]
     project.status = ProjectStatus.GRAPH_COMPLETED
+    # Persist research context for downstream simulation/reporting
+    project.consumer_context = {
+        "research_mode": brief.research_mode,
+        "research_summary": build_research_summary(research_findings),
+        "research_findings_count": len(research_findings),
+        "auto_enrich_count": sum(
+            1 for f in research_findings if f.source_label == "auto_enrich"
+        ),
+        "manual_background_count": sum(
+            1 for f in research_findings if f.source_label == "brief_background"
+        ),
+    }
     ProjectManager.save_project(project)
 
     return graph_payload

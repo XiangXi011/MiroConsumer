@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Mapping, Optional
 
-from .models import ConsumerBusinessBrief, GraphVisibility
+from .models import ConsumerBusinessBrief, GraphVisibility, ResearchFinding
 from .persona_pack import load_default_persona_pack, map_persona_to_agent_traits
 
 
@@ -20,6 +20,7 @@ class ConsumerGraphBuilder:
         background_text: Optional[str] = None,
         persona_pack: Optional[Iterable[Mapping[str, Any]]] = None,
         graph_id: Optional[str] = None,
+        research_findings: Optional[List[ResearchFinding]] = None,
     ) -> Dict[str, Any]:
         created_at = datetime.now(timezone.utc).isoformat()
         graph_id = graph_id or f"consumer_{uuid.uuid4().hex[:12]}"
@@ -133,6 +134,14 @@ class ConsumerGraphBuilder:
             root_node_id=brief_node_id,
             background_text=background_text,
             brief=brief,
+            created_at=created_at,
+        )
+        self._add_research_findings(
+            nodes=nodes,
+            edges=edges,
+            node_index=node_index,
+            root_node_id=brief_node_id,
+            research_findings=research_findings or [],
             created_at=created_at,
         )
 
@@ -277,6 +286,54 @@ class ConsumerGraphBuilder:
                     created_at=created_at,
                     attributes={"source": "background_material"},
                 )
+
+    def _add_research_findings(
+        self,
+        nodes: List[Dict[str, Any]],
+        edges: List[Dict[str, Any]],
+        node_index: Dict[tuple[str, str], str],
+        root_node_id: str,
+        research_findings: List[ResearchFinding],
+        created_at: str,
+    ) -> None:
+        for finding in research_findings:
+            finding_id = self._add_node(
+                nodes,
+                node_index,
+                label="ResearchFinding",
+                name=finding.summary,
+                summary=f"[{finding.finding_type}] {finding.summary}",
+                visibility=finding.visibility,
+                attributes={
+                    "source": "research_finding",
+                    "round0_visible": finding.visibility == GraphVisibility.Initial,
+                    "provenance": {
+                        "finding_id": finding.finding_id,
+                        "finding_type": finding.finding_type,
+                        "source_label": finding.source_label,
+                        "confidence": finding.confidence,
+                    },
+                    "evidence_snippets": list(finding.evidence_snippets),
+                },
+                created_at=created_at,
+            )
+            self._add_edge(
+                edges,
+                root_node_id,
+                finding_id,
+                fact_type="HAS_RESEARCH_FINDING",
+                fact=finding.summary,
+                visibility=finding.visibility,
+                created_at=created_at,
+                attributes={
+                    "source": "research_finding",
+                    "provenance": {
+                        "finding_id": finding.finding_id,
+                        "finding_type": finding.finding_type,
+                        "source_label": finding.source_label,
+                    },
+                },
+            )
 
     def _add_items(
         self,

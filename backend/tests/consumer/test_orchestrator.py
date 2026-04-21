@@ -2,7 +2,7 @@ import json
 
 from app.models.project import ProjectManager
 from app.services.consumer.graph_builder import ConsumerGraphBuilder
-from app.services.consumer.models import ConsumerBusinessBrief
+from app.services.consumer.models import ConsumerBusinessBrief, GraphVisibility, ResearchFinding
 from app.services.consumer.orchestrator import ConsumerSimulationOrchestrator
 from app.services.simulation_runner import RunnerStatus, SimulationRunner
 
@@ -114,6 +114,26 @@ def test_simulation_runner_consumer_branch_writes_round_snapshots(tmp_path, monk
         ),
         encoding="utf-8",
     )
+    (sim_dir / "consumer_config.json").write_text(
+        json.dumps(
+            {
+                "research_findings": [
+                    {
+                        "finding_id": "r1",
+                        "finding_type": "risk_signal",
+                        "summary": "Sweetener concern",
+                        "evidence_snippets": ["Sweetener concern"],
+                        "source_label": "brief_background",
+                        "visibility": "Restricted",
+                        "confidence": 0.6,
+                    }
+                ],
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
 
     state = SimulationRunner.start_simulation("sim_test_runner", max_rounds=2)
 
@@ -123,3 +143,230 @@ def test_simulation_runner_consumer_branch_writes_round_snapshots(tmp_path, monk
     first_snapshot = json.loads(snapshot_lines[0])
     assert "Pinned BusinessBrief Summary" in first_snapshot["prompt"]
     assert first_snapshot["round_num"] == 0
+
+
+def test_round_zero_prompt_hides_restricted_research_findings():
+    prompt = ConsumerSimulationOrchestrator().build_round_prompt(
+        round_num=0,
+        agent_traits={"search_propensity": "high", "cognition_level": "high"},
+        brief_summary="Pinned BusinessBrief Summary: yogurt pouch for breakfast",
+        visible_graph_nodes=[
+            {"type": "ProductConcept", "visibility": "Initial", "text": "yogurt pouch"},
+        ],
+        research_findings=[
+            ResearchFinding(
+                finding_id="r1",
+                finding_type="risk_signal",
+                summary="Sweetener concern",
+                visibility=GraphVisibility.Restricted,
+            ),
+        ],
+    )
+
+    assert "Sweetener concern" not in prompt
+
+
+def test_propagation_round_prompt_shows_restricted_findings_to_high_search_persona():
+    prompt = ConsumerSimulationOrchestrator().build_round_prompt(
+        round_num=2,
+        agent_traits={"search_propensity": "high", "cognition_level": "high"},
+        brief_summary="Pinned BusinessBrief Summary: yogurt pouch for breakfast",
+        visible_graph_nodes=[
+            {"type": "TalkingPoint", "visibility": "Propagation_Only", "text": "breakfast angle"},
+        ],
+        research_findings=[
+            ResearchFinding(
+                finding_id="r1",
+                finding_type="risk_signal",
+                summary="Sweetener concern",
+                visibility=GraphVisibility.Restricted,
+            ),
+        ],
+    )
+
+    assert "Sweetener concern" in prompt
+
+
+def test_propagation_round_prompt_hides_restricted_findings_from_low_search_persona():
+    prompt = ConsumerSimulationOrchestrator().build_round_prompt(
+        round_num=2,
+        agent_traits={"search_propensity": "low", "cognition_level": "medium"},
+        brief_summary="Pinned BusinessBrief Summary: yogurt pouch for breakfast",
+        visible_graph_nodes=[
+            {"type": "TalkingPoint", "visibility": "Propagation_Only", "text": "breakfast angle"},
+        ],
+        research_findings=[
+            ResearchFinding(
+                finding_id="r1",
+                finding_type="risk_signal",
+                summary="Sweetener concern",
+                visibility=GraphVisibility.Restricted,
+            ),
+        ],
+    )
+
+    assert "Sweetener concern" not in prompt
+
+
+def test_round_snapshot_tracks_visible_finding_ids():
+    snapshot = ConsumerSimulationOrchestrator().build_round_snapshot(
+        round_num=2,
+        agent_traits={"search_propensity": "high", "cognition_level": "high"},
+        brief_summary="Pinned BusinessBrief Summary: yogurt pouch for breakfast",
+        visible_graph_nodes=[
+            {"type": "TalkingPoint", "visibility": "Propagation_Only", "text": "breakfast angle"},
+        ],
+        agent_id="agent_1",
+        agent_name="Test Agent",
+        research_findings=[
+            ResearchFinding(
+                finding_id="r1",
+                finding_type="risk_signal",
+                summary="Sweetener concern",
+                visibility=GraphVisibility.Restricted,
+            ),
+        ],
+    )
+
+    assert snapshot["visible_finding_ids"] == ["r1"]
+
+
+def test_simulation_runner_round_zero_hides_restricted_findings_later_exposes_to_high_search(
+    tmp_path, monkeypatch
+):
+    """Prove BLOCKER 2 fix: runner loads research findings and enforces visibility rules."""
+    projects_dir = tmp_path / "uploads" / "projects"
+    simulations_dir = tmp_path / "uploads" / "simulations"
+    monkeypatch.setattr(ProjectManager, "PROJECTS_DIR", str(projects_dir))
+    monkeypatch.setattr(SimulationRunner, "RUN_STATE_DIR", str(simulations_dir))
+    SimulationRunner._run_states.clear()
+    SimulationRunner._monitor_threads.clear()
+
+    class ImmediateThread:
+        def __init__(self, target=None, args=None, daemon=None):
+            self._target = target
+            self._args = args or ()
+            self.daemon = daemon
+
+        def start(self):
+            self._target(*self._args)
+
+    monkeypatch.setattr("app.services.simulation_runner.threading.Thread", ImmediateThread)
+
+    brief = ConsumerBusinessBrief(
+        task_type="concept_test",
+        product_concept_assets=["Yogurt pouch for breakfast commuters"],
+        copy_material=["Low sugar and easy to carry."],
+        claims=["Low sugar"],
+        target_audience=["Busy young professionals"],
+        usage_scene=["Morning commute"],
+        research_goal="Understand if commuters will discuss the concept positively.",
+    )
+    project = ProjectManager.create_project(name="Runner Research Findings Test")
+    project.project_type = "consumer_test"
+    project.graph_id = f"consumer_{project.project_id}"
+    project.consumer_brief = brief.to_summary()
+    ProjectManager.save_project(project)
+    ProjectManager.save_consumer_graph_payload(
+        project.project_id,
+        ConsumerGraphBuilder().build(
+            brief=brief,
+            background_text="Some creator circles mention a sweetener debate.",
+            graph_id=project.graph_id,
+        ),
+    )
+
+    sim_dir = simulations_dir / "sim_test_research"
+    sim_dir.mkdir(parents=True, exist_ok=True)
+    (sim_dir / "simulation_config.json").write_text(
+        json.dumps(
+            {
+                "project_id": project.project_id,
+                "project_type": "consumer_test",
+                "consumer_mode": True,
+                "pinned_brief_summary": "Pinned BusinessBrief Summary: yogurt pouch for breakfast",
+                "time_config": {"total_simulation_hours": 1, "minutes_per_round": 30},
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    # Write consumer_config with a mix of Initial and Restricted findings
+    (sim_dir / "consumer_config.json").write_text(
+        json.dumps(
+            {
+                "research_findings": [
+                    {
+                        "finding_id": "init_1",
+                        "finding_type": "category_context",
+                        "summary": "Initial finding visible to all",
+                        "evidence_snippets": ["Initial"],
+                        "source_label": "auto_enrich",
+                        "visibility": "Initial",
+                        "confidence": 0.7,
+                    },
+                    {
+                        "finding_id": "rest_1",
+                        "finding_type": "risk_signal",
+                        "summary": "Restricted deep risk finding",
+                        "evidence_snippets": ["Deep risk"],
+                        "source_label": "brief_background",
+                        "visibility": "Restricted",
+                        "confidence": 0.6,
+                    },
+                ],
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    state = SimulationRunner.start_simulation("sim_test_research", max_rounds=2)
+    assert state.runner_status == RunnerStatus.COMPLETED
+
+    snapshot_lines = (sim_dir / "consumer_rounds.jsonl").read_text(encoding="utf-8").splitlines()
+    assert len(snapshot_lines) > 0
+
+    # Parse all snapshots
+    snapshots = [json.loads(line) for line in snapshot_lines]
+
+    # Group by round
+    round0 = [s for s in snapshots if s["round_num"] == 0]
+    round1 = [s for s in snapshots if s["round_num"] == 1]
+
+    # Round 0: no restricted findings visible to ANY persona
+    for snap in round0:
+        assert "Restricted deep risk" not in snap["prompt"]
+        assert "rest_1" not in snap["visible_finding_ids"]
+
+    # Round 0: Initial finding IS visible
+    for snap in round0:
+        assert "Initial finding visible to all" in snap["prompt"]
+        assert "init_1" in snap["visible_finding_ids"]
+
+    # Round 1: high-search/high-cognition personas see restricted findings
+    # M01 = Care-driven urban mom (high search, high cognition)
+    # M05 = Ingredient-first analyst (high search, high cognition)
+    # M07 = Evidence-maximizing planner (high search, high cognition)
+    high_search_snapshots = [
+        s for s in round1
+        if s["agent_id"] in ("M01", "M05", "M07")
+    ]
+    assert len(high_search_snapshots) > 0
+    for snap in high_search_snapshots:
+        assert "Restricted deep risk" in snap["prompt"]
+        assert "rest_1" in snap["visible_finding_ids"]
+
+    # Round 1: low-search personas do NOT see restricted findings
+    # M03 = Traditional value caretaker (low search, medium cognition)
+    # M08 = Budget-safe minimalist (low search, low cognition)
+    low_search_snapshots = [
+        s for s in round1
+        if s["agent_id"] in ("M03", "M08")
+    ]
+    assert len(low_search_snapshots) > 0
+    for snap in low_search_snapshots:
+        assert "Restricted deep risk" not in snap["prompt"]
+        assert "rest_1" not in snap["visible_finding_ids"]

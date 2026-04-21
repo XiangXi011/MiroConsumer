@@ -16,6 +16,11 @@ from ..utils.logger import get_logger
 from .consumer.brief_adapter import ConsumerBriefAdapter
 from .consumer.models import ConsumerBusinessBrief
 from .consumer.persona_pack import load_default_persona_pack, map_persona_to_agent_traits
+from .consumer.research_ingest import (
+    build_research_summary,
+    default_auto_research_provider,
+    resolve_research_findings,
+)
 from .oasis_profile_generator import OasisProfileGenerator
 from .simulation_config_generator import (
     AgentActivityConfig,
@@ -548,6 +553,9 @@ class SimulationManager:
             agent_configs=agent_configs,
         )
         self._write_json(os.path.join(sim_dir, "simulation_config.json"), config_payload)
+        research_findings = resolve_research_findings(
+            brief, provider=default_auto_research_provider
+        )
         self._write_json(
             os.path.join(sim_dir, "consumer_config.json"),
             {
@@ -557,6 +565,16 @@ class SimulationManager:
                 "pinned_brief_summary": state.pinned_brief_summary,
                 "profiles_count": state.profiles_count,
                 "consumer_brief": brief.to_summary(),
+                "research_mode": brief.research_mode,
+                "research_summary": build_research_summary(research_findings),
+                "research_findings": [f.model_dump() for f in research_findings],
+                "research_findings_count": len(research_findings),
+                "auto_enrich_count": sum(
+                    1 for f in research_findings if f.source_label == "auto_enrich"
+                ),
+                "manual_background_count": sum(
+                    1 for f in research_findings if f.source_label == "brief_background"
+                ),
             },
         )
 

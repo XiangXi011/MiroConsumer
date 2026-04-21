@@ -21,6 +21,7 @@ test('setPendingUpload keeps legacy signature backward compatible', () => {
     simulationRequirement: 'Run legacy simulation',
     projectType: 'default',
     consumerBrief: null,
+    researchMode: 'manual_only',
     isPending: true,
   })
 })
@@ -47,6 +48,7 @@ test('setPendingUpload stores consumer payload and clearPendingUpload resets it'
     simulationRequirement: 'Run consumer propagation test',
     projectType: 'consumer_test',
     consumerBrief,
+    researchMode: 'manual_only',
     isPending: true,
   })
 
@@ -57,6 +59,7 @@ test('setPendingUpload stores consumer payload and clearPendingUpload resets it'
     simulationRequirement: '',
     projectType: 'default',
     consumerBrief: null,
+    researchMode: 'manual_only',
     isPending: false,
   })
 })

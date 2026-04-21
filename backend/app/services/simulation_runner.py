@@ -22,6 +22,7 @@ from ..config import Config
 from ..models.project import ProjectManager
 from ..utils.logger import get_logger
 from ..utils.locale import get_locale, set_locale
+from .consumer.models import ResearchFinding
 from .consumer.orchestrator import ConsumerSimulationOrchestrator
 from .consumer.persona_pack import load_default_persona_pack, map_persona_to_agent_traits
 from .zep_graph_memory_updater import ZepGraphMemoryManager
@@ -545,6 +546,16 @@ class SimulationRunner:
             personas = load_default_persona_pack()
             state.rounds = []
 
+            research_findings: List[ResearchFinding] = []
+            consumer_config_path = os.path.join(cls.RUN_STATE_DIR, simulation_id, "consumer_config.json")
+            if os.path.exists(consumer_config_path):
+                with open(consumer_config_path, "r", encoding="utf-8") as f:
+                    consumer_config = json.load(f)
+                for finding_data in consumer_config.get("research_findings", []):
+                    research_findings.append(ResearchFinding(**finding_data))
+
+            previous_attitudes: Dict[str, str] = {}
+
             for round_num in range(state.total_rounds):
                 round_summary = RoundSummary(
                     round_num=round_num,
@@ -554,6 +565,7 @@ class SimulationRunner:
 
                 for index, persona in enumerate(personas):
                     agent_traits = map_persona_to_agent_traits(persona)
+                    agent_id = agent_traits["persona_id"]
                     snapshot = orchestrator.build_round_snapshot(
                         round_num=round_num,
                         agent_traits={
@@ -562,10 +574,26 @@ class SimulationRunner:
                         },
                         brief_summary=brief_summary,
                         visible_graph_nodes=graph_nodes,
-                        agent_id=agent_traits["persona_id"],
+                        agent_id=agent_id,
                         agent_name=agent_traits["label"],
+                        research_findings=research_findings,
                     )
+
+                    previous_attitude = previous_attitudes.get(agent_id)
+                    current_attitude = snapshot["attitude_label"]
+                    propagation_events = orchestrator.build_propagation_events_for_transition(
+                        round_num=round_num,
+                        agent_id=agent_id,
+                        previous_attitude=previous_attitude,
+                        current_attitude=current_attitude,
+                        current_bucket=snapshot["bucket"],
+                        visible_finding_ids=snapshot.get("visible_finding_ids", []),
+                        quote=snapshot["quote"],
+                        research_findings=research_findings,
+                    )
+                    snapshot["propagation_events"] = propagation_events
                     orchestrator.persist_round_snapshot(snapshot)
+                    previous_attitudes[agent_id] = current_attitude
 
                     action = AgentAction(
                         round_num=round_num,

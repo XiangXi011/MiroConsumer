@@ -282,6 +282,38 @@
                     :disabled="loading"
                   ></textarea>
                 </div>
+                <div class="brief-field brief-field-wide">
+                  <label>{{ $t('home.consumerResearchModeLabel') }}</label>
+                  <div class="research-mode-switch">
+                    <button
+                      class="mode-btn"
+                      :class="{ active: formData.consumerResearchMode === 'manual_only' }"
+                      @click="formData.consumerResearchMode = 'manual_only'"
+                      :disabled="loading"
+                    >
+                      {{ $t('home.consumerResearchModeManual') }}
+                    </button>
+                    <button
+                      class="mode-btn"
+                      :class="{ active: formData.consumerResearchMode === 'auto_enrich' }"
+                      @click="formData.consumerResearchMode = 'auto_enrich'"
+                      :disabled="loading"
+                    >
+                      {{ $t('home.consumerResearchModeAuto') }}
+                    </button>
+                  </div>
+                  <p class="research-mode-hint">{{ $t('home.consumerResearchModeHint') }}</p>
+                </div>
+                <div class="brief-field brief-field-wide">
+                  <label>{{ $t('home.consumerBackgroundMaterialsLabel') }}</label>
+                  <textarea
+                    v-model="formData.consumerBackgroundMaterials"
+                    class="brief-input"
+                    rows="3"
+                    :placeholder="$t('home.consumerBackgroundMaterialsPlaceholder')"
+                    :disabled="loading"
+                  ></textarea>
+                </div>
               </div>
             </div>
 
@@ -331,7 +363,9 @@ const formData = ref({
   consumerClaims: '',
   consumerAudience: '',
   consumerScene: '',
-  consumerResearchGoal: ''
+  consumerResearchGoal: '',
+  consumerResearchMode: 'manual_only',
+  consumerBackgroundMaterials: ''
 })
 
 // 文件列表
@@ -438,7 +472,8 @@ const startSimulation = () => {
       files: files.value,
       simulationRequirement: resolvedSimulationRequirement.value,
       projectType: formData.value.projectType,
-      consumerBrief: isConsumerMode.value ? buildConsumerBrief(formData.value) : null
+      consumerBrief: isConsumerMode.value ? buildConsumerBrief(formData.value) : null,
+      researchMode: isConsumerMode.value ? (formData.value.consumerResearchMode || 'manual_only') : 'manual_only'
     })
     
     // 立即跳转到Process页面（使用特殊标识表示新建项目）

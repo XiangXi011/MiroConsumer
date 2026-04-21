@@ -24,6 +24,7 @@ const createDefaultState = () => ({
   simulationRequirement: '',
   projectType: 'default',
   consumerBrief: null,
+  researchMode: 'manual_only',
   isPending: false
 })
 
@@ -41,6 +42,7 @@ export function setPendingUpload(filesOrPayload, requirement) {
   state.simulationRequirement = payload.simulationRequirement || ''
   state.projectType = payload.projectType || 'default'
   state.consumerBrief = payload.consumerBrief || null
+  state.researchMode = payload.researchMode || 'manual_only'
   state.isPending = true
 }
 
@@ -50,6 +52,7 @@ export function getPendingUpload() {
     simulationRequirement: state.simulationRequirement,
     projectType: state.projectType,
     consumerBrief: state.consumerBrief,
+    researchMode: state.researchMode,
     isPending: state.isPending
   }
 }

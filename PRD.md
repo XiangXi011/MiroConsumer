@@ -118,7 +118,7 @@ Phase 1 的核心输出是《消费者传播测试报告》，至少回答：
 
 ## 7. 当前项目状态（2026-04-21）
 
-### 7.1 已完成
+### 7.1 Phase 1 已完成（基线）
 
 - 后端消费者域能力已落地：
   - `Project` 增加 `project_type / consumer_brief / consumer_context`
@@ -140,14 +140,48 @@ Phase 1 的核心输出是《消费者传播测试报告》，至少回答：
   - Step 4/5 已支持消费者报告标签、推荐追问、VOC 展示
   - 中英文 locale 已补齐消费者模式文案
 
-### 7.2 已验证与验收通过
+### 7.2 Phase 2 已完成（realism 升级）
+
+Phase 2 在 Phase 1 基线上增加了以下能力：
+
+- **自动预研与背景材料挂载（`research_mode / auto_enrich`）**
+  - `ConsumerBusinessBrief` 新增 `research_mode` 字段（`manual_only` / `auto_enrich`）
+  - `research_ingest.py`：将手动背景材料与 `auto_enrich` 产出统一转换为 `ResearchFinding`
+  - `default_auto_research_provider`：基于 brief 内容做确定性合成，产出带 `source_label='auto_enrich'` 的发现
+  - 自动预研结果写入 graph（`ResearchFinding` 节点）和 simulation config（`consumer_config.json`）
+
+- **信息分层与画像感知可见性（persona-aware knowledge visibility）**
+  - `access_policy.py`：`resolve_visible_findings()` 按 round 和画像特征（`search_propensity` + `cognition_level`）过滤发现
+  - 规则：Round 0 仅 `Initial`；Round 1+ `Propagation_Only` 对所有消费者可见；`Restricted` 仅对高搜索+高认知画像可见
+  - `build_knowledge_view()` 统一封装可见节点 + 可见发现
+
+- **传播事件建模（propagation events as typed evidence）**
+  - `event_engine.py`：五类传播事件（`positive_relay`, `skeptical_challenge`, `misread_amplification`, `risk_discovery`, `clarification_recovery`）
+  - `classify_propagation_event()` 按态度变化 + 触发类型 + 言语行为自动归类
+  - `build_propagation_event()` 生成带 `trigger_finding_ids` 和 `supporting_quote` 的 typed event
+  - `orchestrator.py` 在 round snapshot 中附加 `propagation_events`
+
+- **Phase 2 评分与报告因果字段**
+  - `scoring.py` 新增 `ConsumerPhase2Summary`：含 `event_counts`、`top_risk_findings`、`top_clarification_opportunities`、`causal_voc_quotes`
+  - `report_context.py` 新增 `build_consumer_report_context()`：输出 `causal_chains`、`event_led_reversals`、`persona_group_signals`
+  - `simulation.py` consumer-summary 路由返回 Phase 2 字段；`report_agent.py` 渲染消费者报告时保留因果引用
+
+- **前端 Step 2-5 Phase 2 展示**
+  - `Home.vue` 与 `consumerBrief.js`：支持 `research_mode` 选择（手动 / 自动增强）
+  - `Step2EnvSetup.vue`：展示研究模式、发现数量
+  - `Step3Simulation.vue`：展示传播事件类型
+  - `Step4Report.vue`：展示事件统计、风险发现、澄清机会、因果分析
+  - `Step5Interaction.vue`：因果追问模板（触发原因、信号扩散、澄清恢复）
+  - `locales/en.json` 与 `locales/zh.json`：Phase 2 标签与文案完整中英对齐
+
+### 7.3 已验证与验收通过
 
 - 后端测试：
   - `backend/.venv/Scripts/python.exe -m pytest`
-  - 结果：`45 passed`
+  - 结果：`70 passed`
 - 前端测试：
   - `node --test frontend/tests/consumerMode.test.js frontend/tests/consumerBrief.test.js frontend/tests/pendingUpload.test.js`
-  - 结果：`9 passed`
+  - 结果：`18 passed`
 - 前端构建：
   - `npm run build`
   - 结果：成功
@@ -177,15 +211,28 @@ Phase 1 的核心输出是《消费者传播测试报告》，至少回答：
   - 向下兼容：默认 `project_type` 不受影响
   - Zep 集成：图谱构建与模拟准备通过
 
+- `consumer_test` Phase 2 模块验收：
+  - Research Ingest：手动背景材料转 typed findings 通过；`auto_enrich` provider 调用通过
+  - Access Policy：Round 0 仅 `Initial` 通过；Round 2+ 高搜索可见 `Restricted` 通过；低搜索不可见通过
+  - Event Engine：`misread_amplification` / `risk_discovery` / `clarification_recovery` 分类通过；event chain metadata 通过
+  - Graph Builder：`ResearchFinding` 节点带 provenance 和 visibility 通过
+  - Scoring Phase 2：`event_counts` / `top_risk_findings` / `causal_voc_quotes` 通过
+  - Report Context Phase 2：`causal_chains` 含 `trigger_finding_ids` + `event_ids` 通过
+  - API：`auto_enrich` graph build 产出 findings 通过；consumer-summary 返回 Phase 2 字段通过
+  - 向下兼容：不传 `research_mode` 时默认 `manual_only`，不影响 Phase 1 行为
+
 结论：
 
-- `consumer_test` Phase 1 已完成并通过正式验收。
+- `consumer_test` Phase 1 与 Phase 2 均已完成并通过正式验收。
 
-### 7.3 当前已知限制
+### 7.4 当前已知限制
 
+- `auto_enrich` 当前为基于 brief 内容的确定性 repo-owned 合成（`default_auto_research_provider`），并非外部真实全网预研；后续如需真实数据可替换 provider 钩子
 - Kimi For Coding 响应较慢，单个 profile 约 `3-5` 分钟，`4` 个 profile 的完整 prepare 约 `21` 分钟
 - `response_format=json_object` 的兼容性仍不稳定，当前已通过 proxy 做兼容缓解
 - 小规模 profile（如 `4` 个）可稳定运行；更大规模场景建议切换更快的模型
+- `pendingUpload.js` 动静态导入混用 warning 仍存在，非阻断
+- 前端 chunk size warning 仍存在，非阻断
 
 ## 8. 风险与依赖
 
@@ -203,13 +250,7 @@ Phase 1 的核心输出是《消费者传播测试报告》，至少回答：
 
 ## 9. 后续阶段与终局愿景
 
-### Phase 2
-
-- 自动预研与背景材料挂载
-- 更强的群体讨论与传播事件设计
-- 更接近真实市场的信息分层与认知差异
-
-### Phase 3
+### Phase 3（后续方向）
 
 - 完整 OASIS 消费者社会化演化沙盘
 - Tiered RAG

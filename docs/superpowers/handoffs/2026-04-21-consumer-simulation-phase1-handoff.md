@@ -1,5 +1,7 @@
 # Consumer Simulation Phase 1 交接文档
 
+> 注：当前 `codex/consumer-simulation-phase1` worktree 已继续推进到 Phase 2。本文保留 Phase 1 基线信息，但接手当前分支时请优先阅读新增的 [2026-04-21-consumer-simulation-phase2-handoff.md](</D:/project/MiroFish/.worktrees/consumer-simulation-phase1/docs/superpowers/handoffs/2026-04-21-consumer-simulation-phase2-handoff.md>)。
+
 ## 1. 交接目标
 
 本文档用于把当前 `consumer_test` Phase 1 的实现状态、验收结果、剩余优化项和接手方式说明清楚，确保下一位同事可以在最少上下文损失的前提下继续推进。
@@ -93,7 +95,8 @@ D:\project\MiroFish\.worktrees\consumer-simulation-phase1\backend\.venv\Scripts\
 
 结果：
 
-- `45 passed`
+- Phase 1 基线：`45 passed`
+- 当前分支（已进入 Phase 2）：`70 passed`
 
 ### 6.2 前端测试
 
@@ -105,7 +108,8 @@ node --test frontend/tests/consumerMode.test.js frontend/tests/consumerBrief.tes
 
 结果：
 
-- `9 passed`
+- Phase 1 基线：`9 passed`
+- 当前分支（已进入 Phase 2）：`18 passed`
 
 ### 6.3 前端构建
 
@@ -173,16 +177,14 @@ npm run build
 - `response_format=json_object` 兼容性的持续收敛
 - 真实业务素材下的长轮次与更大样本量压测
 - 默认模式与消费者模式双分支的长期回归记录沉淀
+- `auto_enrich` 从确定性合成升级到真实外部 research provider
 
 ## 9. 下一步建议
 
 1. 用真实业务概念/文案素材继续补充更多验收样例。
 2. 评估更快模型或并行 prepare 策略，缩短 profile 生成耗时。
 3. 回归默认模式，持续确认 `project_type=default` 的旧流程稳定。
-4. 根据当前 Phase 1 验收基线，决定是否进入：
-   - Phase 2 自动预研
-   - 更复杂信息分层
-   - 更强群体传播建模
+4. 当前分支的真实接手请转到 Phase 2 handoff，Phase 1 文档更适合作为基线回溯材料。
 
 ## 10. 启动与验证参考
 
@@ -224,6 +226,7 @@ npm run build
 - Kimi For Coding 当前 profile 生成较慢，单个 profile 约 `3-5` 分钟，`4` 个 profile 的完整 prepare 约 `21` 分钟。
 - `response_format=json_object` 在不同模型和代理环境下兼容性不完全稳定，当前已通过 proxy 做缓解。
 - 小规模 profile（如 `4` 个）已验证可用，更大规模场景建议优先选择更快模型。
+- 当前分支已超出本文初始写作时的范围，新增 `research_mode / auto_enrich / propagation events / causal report context` 请参见 Phase 2 handoff。
 - 前端仍存在两个非阻断 warning：
   - `pendingUpload.js` 动静态导入混用
   - chunk size warning

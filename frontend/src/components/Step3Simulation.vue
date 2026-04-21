@@ -130,6 +130,32 @@
           <span class="consumer-voc-copy">"{{ quote.quote }}"</span>
         </div>
       </div>
+
+      <div v-if="consumerEventCounts.length > 0" class="consumer-events-panel">
+        <div class="consumer-events-title">{{ $t('consumer.step3.eventsPanelTitle') }}</div>
+        <div class="consumer-events-grid">
+          <div
+            v-for="evt in consumerEventCounts"
+            :key="evt.type"
+            class="consumer-event-chip"
+            :class="'event-' + evt.type"
+          >
+            <span class="event-type-label">{{ evt.label }}</span>
+            <span class="event-type-count">{{ evt.count }}</span>
+          </div>
+        </div>
+        <div v-if="consumerCausalQuotes.length > 0" class="consumer-causal-quotes">
+          <div class="causal-quote-label">{{ $t('consumer.step3.causalQuote') }}</div>
+          <div
+            v-for="(cq, idx) in consumerCausalQuotes"
+            :key="idx"
+            class="causal-quote-item"
+          >
+            <span class="causal-quote-type">{{ cq.label }}</span>
+            <span class="causal-quote-text">"{{ cq.quote }}"</span>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Main Content: Dual Timeline -->
@@ -328,6 +354,7 @@ import {
 import { generateReport } from '../api/report'
 import {
   buildConsumerMetricCards,
+  getConsumerEventLabel,
   isConsumerProject,
   pickTopVocQuotes
 } from '../utils/consumerMode'
@@ -409,6 +436,30 @@ const consumerVocHighlights = computed(() => (
     ? pickTopVocQuotes(consumerSummary.value, t)
     : []
 ))
+
+const consumerEventCounts = computed(() => {
+  if (!isConsumerMode.value || !consumerSummary.value) return []
+  const counts = consumerSummary.value.event_counts || {}
+  return Object.entries(counts)
+    .filter(([, count]) => count > 0)
+    .map(([type, count]) => ({
+      type,
+      count,
+      label: getConsumerEventLabel(type, t),
+    }))
+})
+
+const consumerCausalQuotes = computed(() => {
+  if (!isConsumerMode.value || !consumerSummary.value) return []
+  const quotes = consumerSummary.value.causal_voc_quotes || []
+  return quotes
+    .filter(q => q && q.quote)
+    .map(q => ({
+      type: q.event_type || '',
+      quote: q.quote,
+      label: getConsumerEventLabel(q.event_type || '', t),
+    }))
+})
 
 // Methods
 const addLog = (msg) => {

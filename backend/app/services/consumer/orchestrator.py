@@ -6,7 +6,14 @@ import json
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional
 
-from .models import GraphVisibility
+from .access_policy import resolve_visible_findings
+from .event_engine import (
+    build_propagation_event,
+    classify_propagation_event,
+    derive_speech_act_from_bucket,
+    derive_trigger_from_findings,
+)
+from .models import GraphVisibility, ResearchFinding
 from .persona_pack import can_access_deep_graph
 
 
@@ -22,11 +29,17 @@ class ConsumerSimulationOrchestrator:
         agent_traits: Mapping[str, Any],
         brief_summary: str,
         visible_graph_nodes: Iterable[Mapping[str, Any]],
+        research_findings: Optional[Iterable[ResearchFinding]] = None,
     ) -> str:
         visible_nodes = self.filter_visible_graph_nodes(
             round_num=round_num,
             agent_traits=agent_traits,
             visible_graph_nodes=visible_graph_nodes,
+        )
+        visible_findings = resolve_visible_findings(
+            persona=agent_traits,
+            findings=research_findings or [],
+            round_index=round_num,
         )
         round_stage = "initial reaction" if round_num == 0 else "propagation discussion"
         lines = [
@@ -40,6 +53,12 @@ class ConsumerSimulationOrchestrator:
                 lines.append(f"- [{node['type']}] {node['text']}")
         else:
             lines.append("- No extra graph context is visible in this round.")
+
+        if visible_findings:
+            lines.append("Visible research findings:")
+            for finding in visible_findings:
+                lines.append(f"- [{finding.finding_type}] {finding.summary}")
+
         return "\n".join(lines)
 
     def filter_visible_graph_nodes(
@@ -74,6 +93,7 @@ class ConsumerSimulationOrchestrator:
         visible_graph_nodes: Iterable[Mapping[str, Any]],
         agent_id: str,
         agent_name: str,
+        research_findings: Optional[Iterable[ResearchFinding]] = None,
     ) -> Dict[str, Any]:
         normalized_nodes = self.filter_visible_graph_nodes(
             round_num=round_num,
@@ -85,6 +105,12 @@ class ConsumerSimulationOrchestrator:
             agent_traits=agent_traits,
             brief_summary=brief_summary,
             visible_graph_nodes=visible_graph_nodes,
+            research_findings=research_findings,
+        )
+        visible_findings = resolve_visible_findings(
+            persona=agent_traits,
+            findings=research_findings or [],
+            round_index=round_num,
         )
         attitude_label, bucket, quote = self._generate_response(
             round_num=round_num,
@@ -99,6 +125,7 @@ class ConsumerSimulationOrchestrator:
             "agent_name": agent_name,
             "prompt": prompt,
             "visible_nodes": normalized_nodes,
+            "visible_finding_ids": [f.finding_id for f in visible_findings],
             "attitude_label": attitude_label,
             "bucket": bucket,
             "quote": quote,
@@ -113,6 +140,48 @@ class ConsumerSimulationOrchestrator:
         with self.output_path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(dict(snapshot), ensure_ascii=False))
             f.write("\n")
+
+    def build_propagation_events_for_transition(
+        self,
+        round_num: int,
+        agent_id: str,
+        previous_attitude: Optional[str],
+        current_attitude: str,
+        current_bucket: str,
+        visible_finding_ids: List[str],
+        quote: str,
+        research_findings: Optional[Iterable[ResearchFinding]] = None,
+    ) -> List[Dict[str, Any]]:
+        """Build propagation events for a snapshot based on attitude transition."""
+        if previous_attitude is None or previous_attitude == current_attitude:
+            return []
+
+        findings_list = list(research_findings or [])
+        visible_findings_data: List[Dict[str, Any]] = []
+        for finding in findings_list:
+            if finding.finding_id in visible_finding_ids:
+                visible_findings_data.append({
+                    "finding_id": finding.finding_id,
+                    "finding_type": finding.finding_type,
+                })
+
+        trigger = derive_trigger_from_findings(visible_findings_data)
+        speech_act = derive_speech_act_from_bucket(current_bucket)
+        event_type = classify_propagation_event(
+            before_attitude=previous_attitude,
+            after_attitude=current_attitude,
+            trigger=trigger,
+            speech_act=speech_act,
+        )
+        event = build_propagation_event(
+            actor_id=agent_id,
+            target_ids=[],
+            event_type=event_type,
+            trigger_finding_ids=list(visible_finding_ids),
+            supporting_quote=quote,
+            round_index=round_num,
+        )
+        return [event.model_dump()]
 
     def _normalize_graph_node(self, node: Mapping[str, Any]) -> Dict[str, Any]:
         node_text = str(node.get("text") or node.get("name") or node.get("summary") or "").strip()

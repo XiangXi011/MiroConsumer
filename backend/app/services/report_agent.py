@@ -1869,10 +1869,60 @@ class ReportAgent:
             "consumer_rounds.jsonl",
         )
         builder = ConsumerReportContextBuilder()
-        events = builder.load_events(rounds_path)
-        if not events:
+        snapshots = builder.load_events(rounds_path)
+        if not snapshots:
             raise ValueError(f"消费者传播快照不存在: {self.simulation_id}")
-        return builder.build(events)
+
+        # Phase 1 baseline context
+        context = builder.build(snapshots)
+
+        # Extract propagation events for Phase 2 enrichment
+        all_events = []
+        for snap in snapshots:
+            for event_data in snap.get("propagation_events", []):
+                all_events.append(event_data)
+
+        # Load research findings
+        research_findings = []
+        consumer_config_path = os.path.join(
+            Config.UPLOAD_FOLDER, "simulations", self.simulation_id, "consumer_config.json"
+        )
+        if os.path.exists(consumer_config_path):
+            with open(consumer_config_path, "r", encoding="utf-8") as f:
+                consumer_config = json.load(f)
+            research_findings = consumer_config.get("research_findings", [])
+
+        # Merge Phase 2 fields when events exist
+        if all_events:
+            from ..services.consumer.scoring import build_consumer_summary
+            from ..services.consumer.report_context import build_consumer_report_context
+
+            initial_labels = [s.get("attitude_label", "neutral") for s in snapshots if s.get("round_num") == 0]
+            latest_attitudes: Dict[str, str] = {}
+            for s in snapshots:
+                agent_id = s.get("agent_id", "")
+                if agent_id:
+                    latest_attitudes[agent_id] = s.get("attitude_label", "neutral")
+            final_labels = list(latest_attitudes.values())
+
+            phase2_summary = build_consumer_summary(
+                events=all_events,
+                findings=research_findings,
+                initial_labels=initial_labels,
+                final_labels=final_labels,
+            )
+            phase2_context = build_consumer_report_context(
+                summary=phase2_summary,
+                findings=research_findings,
+                events=all_events,
+            )
+
+            context["event_counts"] = phase2_summary.event_counts
+            context["top_risk_findings"] = phase2_summary.top_risk_findings
+            context["causal_chains"] = phase2_context["causal_chains"]
+            context["event_led_reversals"] = phase2_context["event_led_reversals"]
+
+        return context
 
     def _build_consumer_outline(self, context: Dict[str, Any]) -> ReportOutline:
         summary = context["summary"]
@@ -1919,12 +1969,21 @@ class ReportAgent:
             )
 
         if section_title == "风险与误读":
-            return (
-                f"- 高风险点：{self._format_points(context['top_risk_points'])}\n"
-                f"- 高误读点：{self._format_points(context['top_misreads'])}\n"
-                f"- 风险原声：\n{self._format_quotes(context['representative_voc_quotes']['risk'])}\n"
-                f"- 误读/疑问原声：\n{self._format_quotes(context['representative_voc_quotes']['misread'])}"
-            )
+            lines = [
+                f"- 高风险点：{self._format_points(context['top_risk_points'])}",
+                f"- 高误读点：{self._format_points(context['top_misreads'])}",
+                f"- 风险原声：\n{self._format_quotes(context['representative_voc_quotes']['risk'])}",
+                f"- 误读/疑问原声：\n{self._format_quotes(context['representative_voc_quotes']['misread'])}",
+            ]
+            if context.get("top_risk_findings"):
+                lines.append("- 因果触发发现：")
+                for finding in context["top_risk_findings"]:
+                    lines.append(f"  - [{finding['finding_type']}] {finding['summary']}")
+            if context.get("causal_chains"):
+                lines.append("- 事件因果链：")
+                for chain in context["causal_chains"][:3]:
+                    lines.append(f"  - 发现 {chain['finding_summary']} 触发了事件 {', '.join(chain['event_ids'])}")
+            return "\n".join(lines)
 
         if section_title == "代表性消费者原声":
             return (
@@ -1937,11 +1996,18 @@ class ReportAgent:
             resonance_point = self._first_point(context["top_resonance_points"], "现有核心卖点")
             risk_point = self._first_point(context["top_risk_points"], "潜在争议点")
             misread_point = self._first_point(context["top_misreads"], "传播中的模糊表述")
-            return (
-                f"- 放大高共鸣表达：围绕“{resonance_point}”继续强化概念与文案。\n"
-                f"- 提前澄清风险：针对“{risk_point}”准备更直接的解释与证据。\n"
-                f"- 修正文案误读：对“{misread_point}”补充更具体、更少歧义的表述。"
-            )
+            lines = [
+                f"- 放大高共鸣表达：围绕“{resonance_point}”继续强化概念与文案。",
+                f"- 提前澄清风险：针对“{risk_point}”准备更直接的解释与证据。",
+                f"- 修正文案误读：对“{misread_point}”补充更具体、更少歧义的表述。",
+            ]
+            if context.get("top_risk_findings"):
+                lines.append("- 针对风险发现的优先行动：")
+                for finding in context["top_risk_findings"][:3]:
+                    lines.append(f"  - 处理 [{finding['finding_type']}] {finding['summary']}")
+            if context.get("event_counts"):
+                lines.append(f"- 事件类型分布：{context['event_counts']}")
+            return "\n".join(lines)
 
         return ""
 

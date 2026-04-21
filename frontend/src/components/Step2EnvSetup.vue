@@ -154,6 +154,21 @@
               <div class="consumer-brief-label">{{ $t('consumer.pinnedBriefSummary') }}</div>
               <p class="consumer-brief-text">{{ pinnedBriefSummary }}</p>
             </div>
+            <div v-if="isConsumerMode && consumerResearchFindings.length > 0" class="consumer-research-panel">
+              <div class="consumer-research-label">{{ $t('consumer.researchFindings') }}</div>
+              <div class="consumer-research-list">
+                <div
+                  v-for="finding in consumerResearchFindings"
+                  :key="finding.finding_id"
+                  class="consumer-research-item"
+                >
+                  <span class="research-type-badge" :class="'type-' + finding.finding_type">{{ findingTypeLabel(finding.finding_type) }}</span>
+                  <span class="research-visibility-badge" :class="'vis-' + finding.visibility">{{ visibilityLabel(finding.visibility) }}</span>
+                  <span class="research-summary">{{ finding.summary }}</span>
+                </div>
+              </div>
+              <p class="research-access-hint">{{ $t('consumer.accessPolicy.round0Hint') }} · {{ $t('consumer.accessPolicy.propagationHint') }}</p>
+            </div>
             <!-- 时间配置 -->
             <div class="config-block">
               <div class="config-grid">
@@ -745,6 +760,27 @@ const isConsumerMode = computed(() => isConsumerProject(props.projectData))
 const personaPackId = computed(() => consumerConfigMeta.value.persona_pack_id || '')
 
 const pinnedBriefSummary = computed(() => consumerConfigMeta.value.pinned_brief_summary || '')
+
+const consumerResearchFindings = computed(() => consumerConfigMeta.value.research_findings || [])
+
+const findingTypeLabel = (type) => {
+  const map = {
+    category_context: t('consumer.findingType.category_context'),
+    competitor_signal: t('consumer.findingType.competitor_signal'),
+    risk_signal: t('consumer.findingType.risk_signal'),
+    trend_signal: t('consumer.findingType.trend_signal'),
+  }
+  return map[type] || type
+}
+
+const visibilityLabel = (vis) => {
+  const map = {
+    Initial: t('consumer.visibility.Initial'),
+    Propagation_Only: t('consumer.visibility.Propagation_Only'),
+    Restricted: t('consumer.visibility.Restricted'),
+  }
+  return map[vis] || vis
+}
 
 const applyConsumerConfigMeta = (...sources) => {
   const nextMeta = { ...consumerConfigMeta.value }

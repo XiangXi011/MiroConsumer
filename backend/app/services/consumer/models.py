@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, ClassVar, Dict, Iterable, List
+from typing import Any, ClassVar, Dict, Iterable, List, Literal
+
+from pydantic import BaseModel, Field
 
 
 class ConsumerTaskType(str, Enum):
@@ -12,6 +14,32 @@ class GraphVisibility(str, Enum):
     Initial = "Initial"
     Propagation_Only = "Propagation_Only"
     Restricted = "Restricted"
+
+
+class ResearchFinding(BaseModel):
+    finding_id: str
+    finding_type: Literal["category_context", "competitor_signal", "risk_signal", "trend_signal"]
+    summary: str
+    evidence_snippets: List[str] = Field(default_factory=list)
+    source_label: str = "brief_background"
+    visibility: GraphVisibility = GraphVisibility.Propagation_Only
+    confidence: float = 0.5
+
+
+class PropagationEvent(BaseModel):
+    event_id: str
+    event_type: Literal[
+        "positive_relay",
+        "skeptical_challenge",
+        "misread_amplification",
+        "risk_discovery",
+        "clarification_recovery",
+    ]
+    actor_id: str
+    target_ids: List[str] = Field(default_factory=list)
+    trigger_finding_ids: List[str] = Field(default_factory=list)
+    supporting_quote: str = ""
+    round_index: int
 
 
 def _normalize_string_list(value: Any, field_name: str) -> List[str]:
@@ -69,6 +97,16 @@ def _normalize_graph_visibility(value: Any) -> GraphVisibility:
     raise ValueError("graph_visibility must be a string or GraphVisibility")
 
 
+def _normalize_research_mode(value: Any) -> str:
+    if value is None:
+        return "manual_only"
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text in {"manual_only", "auto_enrich"}:
+            return text
+    return "manual_only"
+
+
 @dataclass
 class ConsumerBusinessBrief:
     task_type: ConsumerTaskType
@@ -80,6 +118,7 @@ class ConsumerBusinessBrief:
     research_goal: str = ""
     optional_background_materials: List[str] = field(default_factory=list)
     graph_visibility: GraphVisibility = GraphVisibility.Initial
+    research_mode: str = "manual_only"
     supported_task_types: ClassVar[set[ConsumerTaskType]] = {
         ConsumerTaskType.ConceptTest,
         ConsumerTaskType.CopyFeedback,
@@ -105,6 +144,7 @@ class ConsumerBusinessBrief:
         )
         self.research_goal = _normalize_required_text(self.research_goal, "research_goal")
         self.graph_visibility = _normalize_graph_visibility(self.graph_visibility)
+        self.research_mode = _normalize_research_mode(self.research_mode)
 
     def to_summary(self) -> Dict[str, Any]:
         return {
@@ -117,4 +157,5 @@ class ConsumerBusinessBrief:
             "research_goal": self.research_goal,
             "optional_background_materials": self.optional_background_materials,
             "graph_visibility": self.graph_visibility.value,
+            "research_mode": self.research_mode,
         }

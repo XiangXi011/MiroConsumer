@@ -7,7 +7,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping
 
-from .scoring import ConsumerScoringService
+from .scoring import ConsumerPhase2Summary, ConsumerScoringService
 
 
 class ConsumerReportContextBuilder:
@@ -116,4 +116,91 @@ class ConsumerReportContextBuilder:
         return str(event.get("quote", "")).strip()
 
 
-__all__ = ["ConsumerReportContextBuilder"]
+def build_consumer_report_context(
+    summary: Any,
+    findings: Iterable[Any],
+    events: Iterable[Any],
+) -> Dict[str, Any]:
+    """Build structured report context with causal chains from events and findings.
+
+    Args:
+        summary: A ConsumerPhase2Summary or compatible object.
+        findings: ResearchFinding objects or dicts.
+        events: PropagationEvent objects or dicts.
+
+    Returns:
+        Dict with causal_chains, event_led_reversals, and persona_group_signals.
+    """
+    from .models import PropagationEvent, ResearchFinding
+
+    # Normalize events
+    typed_events: List[PropagationEvent] = []
+    for e in events:
+        if isinstance(e, PropagationEvent):
+            typed_events.append(e)
+        elif isinstance(e, dict):
+            typed_events.append(PropagationEvent(**e))
+
+    # Normalize findings
+    typed_findings: List[ResearchFinding] = []
+    for f in findings:
+        if isinstance(f, ResearchFinding):
+            typed_findings.append(f)
+        elif isinstance(f, dict):
+            typed_findings.append(ResearchFinding(**f))
+
+    # Build causal chains: group events by trigger finding
+    finding_events: Dict[str, List[str]] = {}
+    for event in typed_events:
+        for fid in event.trigger_finding_ids:
+            finding_events.setdefault(fid, []).append(event.event_id)
+
+    causal_chains: List[Dict[str, Any]] = []
+    for finding in typed_findings:
+        if finding.finding_id in finding_events:
+            related_events = [e for e in typed_events if finding.finding_id in e.trigger_finding_ids]
+            causal_chains.append({
+                "trigger_finding_ids": [finding.finding_id],
+                "finding_type": finding.finding_type,
+                "finding_summary": finding.summary,
+                "event_ids": finding_events[finding.finding_id],
+                "event_types": list({e.event_type for e in related_events}),
+            })
+
+    # Event-led attitude reversals
+    reversals = [
+        {
+            "event_id": e.event_id,
+            "event_type": e.event_type,
+            "actor_id": e.actor_id,
+            "round_index": e.round_index,
+            "quote": e.supporting_quote,
+        }
+        for e in typed_events
+        if e.event_type in {"misread_amplification", "risk_discovery", "clarification_recovery"}
+    ]
+
+    # Persona group amplification/blocking signals
+    persona_events: Dict[str, Dict[str, Any]] = {}
+    for event in typed_events:
+        actor = event.actor_id
+        if actor not in persona_events:
+            persona_events[actor] = {"amplified": [], "blocked": []}
+        if event.event_type in {"positive_relay", "risk_discovery", "misread_amplification"}:
+            persona_events[actor]["amplified"].append(event.event_type)
+        elif event.event_type in {"skeptical_challenge", "clarification_recovery"}:
+            persona_events[actor]["blocked"].append(event.event_type)
+
+    summary_dict = summary.to_dict() if hasattr(summary, "to_dict") else dict(summary)
+
+    return {
+        "phase2_summary": summary_dict,
+        "causal_chains": causal_chains,
+        "event_led_reversals": reversals,
+        "persona_group_signals": persona_events,
+        "trigger_finding_count": len(causal_chains),
+        "event_count": len(typed_events),
+    }
+
+
+__all__ = ["ConsumerReportContextBuilder", "build_consumer_report_context"]

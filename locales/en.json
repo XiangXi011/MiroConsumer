@@ -88,6 +88,12 @@
     "consumerScenePlaceholder": "Optional. Example: weekday breakfast, commute snack.",
     "consumerResearchGoalLabel": "Research Goal",
     "consumerResearchGoalPlaceholder": "Required. What do you want to learn from the propagation test?",
+    "consumerResearchModeLabel": "Research Mode",
+    "consumerResearchModeManual": "Manual Only",
+    "consumerResearchModeAuto": "Auto Enrich",
+    "consumerResearchModeHint": "Auto Enrich runs automatic pre-research to enrich the simulation with category context and risk signals.",
+    "consumerBackgroundMaterialsLabel": "Background Materials",
+    "consumerBackgroundMaterialsPlaceholder": "Optional. Paste any background research, competitor signals, or known risk points—one per line.",
     "engineBadge": "Engine: MiroFish-V1.0",
     "startEngine": "Start Engine",
     "initializing": "Initializing..."
@@ -331,6 +337,38 @@
       "risk": "Why did \"{point}\" get amplified during propagation?",
       "misread": "How did \"{point}\" turn into a misread?"
     },
+    "eventTypes": {
+      "positive_relay": "Positive Relay",
+      "skeptical_challenge": "Skeptical Challenge",
+      "misread_amplification": "Misread Amplification",
+      "risk_discovery": "Risk Discovery",
+      "clarification_recovery": "Clarification Recovery"
+    },
+    "researchFindings": "Research Findings",
+    "findingType": {
+      "category_context": "Category Context",
+      "competitor_signal": "Competitor Signal",
+      "risk_signal": "Risk Signal",
+      "trend_signal": "Trend Signal"
+    },
+    "visibility": {
+      "Initial": "Initial",
+      "Propagation_Only": "Propagation Only",
+      "Restricted": "Restricted"
+    },
+    "causalChains": "Causal Chains",
+    "eventCounts": "Event Counts",
+    "triggerFindings": "Triggering Findings",
+    "clarificationOpportunities": "Clarification Opportunities",
+    "personaGroupSignals": "Persona Group Signals",
+    "eventLedReversals": "Event-Led Reversals",
+    "accessPolicy": {
+      "initialOnly": "Initial Knowledge Only",
+      "allPropagation": "All Propagation Knowledge",
+      "restricted": "Restricted (High Search)",
+      "round0Hint": "Round 0: only Initial findings are visible",
+      "propagationHint": "Propagation: Propagation_Only visible to all; Restricted requires high search/cognition"
+    },
     "step2": {
       "bannerTitle": "Audience personas are being prepared from the consumer brief.",
       "bannerPersonaPack": "Persona pack: {id}"
@@ -345,7 +383,22 @@
         "label": "Round 1-N",
         "title": "Propagation",
         "description": "Search-prone and high-cognition segments begin amplifying resonance, objections, and misreads."
-      }
+      },
+      "eventsPanelTitle": "Propagation Events",
+      "noEvents": "No propagation events recorded yet",
+      "causalQuote": "Causal Quote"
+    },
+    "step4": {
+      "causalReportTitle": "Causal Analysis",
+      "riskFindingsTitle": "Top Risk Findings",
+      "clarificationTitle": "Clarification Opportunities",
+      "noRiskFindings": "No risk findings triggered",
+      "noClarifications": "No clarification opportunities identified"
+    },
+    "step5": {
+      "causalPromptTrigger": "Which finding triggered the negative turn?",
+      "causalPromptSpread": "Why did this signal spread among these personas?",
+      "causalPromptRecovery": "What helped the clarification recover acceptance?"
     }
   },
   "graph": {

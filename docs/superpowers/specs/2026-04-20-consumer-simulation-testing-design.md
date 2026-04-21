@@ -143,6 +143,84 @@
 
 - 已完成
 
+### 4.7 Consumer Research Ingest（Phase 2 新增）
+
+职责：
+
+- 将 `optional_background_materials` 转换为 `ResearchFinding`
+- 支持 `auto_enrich` 模式：通过 provider 钩子自动补充研究素材
+- 分类：`category_context`、`competitor_signal`、`risk_signal`、`trend_signal`
+- 为每个发现分配可见性：`Initial`、`Propagation_Only`、`Restricted`
+
+实现：
+
+- `build_research_findings(brief)`：从手动背景材料生成 findings
+- `resolve_research_findings(brief, provider)`：合并手动 + auto_enrich 结果
+- `default_auto_research_provider`：基于 brief 内容的确定性合成，产出 `source_label='auto_enrich'`
+- `build_research_summary(findings)`：生成 pinned summary
+
+状态：已完成
+
+### 4.8 Consumer Access Policy（Phase 2 新增）
+
+职责：
+
+- 按 round 和 persona 画像特征决定每个 agent 能访问哪些研究/图谱信息
+
+规则：
+
+- Round 0：仅 `Initial` 可见
+- Round 1+：`Propagation_Only` 对所有消费者可见
+- `Restricted` 仅对 `search_propensity=high` + `cognition_level=high` 的画像可见
+
+实现：
+
+- `resolve_visible_findings(persona, findings, round_index)`
+- `build_knowledge_view(persona, brief, graph_nodes, findings, round_index)`
+
+状态：已完成
+
+### 4.9 Propagation Event Engine（Phase 2 新增）
+
+职责：
+
+- 定义传播事件类型学并自动归类每轮态度变化
+
+事件类型：
+
+- `positive_relay`：正向接力
+- `skeptical_challenge`：质疑挑战
+- `misread_amplification`：误读放大
+- `risk_discovery`：风险发现
+- `clarification_recovery`：澄清恢复
+
+实现：
+
+- `classify_propagation_event(before, after, trigger, speech_act)`
+- `build_propagation_event(actor_id, target_ids, event_type, trigger_finding_ids, quote, round_index)`
+- `derive_trigger_from_findings(visible_findings)`
+- `derive_speech_act_from_bucket(bucket)`
+
+状态：已完成
+
+### 4.10 Consumer Scoring Phase 2（Phase 2 扩展）
+
+新增：
+
+- `ConsumerPhase2Summary`：含 `event_counts`、`top_risk_findings`、`top_clarification_opportunities`、`causal_voc_quotes`
+- `build_consumer_summary(events, findings, initial_labels, final_labels)`：从传播事件和研究发现构建因果摘要
+
+状态：已完成
+
+### 4.11 Consumer Report Context Phase 2（Phase 2 扩展）
+
+新增：
+
+- `build_consumer_report_context(summary, findings, events)`：输出 `causal_chains`、`event_led_reversals`、`persona_group_signals`
+- 每个 causal chain 保留 `trigger_finding_ids` + `event_ids`，供报告代理直接引用
+
+状态：已完成
+
 ## 5. API 设计
 
 ### 5.1 `/api/graph`
@@ -171,15 +249,19 @@
   - 将 `project_type` 复制进 simulation state
 - `POST /api/simulation/prepare`
   - 生成 persona pack、consumer config 与 pinned brief
+  - Phase 2：同时写入 `consumer_config.json`，含 `research_mode`、`research_findings`、`research_summary`
 - `GET /api/simulation/<id>/consumer-summary`
-  - 返回 summary / VOC / evidence
+  - Phase 1：返回 summary / VOC / evidence
+  - Phase 2：额外返回 `event_counts`、`top_risk_findings`、`top_clarification_opportunities`、`causal_voc_quotes`
 - `POST /api/simulation/start`
   - 走消费者仿真分支
+  - Phase 2：每轮 snapshot 附加 `propagation_events` 和 `visible_finding_ids`
 
 兼容性要求：
 
 - `project_type` 默认值为 `default`
 - 默认模式不触发任何消费者域逻辑
+- Phase 2 字段缺失时，前端和报告代理均做兼容降级
 
 状态：
 
@@ -247,14 +329,37 @@
 - `b5fcf90` `feat: add consumer test intake to home flow`
 - `d848327` `feat: adapt step views for consumer simulation mode`
 
+当前 worktree 在上述 Phase 1 基线上继续完成了 Phase 2 代码落地，主要新增/扩展的能力包括：
+
+- `backend/app/services/consumer/research_ingest.py`
+  - `build_research_findings()`
+  - `resolve_research_findings()`
+  - `default_auto_research_provider()`
+- `backend/app/services/consumer/access_policy.py`
+  - `resolve_visible_findings()`
+  - `build_knowledge_view()`
+- `backend/app/services/consumer/event_engine.py`
+  - `classify_propagation_event()`
+  - `build_propagation_event()`
+- `backend/app/services/consumer/scoring.py`
+  - `ConsumerPhase2Summary`
+  - `build_consumer_summary()`
+- `backend/app/services/consumer/report_context.py`
+  - `build_consumer_report_context()`
+- 前端 Step 2-5 已补齐 Phase 2 展示：
+  - Step 2：research findings / visibility
+  - Step 3：event counts / causal VOC
+  - Step 4：risk findings / clarification opportunities / causal chains
+  - Step 5：因果追问 prompt
+
 ### 7.2 已验证结果
 
 - 后端：
   - `backend/.venv/Scripts/python.exe -m pytest`
-  - 结果：`45 passed`
+  - 结果：`70 passed`
 - 前端：
   - `node --test frontend/tests/consumerMode.test.js frontend/tests/consumerBrief.test.js frontend/tests/pendingUpload.test.js`
-  - 结果：`9 passed`
+  - 结果：`18 passed`
 - 前端构建：
   - `npm run build`
   - 结果：成功
@@ -273,7 +378,7 @@
   - `simulation_config.json`
   - `state.json`
 
-### 7.4 Phase 1 验收结论
+### 7.4 Phase 1 / Phase 2 验收结论
 
 - Persona Pack：`8` 个默认 persona 加载通过
 - Brief Adapter：`from_payload` 规范化通过
@@ -287,10 +392,16 @@
 - API：project list/detail、simulation list/history、`GET /{sim_id}/consumer-summary` 通过
 - 向下兼容：默认 `project_type` 不受影响
 - Zep 集成：图谱构建与模拟准备通过
+- Research Ingest：手动背景材料转 typed findings 通过；`auto_enrich` provider 路径通过
+- Access Policy：Round 0 仅 `Initial` 通过；Round 1+ 高搜索画像可见 `Restricted` 通过；低搜索画像不可见通过
+- Propagation Event Engine：typed event 分类、event metadata、trigger finding 链接通过
+- Phase 2 Summary：`event_counts`、`top_risk_findings`、`top_clarification_opportunities`、`causal_voc_quotes` 通过
+- Phase 2 Report Context：`causal_chains` 保留 `trigger_finding_ids` + `event_ids` 通过
+- 前端 Phase 2 展示：Step 2-5 research/event/causal UI 接线通过
 
 结论：
 
-- `consumer_test` Phase 1 已通过正式验收，可作为当前交付基线。
+- `consumer_test` Phase 1 与 Phase 2 均已通过当前代码级验收，可作为当前 worktree 交付基线。
 
 ### 7.5 已修复的关键问题
 
@@ -298,17 +409,23 @@
 - Step 3 rerun 时清理旧 `consumerSummary`，避免残留上一次结果
 - Step 2-5 的新增消费者模式文案全部接入 i18n
 - 快速追问 prompt 编码问题已修复
+- `auto_enrich` 已接入真实 graph build / prepare 主流程，不再只是测试辅助函数
+- `simulation_runner` 已在 consumer 分支中注入 `research_findings`
+- Step 4 已对齐后端真实字段名（`summary / finding_summary / event_types`）
+- Step 5 已修复 `persona_group_signals` 为对象映射时的 prompt gating
 
 ## 8. 当前剩余优化项
 
+- 将 `default_auto_research_provider` 从 repo-owned 合成升级为真实外部 research provider
 - 大规模 profile prepare 的耗时优化
 - `response_format=json_object` 兼容性的进一步收敛
 - 长轮次、真实业务素材和更大样本量下的压测基线
 - 默认模式与 `consumer_test` 模式的长期回归记录沉淀
+- `pendingUpload.js` 动静态导入 warning 与前端 chunk size warning 的清理
 
 ## 9. 后续建议
 
 1. 固化一份正式验收记录模板，后续用于更多消费者测试用例
 2. 基于真实业务素材补充更大样本量和更长轮次的性能验证
 3. 评估更快模型或 prepare 并行策略，降低 profile 生成耗时
-4. 根据 Phase 1 验收结果决定是否进入 Phase 2 的自动预研与更复杂传播建模
+4. 将 `auto_enrich` provider 替换为真实外部 research / RAG 能力后，再决定是否进入 Phase 3 的更完整社会化演化

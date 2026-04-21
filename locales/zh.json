@@ -90,7 +90,13 @@
     "consumerSceneLabel": "使用场景",
     "consumerScenePlaceholder": "选填，例如：工作日早餐、通勤加餐。",
     "consumerResearchGoalLabel": "研究目标",
-    "consumerResearchGoalPlaceholder": "必填，说明你希望这次传播测试回答什么问题。"
+    "consumerResearchGoalPlaceholder": "必填，说明你希望这次传播测试回答什么问题。",
+    "consumerResearchModeLabel": "研究模式",
+    "consumerResearchModeManual": "仅手动",
+    "consumerResearchModeAuto": "自动增强",
+    "consumerResearchModeHint": "自动增强会自动运行预研，为模拟注入品类语境和风险信号。",
+    "consumerBackgroundMaterialsLabel": "背景材料",
+    "consumerBackgroundMaterialsPlaceholder": "选填。粘贴任何背景研究、竞品信号或已知风险点，每行一条。"
   },
   "main": {
     "layoutGraph": "图谱",
@@ -333,9 +339,41 @@
       "misread": "误读"
     },
     "quickPrompts": {
-      "resonance": "为什么“{point}”会成为高共鸣点？",
-      "risk": "为什么“{point}”会在传播中被放大？",
-      "misread": "“{point}”是如何被误读出来的？"
+      "resonance": "为什么\"{point}\"会成为高共鸣点？",
+      "risk": "为什么\"{point}\"会在传播中被放大？",
+      "misread": "\"{point}\"是如何被误读出来的？"
+    },
+    "eventTypes": {
+      "positive_relay": "正向传播",
+      "skeptical_challenge": "质疑挑战",
+      "misread_amplification": "误读放大",
+      "risk_discovery": "风险发现",
+      "clarification_recovery": "澄清恢复"
+    },
+    "researchFindings": "研究发现",
+    "findingType": {
+      "category_context": "品类语境",
+      "competitor_signal": "竞品信号",
+      "risk_signal": "风险信号",
+      "trend_signal": "趋势信号"
+    },
+    "visibility": {
+      "Initial": "初始可见",
+      "Propagation_Only": "仅传播期",
+      "Restricted": "受限（高搜索）"
+    },
+    "causalChains": "因果链",
+    "eventCounts": "事件统计",
+    "triggerFindings": "触发发现",
+    "clarificationOpportunities": "澄清机会",
+    "personaGroupSignals": "画像群体信号",
+    "eventLedReversals": "事件驱动转向",
+    "accessPolicy": {
+      "initialOnly": "仅初始知识",
+      "allPropagation": "全部传播知识",
+      "restricted": "受限（高搜索）",
+      "round0Hint": "第 0 轮：仅 Initial 发现可见",
+      "propagationHint": "传播期：Propagation_Only 对所有可见；Restricted 需要高搜索/高认知"
     },
     "step2": {
       "bannerTitle": "系统正在根据消费者 Brief 准备受众画像。",
@@ -351,7 +389,22 @@
         "label": "第 1-N 轮",
         "title": "传播演化",
         "description": "高搜索倾向和高认知人群会逐步放大共鸣点、质疑点与误读点。"
-      }
+      },
+      "eventsPanelTitle": "传播事件",
+      "noEvents": "尚未记录传播事件",
+      "causalQuote": "因果原声"
+    },
+    "step4": {
+      "causalReportTitle": "因果分析",
+      "riskFindingsTitle": "主要风险发现",
+      "clarificationTitle": "澄清机会",
+      "noRiskFindings": "未触发风险发现",
+      "noClarifications": "未识别澄清机会"
+    },
+    "step5": {
+      "causalPromptTrigger": "哪个发现触发了负面转折？",
+      "causalPromptSpread": "为什么这个信号在这些画像中扩散？",
+      "causalPromptRecovery": "什么帮助澄清恢复了接受度？"
     }
   },
   "graph": {

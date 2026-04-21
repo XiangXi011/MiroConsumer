@@ -4,6 +4,7 @@ from .models import (
     ConsumerBusinessBrief,
     GraphVisibility,
     _normalize_graph_visibility,
+    _normalize_research_mode,
     _normalize_string_list,
     _normalize_task_type,
 )
@@ -50,4 +51,5 @@ class ConsumerBriefAdapter:
                 payload.get("optional_background_materials"), "optional_background_materials"
             ),
             graph_visibility=_normalize_graph_visibility(payload.get("graph_visibility")),
+            research_mode=_normalize_research_mode(payload.get("research_mode")),
         )

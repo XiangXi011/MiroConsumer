@@ -17,6 +17,8 @@ class PersonaRecord(TypedDict):
     cognition_level: str
     herd_tendency: str
     influence_weight: float
+    source_trust: str
+    skepticism: str
 
 
 class AgentTraitProfile(TypedDict):
@@ -28,6 +30,8 @@ class AgentTraitProfile(TypedDict):
     influence_weight: float
     can_access_deep_graph: bool
     propagation_profile: Dict[str, str]
+    source_trust: str
+    skepticism: str
 
 
 _DEFAULT_PERSONA_PATH = Path(__file__).with_name("data") / "default_personas.json"
@@ -61,6 +65,8 @@ def map_persona_to_agent_traits(persona: Mapping[str, Any]) -> AgentTraitProfile
         "influence_weight": normalized["influence_weight"],
         "can_access_deep_graph": can_access_deep_graph(propagation_profile),
         "propagation_profile": propagation_profile,
+        "source_trust": normalized["source_trust"],
+        "skepticism": normalized["skepticism"],
     }
 
 
@@ -104,6 +110,8 @@ def _normalize_persona(persona: Mapping[str, Any]) -> PersonaRecord:
         "cognition_level": _normalize_level(persona["cognition_level"], "cognition_level"),
         "herd_tendency": _normalize_level(persona["herd_tendency"], "herd_tendency"),
         "influence_weight": _normalize_influence_weight(persona["influence_weight"]),
+        "source_trust": _normalize_level(persona.get("source_trust", "medium"), "source_trust"),
+        "skepticism": _normalize_level(persona.get("skepticism", "medium"), "skepticism"),
     }
 
 
