@@ -1,503 +1,280 @@
-# MiroFish 消费者概念/文案传播测试整合设计
+# MiroFish 消费者传播测试整合设计
 
-## 1. 背景
+## 1. 设计目标
 
-当前 MiroFish 已经具备完整的图谱构建、仿真、报告生成与深度交互链路，但其主能力仍偏通用仿真。另一方面，现有消费者研究项目已经沉淀了较成熟的 `BusinessBrief`、消费者画像、评分逻辑与研究报告结构，但其核心评估方式仍以静态、单轮、多 persona 并发评审为主。
+本设计的目标是在不破坏原版 MiroFish 主链路的前提下，加入一个 `project_type=consumer_test` 分支，使系统能够围绕概念测试与文案测试执行消费者传播仿真，并输出消费者测试专用报告。
 
-本次设计的目标不是并行维护两套产品，也不是用消费者研究项目替代 MiroFish，而是以 MiroFish 为主骨架，将消费者研究领域能力迁入现有主链路，使其能够完成“概念测试 + 文案测试 + 群体传播增强”的消费者测试工作流。
+设计原则：
 
-## 2. 设计目标
+- MiroFish 为主骨架
+- 消费者项目提供领域契约与研究逻辑
+- 默认模式完全保持原版行为
+- 只有显式传入 `consumer_test` 才触发新逻辑
 
-本期设计要达成以下结果：
+## 2. Phase 1 设计边界
 
-- 在 MiroFish 内新增一条消费者测试模式，而不是新增一套平行产品
-- 支持两类测试：`concept_test`、`copy_feedback`
-- 将用户输入标准化为统一的 `BusinessBrief`
-- 将消费者画像转换为可参与仿真的 Agent Profile
-- 在仿真中体现消费者之间的传播、跟风、分化、转向与误读
-- 输出面向市场研究场景的消费者传播测试报告
-- 支持研究员在报告完成后继续对典型消费者或报告代理追问
+### 2.1 纳入范围
 
-## 3. 非目标
+- `concept_test`
+- `copy_feedback`
+- BusinessBrief 标准化
+- persona pack 映射
+- consumer graph
+- Round 0 / Round 1-N 传播仿真
+- VOC 证据抽取
+- 消费者传播测试报告
+- 报告后追问交互
 
-本期明确不做以下事项：
+### 2.2 不纳入范围
 
-- 全自动全网预研与舆情抓取
+- 包装 / A-B / 价格测试
+- 自动全网抓取
 - DingTalk 群聊工作流
-- 包装测试、A/B 测试、价格测试
-- 迁移消费者项目的整套 FastAPI/React/认证/数据库/Celery 架构
-- 品牌订阅化、行业脑资产化等商业化能力
+- 数据库、认证、Celery 等外围系统迁移
 
-这些能力保留为后续阶段演进方向。
+## 3. 整体架构
 
-## 4. 核心设计原则
+系统继续沿用 MiroFish 现有主链路：
 
-### 4.1 MiroFish 为主骨架
+`/api/graph -> /api/simulation -> /api/report`
 
-MiroFish 继续承担以下职责：
+消费者测试能力以内部分支形式接入，不单独拆出一套平行 API。
 
-- 图谱构建主流程
-- 仿真环境准备
-- 多 Agent 社交演化
-- 报告生成与交互
-- 前端 5 步主工作流
+## 4. 核心模块设计
 
-### 4.2 消费者项目作为领域能力来源
-
-消费者研究项目迁入的重点不是其系统壳层，而是其领域资产：
-
-- `BusinessBrief` 输入契约
-- 消费者 persona pack
-- scoring / evidence / recommendation 结构
-- 消费者测试报告组织方式
-
-### 4.3 BusinessBrief 是唯一业务上下文
-
-用户输入一旦被解析为 `BusinessBrief`，后续流程不再直接消费原始表单字段。所有图谱构建、画像映射、仿真准备、报告生成都围绕 `BusinessBrief` 展开，避免不同模块各自理解输入。
-
-### 4.4 仿真事实与报告结论解耦
-
-仿真行为日志是事实来源，报告层只负责归纳、解释和呈现，不反向修改仿真结果。即使报告生成失败，也应保留可追溯的仿真事实与可重试入口。
-
-## 5. 用户问题与价值闭环
-
-本期用户要解决的问题不是“AI 是否能给出 8 份消费者意见”，而是：
-
-- 消费者第一次看到我的概念/文案会怎么想
-- 在社交传播中，这些看法会如何被放大、误解或反转
-- 哪些消费者群体容易成为扩散者、阻断者或观望者
-- 我的概念和文案应当如何修改，才能降低传播风险并提高接受度
-
-因此，本期产品价值闭环为：
-
-`输入测试材料 -> 生成消费者群体 -> 运行传播仿真 -> 输出传播测试报告 -> 研究员追问复盘`
-
-## 6. Phase 1 模块边界
-
-本期新增能力建议拆分为 6 个模块，统一挂接到 MiroFish 主链路内。
-
-### 6.1 Consumer Brief Adapter
+### 4.1 Consumer Brief Adapter
 
 职责：
 
-- 将概念素材、文案素材、研究问题、目标人群、背景资料整理为统一 `BusinessBrief`
-- 识别测试类型：`concept_test` 或 `copy_feedback`
-- 将原始输入拆分为概念、claim、研究目标、目标场景等标准字段
+- 将输入标准化为 `ConsumerBusinessBrief`
+- 统一处理概念、文案、claims、目标人群、场景、研究目标、背景资料
+- 输出可用于图谱、仿真与报告的统一上下文
 
-输出：
+状态：
 
-- `ConsumerBusinessBrief`
+- 已完成
 
-### 6.2 Consumer Persona Pack
-
-职责：
-
-- 加载消费者项目中的 persona pack
-- 提取对传播仿真有用的画像骨架：关注点、顾虑、表达偏好、从众倾向、搜索倾向、影响力
-- 映射为 MiroFish / OASIS 所需的 Agent Profile
-
-输出：
-
-- `ConsumerAgentProfile[]`
-
-### 6.3 Consumer Graph Builder
+### 4.2 Consumer Persona Pack
 
 职责：
 
-- 基于 `BusinessBrief + persona + 可选背景材料` 构建消费者测试图谱
-- 将概念、卖点、claim、痛点、驱动点、争议点、消费者群体转为图谱节点与关系
-- 为图谱节点和关系增加可见性层级，支持不同仿真轮次与不同 Agent 认知层级下的差异化访问
+- 加载 repo-owned persona pack
+- 映射传播相关特征：
+  - `search_propensity`
+  - `cognition_level`
+  - `herd_tendency`
+  - `influence_weight`
+  - `attention_drivers`
+  - `risk_sensitivities`
 
-重点节点：
+状态：
 
-- ProductConcept
-- ProductClaim
-- AudienceSegment
-- PainPoint
-- Driver
-- RiskPoint
-- Topic
+- 已完成
 
-可见性分层要求：
+### 4.3 Consumer Graph Builder
+
+职责：
+
+- 基于 `BusinessBrief + 可选背景材料 + persona pack` 构建 consumer graph
+- 生成消费者测试专用节点与关系
+- 为节点附加可见性层级
+
+可见性层级：
 
 - `Initial`
   - Round 0 可见
-  - 仅包含 BusinessBrief 中直接提供的概念、文案、基础卖点、基础价格/场景信息
+  - 仅承载 BusinessBrief 中直接提供的信息
 - `Propagation_Only`
-  - 默认不在 Round 0 暴露
-  - 仅在 Round 1-N 传播阶段，根据 Agent 的画像属性决定是否允许检索
+  - 默认仅在 Round 1-N 开放
 - `Restricted`
-  - 仅允许高搜索倾向、高认知、高影响力的少量角色访问
-  - 用于承载竞品负面新闻、深度成分争议、复杂行业背景等高解释成本信息
+  - 仅对高搜索倾向 / 高认知角色开放
 
-行为约束：
+状态：
 
-- Round 0 的“初见反应”阶段，普通 Agent 仅能看到 `Initial` 层信息
-- 进入 Round 1-N 后，只有画像中具备“高搜索倾向/高认知”特征的 Agent 才允许检索 `Propagation_Only` 或 `Restricted` 层信息
-- 深层风险点不应在初见阶段直接泄漏给全部 Agent，否则会破坏“第一印象”与“传播后争议爆发”之间的阶段差
+- 已完成
 
-### 6.4 Consumer Simulation Orchestrator
+### 4.4 Consumer Simulation Orchestrator
 
 职责：
 
-- 在 MiroFish 主仿真链路中增加消费者测试模式
-- 先运行“初见态度”阶段
-- 再运行“群体传播”阶段
-- 回收每轮态度变化与关键事件
-- 在每一轮 Prompt 组装中，固定置顶当前测试任务的 BusinessBrief 核心缩略版，确保讨论始终围绕被测概念/文案
+- 执行 Round 0 初见反应
+- 执行 Round 1-N 传播演化
+- 每轮 Prompt 置顶 `Pinned BusinessBrief Summary`
+- 按画像和可见性层级控制深层 graph 访问
+- 持久化 consumer round 事件
 
-输出：
+关键约束：
 
-- 初始态度结果
-- 多轮传播事件日志
-- 最终态度快照
+- Round 0 禁止普通 Agent 提前看到深层风险点
+- Round 1-N 才允许部分角色检索 `Propagation_Only / Restricted` 信息
+- 每轮必须回到当前被测产品本身，避免讨论发散
 
-上下文窗口管理要求：
+状态：
 
-- 每轮传播都必须在 Prompt 顶部注入一份被“Pin”住的 `BusinessBrief Summary`
-- 该缩略版至少包含：
-  - 当前测试类型
-  - 产品概念摘要
-  - 当前被测文案/claim
-  - 研究目标
-  - 当前轮次允许访问的信息层级
-- Agent 可以基于传播上下文更新态度，但不得脱离当前测试对象发散到无关社会议题
-- 当对话偏离产品本身时，调度层应优先用 pinned summary 把讨论拉回到概念/文案及其传播影响
+- 已完成
 
-### 6.5 Consumer Scoring & Evidence Layer
+### 4.5 Consumer Scoring & Evidence Layer
 
 职责：
 
-- 基于仿真结果而非单轮静态问答生成评分与归因
-- 聚合共鸣点、争议点、误读点、扩散者与阻断者
-- 生成面向报告的结构化 evidence
-- 强制提取传播过程中具有代表性的消费者原声（VOC）与高扩散对话片段
+- 统计初始与传播后接受度
+- 计算态度转向率
+- 提取共鸣点、风险点、误读点
+- 强制保留代表性 VOC 原声
 
-输出：
+输出包括：
 
 - `ConsumerSimulationSummary`
 - `ConsumerEvidenceBundle`
 
-VOC / 原声证据要求：
+状态：
 
-- 必须从传播演化日志中抽取代表性原声金句（Voice of Customer Quotes）
-- 优先保留以下类型的原文：
-  - 获得最多跟风/响应的正向表述
-  - 引发争议或误读扩散的原始表述
-  - 典型的支持、质疑、反转、劝退语句
-- `ConsumerEvidenceBundle` 中至少应包含：
-  - `top_resonance_quotes`
-  - `top_risk_quotes`
-  - `top_misread_quotes`
-  - `quote_metadata`（说话者类型、轮次、传播响应度等）
-- 报告层不得只输出抽象指标，必须能回链到具体消费者原话
+- 已完成
 
-### 6.6 Consumer Report Agent
+### 4.6 Consumer Report Context
 
 职责：
 
-- 复用 MiroFish 报告主能力
-- 输出消费者传播测试报告
-- 支持研究员在报告完成后继续追问
+- 将 summary / evidence 组装成报告上下文
+- 将 VOC 与关键结论一起喂给报告代理
+- 驱动消费者传播测试专用章节结构
 
-## 7. 数据流设计
+状态：
 
-本期完整数据流如下：
+- 已完成
 
-`用户输入 -> BusinessBrief -> persona pack -> consumer graph -> 初始态度仿真 -> 群体传播仿真 -> scoring/evidence -> 消费者测试报告 -> 研究员追问`
+## 5. API 设计
 
-详细流转如下：
+### 5.1 `/api/graph`
 
-1. 用户在 MiroFish 中创建消费者测试任务
-2. 前端收集概念素材、文案素材、研究问题、目标人群等输入
-3. 后端将输入解析为 `BusinessBrief`
-4. 系统加载消费者 persona pack 并转换为可参与仿真的 Agent Profile
-5. 图谱构建模块生成面向消费者传播的知识图谱
-6. 仿真模块执行 Round 0 的初始态度生成
-7. 仿真模块执行 Round 1-N 的传播演化
-8. scoring / evidence 层对仿真结果做结构化总结
-9. 报告代理输出消费者传播测试报告
-10. 用户在 Step 5 中继续围绕报告或消费者群体追问
-
-## 8. 接入 MiroFish 现有 5 步链路的方式
-
-### 8.1 整体接入策略
-
-不新增一套独立产品流程，而是在现有 MiroFish 主链路内增加 `project_type=consumer_test` 模式。
-
-外部体验仍然是：
-
-`首页输入 -> Step1 图谱构建 -> Step2 环境准备 -> Step3 仿真 -> Step4 报告 -> Step5 交互`
-
-但在内部逻辑中，当项目类型为 `consumer_test` 时，走消费者测试专用实现。
-
-### 8.2 Step 1：图谱构建
-
-新增职责：
-
-- 将输入标准化为 `BusinessBrief`
-- 基于概念、claim、消费者群体与风险点生成消费者测试图谱
-
-### 8.3 Step 2：环境准备
-
-新增职责：
-
-- 基于消费者 persona pack 生成 30-50 个消费者 Agent
-- 为不同角色注入传播相关属性
-
-### 8.4 Step 3：仿真
-
-仿真拆分为两段：
-
-- Round 0：初见反应
-- Round 1-N：群体传播
-
-传播中重点观察：
-
-- 跟风
-- 转述
-- 误读
-- 质疑
-- 种草
-- 劝退
-- 态度反转
-
-额外约束：
-
-- Round 0 中普通 Agent 只允许基于 `BusinessBrief` 直接暴露的信息做第一印象判断
-- Round 1-N 中，部分高搜索倾向/高认知 Agent 才能触发对深层图谱信息的检索，并将争议点带入群体传播
-- 每轮传播都必须置顶当前 `BusinessBrief` 的核心缩略版，防止群体讨论偏离被测产品本身
-
-### 8.5 Step 4：报告
-
-报告模板切换为消费者传播测试专用模板，重点展示：
-
-- 初始接受度
-- 传播后态度变化
-- 共鸣点
-- 争议点
-- 误读点
-- 扩散者
-- 阻断者
-- 概念与文案优化建议
-
-### 8.6 Step 5：交互
-
-支持与以下对象继续对话：
-
-- 报告代理
-- 典型消费者
-- 特定消费者群体代表
-
-## 9. 接口层设计原则
-
-### 9.1 复用现有 API 前缀
-
-不新增一整套平行的 `/api/consumer/*` 主流程接口，而是在现有接口中增加消费者测试分支。
-
-主要复用的接口前缀：
-
-- `/api/graph/*`
-- `/api/simulation/*`
-- `/api/report/*`
-
-### 9.2 外部接口变化
-
-建议对现有接口进行轻量扩展：
+新增能力：
 
 - `POST /api/graph/ontology/generate`
-  - 增加 `project_type`
-  - 增加 `consumer_brief`
-
+  - 支持 `project_type`
+  - 支持 `consumer_brief`
 - `POST /api/graph/build`
-  - 当 `project_type=consumer_test` 时，构建消费者测试图谱
+  - 在 `consumer_test` 模式下走 consumer graph path
+
+兼容性要求：
+
+- 不传 `project_type` 时，仍走原版默认逻辑
+
+状态：
+
+- 已完成
+
+### 5.2 `/api/simulation`
+
+新增能力：
 
 - `POST /api/simulation/create`
-  - 创建消费者测试模式的 simulation state
-
+  - 将 `project_type` 复制进 simulation state
 - `POST /api/simulation/prepare`
-  - 准备消费者画像与消费者传播仿真配置
-
+  - 生成 persona pack、consumer config 与 pinned brief
+- `GET /api/simulation/<id>/consumer-summary`
+  - 返回 summary / VOC / evidence
 - `POST /api/simulation/start`
-  - 启动消费者测试仿真
+  - 走消费者仿真分支
+
+兼容性要求：
+
+- `project_type` 默认值为 `default`
+- 默认模式不触发任何消费者域逻辑
+
+状态：
+
+- 已完成
+
+### 5.3 `/api/report`
+
+新增能力：
 
 - `POST /api/report/generate`
-  - 选择消费者传播测试报告模板
+  - 在 `consumer_test` 模式下生成消费者传播测试报告
 
-向下兼容要求：
+状态：
 
-- `project_type` 必须是可选字段
-- 默认值为原版 MiroFish 类型（如 `default`）
-- 当前端未显式传入 `project_type=consumer_test` 时，后端必须完全走原版 MiroFish 原生逻辑
-- 只有显式传入 `consumer_test` 时，才触发消费者测试专属分支
-- 所有消费者测试相关扩展字段都应遵循“可缺省、默认忽略”的原则，避免破坏现有前端和历史项目
+- 已完成
 
-## 10. 当前版本输入设计
+## 6. 前端接入
 
-本期 `BusinessBrief` 至少支持以下字段：
+### 6.1 首页输入
 
-- `task_type`
-  - `concept_test`
-  - `copy_feedback`
-- `product_concept_assets`
-- `copy_material`
-- `claims`
-- `target_audience`
-- `usage_scene`
-- `research_goal`
-- `optional_background_materials`
+首页继续保留单一入口，但在 `consumer_test` 模式下新增：
 
-约束：
+- 测试类型
+- 概念素材
+- 文案素材
+- claims
+- 目标人群
+- 使用场景
+- 研究目标
 
-- 概念测试至少需要概念素材 + 研究问题
-- 文案测试至少需要文案素材 + 研究问题
-- 若同时提供概念与文案，系统应允许在同一任务中联合观察
+### 6.2 Step 2-5 适配
 
-## 11. 报告结构设计
+- Step 2：
+  - 展示消费者模式标识
+  - 展示 persona pack 与 pinned brief
+- Step 3：
+  - 展示 Round 0 / Round 1-N 语义
+  - 展示 consumer summary 与 VOC
+- Step 4：
+  - 展示消费者传播报告标签、指标与 VOC
+- Step 5：
+  - 展示推荐追问与 VOC highlights
 
-当前版本报告固定为 7 段：
+### 6.3 i18n
 
-1. 测试概览
-2. 初始反应
-3. 传播演化
-4. 群体分化
-5. 传播角色分析
-6. 风险与机会
-7. 行动建议
+消费者模式新增文案必须进入中英 locale，不允许绕过 `$t(...)` 写死英文。
 
-报告必须回答的问题：
+状态：
 
-- 初始接受度如何
-- 哪些点最容易引发兴趣
-- 哪些点在传播中被放大、误解或争议化
-- 哪类消费者最容易扩散，哪类最容易阻断
-- 传播后整体态度如何变化
-- 概念和文案分别应如何优化
+- 已完成
 
-展示要求：
+## 7. 当前实现进度（2026-04-21）
 
-- 报告中必须展示代表性消费者原声金句（VOC）
-- 每类关键结论至少应附带一组对应 quote：
-  - 共鸣金句
-  - 争议金句
-  - 误读金句
-- quote 展示时应尽量保留原始表达风格，并标注其所属轮次与角色类型，帮助品牌方理解“这句话为什么会扩散”
+### 7.1 已完成的实现批次
 
-## 12. 错误处理设计
+已完成的核心提交包括：
 
-### 12.1 输入错误
+- `14ee662` `feat: persist consumer project metadata`
+- `d56544d` `feat: add consumer brief contract`
+- `3041c6d` `feat: add consumer persona pack`
+- `85c2b2e` `feat: add consumer graph build path`
+- `a915efe` `feat: branch simulation prep for consumer tests`
+- `1e26c7b` `feat: add consumer simulation orchestration`
+- `fbc5108` `feat: add consumer scoring and report context`
+- `b5fcf90` `feat: add consumer test intake to home flow`
+- `d848327` `feat: adapt step views for consumer simulation mode`
 
-示例：
+### 7.2 已验证结果
 
-- 概念素材缺失
-- 文案内容为空
-- 研究问题不明确
-- BusinessBrief 结构不完整
+- 后端：
+  - `backend/.venv/Scripts/python.exe -m pytest`
+  - 结果：`45 passed`
+- 前端：
+  - `node --test frontend/tests/consumerMode.test.js frontend/tests/consumerBrief.test.js frontend/tests/pendingUpload.test.js`
+  - 结果：`9 passed`
+- 前端构建：
+  - `npm run build`
+  - 结果：成功
 
-策略：
+### 7.3 已修复的关键问题
 
-- 在 Step 1 前拦截
-- 明确返回缺失字段
-- 不进入仿真
+- Step 2 读取 consumer metadata 时兼容 `prepare_info / config / 顶层字段`
+- Step 3 rerun 时清理旧 `consumerSummary`，避免残留上一次结果
+- Step 2-5 的新增消费者模式文案全部接入 i18n
+- 快速追问 prompt 编码问题已修复
 
-### 12.2 图谱/环境准备错误
+## 8. 当前未完成项
 
-示例：
+- 完整人工 smoke run 记录
+- 默认模式与 `consumer_test` 模式的成套 UI 人工回归记录
+- 性能、长轮次、真实业务素材下的压测结果
 
-- claim 抽取失败
-- persona pack 加载失败
-- 图谱构建结果为空
+## 9. 后续建议
 
-策略：
-
-- 可降级的场景允许继续
-- 不可降级的核心场景直接中止
-
-关键规则：
-
-- persona pack 加载失败时，禁止进入仿真
-- graph 缺少非关键节点时允许使用基础图继续
-
-### 12.3 仿真运行错误
-
-示例：
-
-- 单 agent 超时
-- 单轮传播事件缺失
-- 个别角色未正常发言
-
-策略：
-
-- 支持单 agent 失败容忍
-- 支持单轮事件缺失容忍
-- 当有效样本数跌破阈值时，才判定整场仿真失败
-
-### 12.4 报告生成错误
-
-示例：
-
-- 仿真完成但报告总结失败
-
-策略：
-
-- 保留原始仿真结果
-- 保留关键传播事件摘要
-- 提供报告生成重试入口
-
-## 13. Phase 1 关键指标
-
-本期重点观测以下 6 个指标：
-
-- 初始接受度
-- 传播后接受度变化
-- 态度转向率
-- 共鸣点集中度
-- 误读/争议触发率
-- 角色影响度
-
-这些指标用于稳定报告骨架，并支持后续不同版本概念/文案之间的横向比较。
-
-## 14. 可追溯性与复盘要求
-
-当前版本至少保留以下三类可追溯数据：
-
-- BusinessBrief 快照
-- 每轮关键传播事件
-- 报告结论引用的代表性证据片段
-
-其中代表性证据片段应优先包含原始 VOC quotes，而不是仅保留二次摘要文本。
-
-这样系统在回答“为什么这个文案有传播风险”时，能够回到具体的行为事实与消费者表述，而不是只输出抽象判断。
-
-## 15. Phase 1 成功标准
-
-本期上线时，至少满足以下标准：
-
-- 用户可以在 MiroFish 中发起概念测试或文案测试
-- 系统可以生成结构化 `BusinessBrief`
-- 系统可以构建消费者图谱并完成多轮传播仿真
-- 报告能解释初始态度、传播后态度、争议点、共鸣点、误读点与行动建议
-- 用户可在报告完成后继续追问
-
-## 16. 后续演进方向
-
-### Phase 2：焦点小组增强与自动预研
-
-后续演进包括：
-
-- 轻量自动预研
-- 背景材料到图谱的自动构建
-- 更强的群体讨论机制
-- 更真实的信息传播链路
-
-### Phase 3：完整数字消费者演化沙盘
-
-终局能力包括：
-
-- 更完整的 OASIS 并发仿真
-- Tiered RAG
-- 事件驱动注入
-- 研究员实时干预
-- DingTalk 或其他终端上的外部焦点小组交互
-
-本设计文档仅覆盖当前 Phase 1 的落地方案，上述能力保留为后续阶段演进目标。
+1. 记录一次完整人工 smoke run
+2. 补默认模式回归记录
+3. 用真实业务素材跑一轮消费者测试
+4. 根据结果决定是否进入 Phase 2 的自动预研与更复杂传播建模
