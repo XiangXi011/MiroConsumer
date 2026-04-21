@@ -10,6 +10,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional
 
+from ..config import Config
 from ..models.project import ProjectManager
 from ..utils.locale import t
 from ..utils.logger import get_logger
@@ -17,6 +18,7 @@ from .consumer.brief_adapter import ConsumerBriefAdapter
 from .consumer.models import ConsumerBusinessBrief
 from .consumer.persona_pack import load_default_persona_pack, map_persona_to_agent_traits
 from .consumer.research_ingest import (
+    build_research_snapshot,
     build_research_summary,
     default_auto_research_provider,
     resolve_research_findings,
@@ -554,7 +556,16 @@ class SimulationManager:
         )
         self._write_json(os.path.join(sim_dir, "simulation_config.json"), config_payload)
         research_findings = resolve_research_findings(
-            brief, provider=default_auto_research_provider
+            brief,
+            provider=default_auto_research_provider,
+            project_id=state.project_id,
+            upload_root=Config.UPLOAD_FOLDER,
+        )
+        snapshot = build_research_snapshot(
+            state.project_id,
+            brief=brief,
+            upload_root=Config.UPLOAD_FOLDER,
+            provider=default_auto_research_provider,
         )
         self._write_json(
             os.path.join(sim_dir, "consumer_config.json"),
@@ -575,6 +586,19 @@ class SimulationManager:
                 "manual_background_count": sum(
                     1 for f in research_findings if f.source_label == "brief_background"
                 ),
+                "ingested_document_count": sum(
+                    1 for f in research_findings if f.source_label == "ingested_document"
+                ),
+                "public_web_count": sum(
+                    1 for f in research_findings if f.source_label == "public_web"
+                ),
+                "research_snapshot": {
+                    "snapshot_id": snapshot.snapshot_id,
+                    "source_count": len(snapshot.sources),
+                    "document_count": len(snapshot.documents),
+                    "chunk_count": len(snapshot.chunks),
+                    "finding_count": len(snapshot.findings),
+                },
             },
         )
 

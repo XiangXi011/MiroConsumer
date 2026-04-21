@@ -12,7 +12,10 @@ from flask import request, jsonify
 from . import graph_bp
 from ..config import Config
 from ..services.consumer import ConsumerBriefAdapter, ConsumerGraphBuilder, load_default_persona_pack
-from ..services.consumer.research_ingest import build_research_summary, resolve_research_findings, default_auto_research_provider
+from ..services.consumer.document_ingest import DocumentIngestService
+from ..services.consumer.models import ResearchSourceLane, ResearchSourceType
+from ..services.consumer.research_ingest import build_research_summary, resolve_research_findings, default_auto_research_provider, build_research_snapshot
+from ..services.consumer.source_registry import SourceRegistry
 from ..services.ontology_generator import OntologyGenerator
 from ..services.graph_builder import GraphBuilderService
 from ..services.text_processor import TextProcessor
@@ -52,13 +55,40 @@ def _get_consumer_graph_payload(project):
     return ProjectManager.load_consumer_graph_payload(project.project_id)
 
 
+def _ingest_project_files_into_research_workspace(project_id: str, file_texts: list) -> None:
+    """Register uploaded files as Lane A sources and ingest their text into the research workspace."""
+    if not file_texts:
+        return
+    registry = SourceRegistry(project_id, upload_root=Config.UPLOAD_FOLDER)
+    ingest = DocumentIngestService(project_id, upload_root=Config.UPLOAD_FOLDER)
+    for file_info in file_texts:
+        original_filename = file_info.get("original_filename", "unknown")
+        text = file_info.get("text", "")
+        if not text:
+            continue
+        source = registry.register_source(
+            lane=ResearchSourceLane.LaneA,
+            source_type=ResearchSourceType.Upload,
+            label=f"User upload: {original_filename}",
+            uri=file_info.get("path", ""),
+        )
+        ingest.ingest_text(
+            source_id=source.source_id,
+            text=text,
+            title=original_filename,
+        )
+
+
 def _build_consumer_graph(project, text: str):
     if not project.consumer_brief:
         raise ValueError("consumer_brief is required for consumer_test graph builds")
 
     brief = ConsumerBriefAdapter.from_payload(project.consumer_brief)
     research_findings = resolve_research_findings(
-        brief, provider=default_auto_research_provider
+        brief,
+        provider=default_auto_research_provider,
+        project_id=project.project_id,
+        upload_root=Config.UPLOAD_FOLDER,
     )
     graph_payload = ConsumerGraphBuilder().build(
         brief=brief,
@@ -71,6 +101,15 @@ def _build_consumer_graph(project, text: str):
     ProjectManager.save_consumer_graph_payload(project.project_id, graph_payload)
     project.graph_id = graph_payload["graph_id"]
     project.status = ProjectStatus.GRAPH_COMPLETED
+
+    # Build research snapshot for Phase 3A provenance
+    snapshot = build_research_snapshot(
+        project.project_id,
+        brief=brief,
+        upload_root=Config.UPLOAD_FOLDER,
+        provider=default_auto_research_provider,
+    )
+
     # Persist research context for downstream simulation/reporting
     project.consumer_context = {
         "research_mode": brief.research_mode,
@@ -82,6 +121,19 @@ def _build_consumer_graph(project, text: str):
         "manual_background_count": sum(
             1 for f in research_findings if f.source_label == "brief_background"
         ),
+        "ingested_document_count": sum(
+            1 for f in research_findings if f.source_label == "ingested_document"
+        ),
+        "public_web_count": sum(
+            1 for f in research_findings if f.source_label == "public_web"
+        ),
+        "research_snapshot": {
+            "snapshot_id": snapshot.snapshot_id,
+            "source_count": len(snapshot.sources),
+            "document_count": len(snapshot.documents),
+            "chunk_count": len(snapshot.chunks),
+            "finding_count": len(snapshot.findings),
+        },
     }
     ProjectManager.save_project(project)
 
@@ -250,26 +302,35 @@ def generate_ontology():
         # 保存文件并提取文本
         document_texts = []
         all_text = ""
-        
+        file_texts = []
+
         for file in uploaded_files:
             if file and file.filename and allowed_file(file.filename):
                 # 保存文件到项目目录
                 file_info = ProjectManager.save_file_to_project(
-                    project.project_id, 
-                    file, 
+                    project.project_id,
+                    file,
                     file.filename
                 )
                 project.files.append({
                     "filename": file_info["original_filename"],
                     "size": file_info["size"]
                 })
-                
+
                 # 提取文本
                 text = FileParser.extract_text(file_info["path"])
                 text = TextProcessor.preprocess_text(text)
                 document_texts.append(text)
                 all_text += f"\n\n=== {file_info['original_filename']} ===\n{text}"
-        
+                file_texts.append({
+                    "original_filename": file_info["original_filename"],
+                    "path": file_info["path"],
+                    "text": text,
+                })
+
+        # Wire Lane A research workspace ingestion for uploaded materials
+        _ingest_project_files_into_research_workspace(project.project_id, file_texts)
+
         if not document_texts:
             ProjectManager.delete_project(project.project_id)
             return jsonify({

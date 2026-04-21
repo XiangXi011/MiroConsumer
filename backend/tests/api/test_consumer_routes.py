@@ -17,6 +17,8 @@ from app.api import report as report_api
 from app.api import simulation as simulation_api
 from app.models.project import ProjectManager, ProjectStatus
 from app.models.task import TaskManager, TaskStatus
+from app.services.consumer.document_ingest import DocumentIngestService
+from app.services.consumer.source_registry import SourceRegistry
 from app.services.report_agent import ReportManager
 from app.services.simulation_manager import SimulationManager
 
@@ -177,6 +179,120 @@ def test_generate_ontology_persists_consumer_project_metadata(tmp_path, monkeypa
     assert project.project_type == "consumer_test"
     assert project.consumer_brief["task_type"] == "concept_test"
     assert project.consumer_brief["product_concept_assets"] == ["Glow serum stick"]
+
+
+def test_generate_ontology_ingests_uploaded_files_into_research_workspace(tmp_path, monkeypatch):
+    uploads_dir = tmp_path / "uploads"
+    projects_dir = uploads_dir / "projects"
+    monkeypatch.setattr(graph_api.Config, "UPLOAD_FOLDER", str(uploads_dir))
+    monkeypatch.setattr(ProjectManager, "PROJECTS_DIR", str(projects_dir))
+    monkeypatch.setattr(graph_api.FileParser, "extract_text", staticmethod(lambda _: "Extracted document text about safety concerns."))
+    monkeypatch.setattr(graph_api.TextProcessor, "preprocess_text", staticmethod(lambda text: text))
+
+    class FakeOntologyGenerator:
+        def generate(self, document_texts, simulation_requirement, additional_context=None):
+            return {
+                "entity_types": [{"name": "ProductConcept", "attributes": []}],
+                "edge_types": [{"name": "MENTIONS", "attributes": [], "source_targets": []}],
+                "analysis_summary": "summary",
+            }
+
+    monkeypatch.setattr(graph_api, "OntologyGenerator", FakeOntologyGenerator)
+
+    app = _create_test_app()
+    client = app.test_client()
+
+    response = client.post(
+        "/api/graph/ontology/generate",
+        data={
+            "simulation_requirement": "Simulate consumer reactions",
+            "project_name": "Consumer Test Project",
+            "project_type": "consumer_test",
+            "consumer_brief": json.dumps(_consumer_brief_payload()),
+            "files": (BytesIO(b"consumer brief content"), "brief.txt"),
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    project_id = payload["data"]["project_id"]
+
+    # Verify research workspace has sources and documents
+    registry = SourceRegistry(project_id, upload_root=str(uploads_dir))
+    ingest = DocumentIngestService(project_id, upload_root=str(uploads_dir))
+
+    sources = registry.list_sources()
+    assert len(sources) >= 1
+    assert all(s.lane == "lane_a" for s in sources)
+
+    docs = ingest.list_documents()
+    assert len(docs) >= 1
+    assert any("safety concerns" in d.raw_text for d in docs)
+
+    chunks = ingest.load_chunks()
+    assert len(chunks) > 0
+    assert any("safety concerns" in c.text for c in chunks)
+
+
+def test_consumer_build_with_uploaded_material_produces_workspace_findings(tmp_path, monkeypatch):
+    uploads_dir = tmp_path / "uploads"
+    projects_dir = uploads_dir / "projects"
+    monkeypatch.setattr(graph_api.Config, "UPLOAD_FOLDER", str(uploads_dir))
+    monkeypatch.setattr(graph_api.Config, "ZEP_API_KEY", None)
+    monkeypatch.setattr(ProjectManager, "PROJECTS_DIR", str(projects_dir))
+    _reset_task_manager()
+
+    # Pre-populate research workspace with an ingested document
+    project = ProjectManager.create_project(name="Consumer Build With Workspace")
+    project.project_type = "consumer_test"
+    project.status = ProjectStatus.ONTOLOGY_GENERATED
+    project.ontology = {"entity_types": [{"name": "ProductConcept", "attributes": []}], "edge_types": []}
+    project.consumer_brief = _consumer_brief_payload_auto_enrich()
+    ProjectManager.save_project(project)
+    ProjectManager.save_extracted_text(project.project_id, "Some extracted text.")
+
+    # Seed the workspace with a Lane A source + chunks
+    registry = SourceRegistry(project.project_id, upload_root=str(uploads_dir))
+    ingest = DocumentIngestService(project.project_id, upload_root=str(uploads_dir))
+    source = registry.register_source(
+        lane="lane_a",
+        source_type="upload",
+        label="Uploaded safety report",
+    )
+    ingest.ingest_text(
+        source_id=source.source_id,
+        text="There is a safety concern about the ingredient that may cause debate.",
+        title="safety_report.txt",
+    )
+
+    class ExplodingGraphBuilderService:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError("Zep GraphBuilderService should not be used for consumer_test projects")
+
+    monkeypatch.setattr(graph_api, "GraphBuilderService", ExplodingGraphBuilderService)
+
+    app = _create_test_app()
+    client = app.test_client()
+
+    build_response = client.post("/api/graph/build", json={"project_id": project.project_id})
+
+    assert build_response.status_code == 200
+    saved_project = ProjectManager.get_project(project.project_id)
+
+    assert saved_project is not None
+    assert saved_project.consumer_context is not None
+    # The snapshot should include workspace findings + auto_enrich findings
+    assert saved_project.consumer_context.get("research_findings_count", 0) > 0
+    assert saved_project.consumer_context.get("ingested_document_count", 0) > 0
+    assert saved_project.consumer_context.get("auto_enrich_count", 0) > 0
+
+    # Verify snapshot metadata
+    snapshot_meta = saved_project.consumer_context.get("research_snapshot", {})
+    assert snapshot_meta.get("source_count", 0) > 0
+    assert snapshot_meta.get("document_count", 0) > 0
+    assert snapshot_meta.get("chunk_count", 0) > 0
+    assert snapshot_meta.get("finding_count", 0) > 0
 
 
 def test_consumer_build_route_stores_graph_and_graph_data_is_retrievable(tmp_path, monkeypatch):

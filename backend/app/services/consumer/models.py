@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, ClassVar, Dict, Iterable, List, Literal
+from typing import Any, ClassVar, Dict, Iterable, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -16,6 +16,57 @@ class GraphVisibility(str, Enum):
     Restricted = "Restricted"
 
 
+class ResearchSourceLane(str, Enum):
+    LaneA = "lane_a"
+    LaneB = "lane_b"
+
+
+class ResearchSourceType(str, Enum):
+    Upload = "upload"
+    Url = "url"
+    PublicWeb = "public_web"
+
+
+class ResearchSource(BaseModel):
+    source_id: str
+    lane: ResearchSourceLane
+    source_type: ResearchSourceType
+    label: str
+    uri: str = ""
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    added_at: str = ""
+    trust_tier: int = 1
+
+
+class IngestedDocument(BaseModel):
+    doc_id: str
+    source_id: str
+    title: str = ""
+    raw_text: str = ""
+    word_count: int = 0
+    ingested_at: str = ""
+
+
+class DocumentChunk(BaseModel):
+    chunk_id: str
+    doc_id: str
+    source_id: str
+    text: str
+    index: int = 0
+    char_start: int = 0
+    char_end: int = 0
+    created_at: str = ""
+
+
+class RetrievalTrace(BaseModel):
+    trace_id: str
+    query: str
+    lane: ResearchSourceLane
+    chunk_ids: List[str] = Field(default_factory=list)
+    scores: List[float] = Field(default_factory=list)
+    retrieved_at: str = ""
+
+
 class ResearchFinding(BaseModel):
     finding_id: str
     finding_type: Literal["category_context", "competitor_signal", "risk_signal", "trend_signal"]
@@ -24,6 +75,22 @@ class ResearchFinding(BaseModel):
     source_label: str = "brief_background"
     visibility: GraphVisibility = GraphVisibility.Propagation_Only
     confidence: float = 0.5
+    # Provenance fields for Phase 3A
+    source_id: str = ""
+    snippet_id: str = ""
+    retrieval_trace_id: str = ""
+
+
+class ResearchSnapshot(BaseModel):
+    snapshot_id: str
+    project_id: str
+    created_at: str
+    sources: List[ResearchSource] = Field(default_factory=list)
+    documents: List[IngestedDocument] = Field(default_factory=list)
+    chunks: List[DocumentChunk] = Field(default_factory=list)
+    findings: List[ResearchFinding] = Field(default_factory=list)
+    retrieval_traces: List[RetrievalTrace] = Field(default_factory=list)
+    summary: str = ""
 
 
 class PropagationEvent(BaseModel):

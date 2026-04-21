@@ -5,7 +5,16 @@ from __future__ import annotations
 import hashlib
 from typing import Any, Callable, Dict, List, Mapping, Optional
 
-from .models import ConsumerBusinessBrief, GraphVisibility, ResearchFinding
+from .models import (
+    ConsumerBusinessBrief,
+    GraphVisibility,
+    ResearchFinding,
+    ResearchSnapshot,
+    ResearchSourceLane,
+)
+from .document_ingest import DocumentIngestService
+from .finding_distiller import distill_findings_from_chunks
+from .source_registry import SourceRegistry
 
 
 def _deterministic_finding_id(text: str, prefix: str = "mf") -> str:
@@ -145,31 +154,6 @@ def run_auto_research(
     return provider(brief)
 
 
-def resolve_research_findings(
-    brief: ConsumerBusinessBrief,
-    provider: Optional[Callable[[ConsumerBusinessBrief], List[ResearchFinding]]] = None,
-) -> List[ResearchFinding]:
-    """Resolve the final research findings list for a brief.
-
-    Rules:
-    - Always include manual background findings.
-    - When research_mode is 'auto_enrich', also invoke the provider.
-    - Provider results are appended after manual findings.
-    """
-    manual = build_research_findings(brief)
-
-    if brief.research_mode == "auto_enrich" and provider is not None:
-        auto = run_auto_research(brief, provider)
-        # Stable merge: manual first, then auto, dedupe by finding_id
-        seen_ids = {f.finding_id for f in manual}
-        for finding in auto:
-            if finding.finding_id not in seen_ids:
-                manual.append(finding)
-                seen_ids.add(finding.finding_id)
-
-    return manual
-
-
 def default_auto_research_provider(brief: ConsumerBusinessBrief) -> List[ResearchFinding]:
     """Deterministic default provider that synthesizes findings from the brief itself.
 
@@ -258,3 +242,117 @@ def build_research_summary(findings: List[ResearchFinding]) -> str:
     for finding in findings:
         lines.append(f"[{finding.finding_type}] {finding.summary}")
     return "\n".join(lines)
+
+
+def build_workspace_findings(
+    project_id: str,
+    upload_root: Optional[str] = None,
+) -> List[ResearchFinding]:
+    """Load findings from the project research workspace (Lane A ingested docs).
+
+    If no research workspace exists, returns an empty list.
+    """
+    registry = SourceRegistry(project_id, upload_root=upload_root)
+    ingest = DocumentIngestService(project_id, upload_root=upload_root)
+
+    lane_a_sources = registry.list_sources(lane=ResearchSourceLane.LaneA)
+    if not lane_a_sources:
+        return []
+
+    findings: List[ResearchFinding] = []
+    seen_ids: set[str] = set()
+
+    for source in lane_a_sources:
+        chunks = ingest.load_chunks(source_id=source.source_id)
+        if not chunks:
+            continue
+        source_findings = distill_findings_from_chunks(
+            chunks=chunks,
+            lane=ResearchSourceLane.LaneA,
+        )
+        for finding in source_findings:
+            if finding.finding_id not in seen_ids:
+                findings.append(finding)
+                seen_ids.add(finding.finding_id)
+
+    return findings
+
+
+def resolve_research_findings(
+    brief: ConsumerBusinessBrief,
+    provider: Optional[Callable[[ConsumerBusinessBrief], List[ResearchFinding]]] = None,
+    project_id: Optional[str] = None,
+    upload_root: Optional[str] = None,
+) -> List[ResearchFinding]:
+    """Resolve the final research findings list for a brief.
+
+    Rules:
+    - Always include manual background findings.
+    - When project_id is provided, also include findings from the project
+      research workspace (Lane A ingested documents).
+    - When research_mode is 'auto_enrich', also invoke the provider.
+    - Provider results are appended after manual/workspace findings.
+    - Deduplication is by finding_id.
+    """
+    manual = build_research_findings(brief)
+    seen_ids = {f.finding_id for f in manual}
+    result: List[ResearchFinding] = list(manual)
+
+    if project_id is not None:
+        workspace = build_workspace_findings(project_id, upload_root=upload_root)
+        for finding in workspace:
+            if finding.finding_id not in seen_ids:
+                result.append(finding)
+                seen_ids.add(finding.finding_id)
+
+    if brief.research_mode == "auto_enrich" and provider is not None:
+        auto = run_auto_research(brief, provider)
+        for finding in auto:
+            if finding.finding_id not in seen_ids:
+                result.append(finding)
+                seen_ids.add(finding.finding_id)
+
+    return result
+
+
+def build_research_snapshot(
+    project_id: str,
+    brief: Optional[ConsumerBusinessBrief] = None,
+    upload_root: Optional[str] = None,
+    provider: Optional[Callable[[ConsumerBusinessBrief], List[ResearchFinding]]] = None,
+) -> ResearchSnapshot:
+    """Build a research snapshot for a project from its research workspace.
+
+    If no workspace exists, returns an empty snapshot.
+    """
+    from datetime import datetime, timezone
+
+    registry = SourceRegistry(project_id, upload_root=upload_root)
+    ingest = DocumentIngestService(project_id, upload_root=upload_root)
+
+    sources = registry.list_sources()
+    documents = ingest.list_documents()
+    chunks = ingest.load_chunks()
+
+    findings: List[ResearchFinding] = []
+    if brief is not None:
+        findings = resolve_research_findings(
+            brief=brief,
+            provider=provider,
+            project_id=project_id,
+            upload_root=upload_root,
+        )
+    else:
+        # No brief provided: just return workspace findings
+        findings = build_workspace_findings(project_id, upload_root=upload_root)
+
+    return ResearchSnapshot(
+        snapshot_id=f"rsnap_{project_id}",
+        project_id=project_id,
+        created_at=datetime.now(timezone.utc).isoformat(),
+        sources=sources,
+        documents=documents,
+        chunks=chunks,
+        findings=findings,
+        summary=build_research_summary(findings),
+    )
