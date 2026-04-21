@@ -16,6 +16,10 @@ from ..services.simulation_runner import SimulationRunner, RunnerStatus
 from ..services.consumer.persona_pack import load_default_persona_pack
 from ..services.consumer.report_context import ConsumerReportContextBuilder, build_consumer_report_context
 from ..services.consumer.scoring import build_consumer_summary
+from ..services.consumer.intervention_manager import (
+    ConsumerInterventionManager,
+    InterventionType,
+)
 from ..utils.logger import get_logger
 from ..utils.locale import t, get_locale, set_locale
 from ..models.project import ProjectManager
@@ -44,6 +48,20 @@ def optimize_interview_prompt(prompt: str) -> str:
     if prompt.startswith(INTERVIEW_PROMPT_PREFIX):
         return prompt
     return f"{INTERVIEW_PROMPT_PREFIX}{prompt}"
+
+
+def _require_consumer_simulation(simulation_id: str):
+    """Load simulation state and enforce consumer_test-only access.
+
+    Returns (state, None) on success, or (None, response_tuple) on failure.
+    """
+    manager = SimulationManager()
+    state = manager.get_simulation(simulation_id)
+    if not state:
+        return None, (jsonify({"success": False, "error": "Simulation not found"}), 404)
+    if not state.consumer_mode:
+        return None, (jsonify({"success": False, "error": "Simulation is not a consumer_test simulation"}), 400)
+    return state, None
 
 
 # ============== 实体读取接口 ==============
@@ -1238,6 +1256,166 @@ def get_consumer_summary(simulation_id: str):
             "error": str(e),
             "traceback": traceback.format_exc()
         }), 500
+
+
+@simulation_bp.route('/<simulation_id>/branches', methods=['POST'])
+def create_branch(simulation_id: str):
+    """Create a new branch for a consumer simulation."""
+    try:
+        state, err = _require_consumer_simulation(simulation_id)
+        if err:
+            return err
+
+        data = request.get_json() or {}
+        name = data.get('name', '').strip()
+        fork_round = data.get('fork_round')
+        description = data.get('description', '').strip()
+        parent_branch_id = data.get('parent_branch_id')
+
+        if not name:
+            return jsonify({"success": False, "error": "name is required"}), 400
+        if fork_round is None or not isinstance(fork_round, int) or fork_round < 0:
+            return jsonify({"success": False, "error": "fork_round must be a non-negative integer"}), 400
+
+        mgr = ConsumerInterventionManager()
+        branch = mgr.create_branch(
+            simulation_id=simulation_id,
+            name=name,
+            fork_round=fork_round,
+            description=description,
+            parent_branch_id=parent_branch_id,
+        )
+        return jsonify({"success": True, "data": branch.model_dump()}), 201
+    except ValueError as e:
+        status = 400 if "parent branch not found" in str(e).lower() else 400
+        return jsonify({"success": False, "error": str(e)}), status
+    except Exception as e:
+        logger.error(f"创建分支失败: {str(e)}")
+        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+
+
+@simulation_bp.route('/<simulation_id>/branches', methods=['GET'])
+def list_branches(simulation_id: str):
+    """List all branches for a simulation."""
+    try:
+        state, err = _require_consumer_simulation(simulation_id)
+        if err:
+            return err
+
+        mgr = ConsumerInterventionManager()
+        branches = mgr.list_branches(simulation_id)
+        return jsonify({
+            "success": True,
+            "data": {"branches": [b.model_dump() for b in branches]},
+        })
+    except Exception as e:
+        logger.error(f"列出分支失败: {str(e)}")
+        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+
+
+@simulation_bp.route('/<simulation_id>/interventions', methods=['GET'])
+def list_interventions_for_simulation(simulation_id: str):
+    """List interventions for a simulation (across all branches or filtered by branch_id)."""
+    try:
+        state, err = _require_consumer_simulation(simulation_id)
+        if err:
+            return err
+
+        branch_id = request.args.get('branch_id')
+        mgr = ConsumerInterventionManager()
+        interventions = mgr.list_interventions(simulation_id, branch_id=branch_id)
+        return jsonify({
+            "success": True,
+            "data": {"interventions": [i.model_dump() for i in interventions]},
+        })
+    except ValueError as e:
+        status = 404 if "branch not found" in str(e).lower() else 400
+        return jsonify({"success": False, "error": str(e)}), status
+    except Exception as e:
+        logger.error(f"列出干预失败: {str(e)}")
+        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+
+
+@simulation_bp.route('/<simulation_id>/branches/<branch_id>/interventions', methods=['POST'])
+def add_intervention(simulation_id: str, branch_id: str):
+    """Add an intervention to a branch."""
+    try:
+        state, err = _require_consumer_simulation(simulation_id)
+        if err:
+            return err
+
+        data = request.get_json() or {}
+        intervention_type = data.get('intervention_type')
+        payload = data.get('payload', {})
+        target_round = data.get('target_round')
+
+        if not intervention_type:
+            return jsonify({"success": False, "error": "intervention_type is required"}), 400
+
+        # Validate intervention_type
+        try:
+            InterventionType(intervention_type)
+        except ValueError:
+            return jsonify({"success": False, "error": f"Unsupported intervention_type: {intervention_type}"}), 400
+
+        mgr = ConsumerInterventionManager()
+        intervention = mgr.add_intervention(
+            simulation_id=simulation_id,
+            branch_id=branch_id,
+            intervention_type=intervention_type,
+            payload=payload,
+            target_round=target_round,
+        )
+        return jsonify({"success": True, "data": intervention.model_dump()}), 201
+    except ValueError as e:
+        status = 404 if "branch not found" in str(e).lower() else 400
+        return jsonify({"success": False, "error": str(e)}), status
+    except Exception as e:
+        logger.error(f"添加干预失败: {str(e)}")
+        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+
+
+@simulation_bp.route('/<simulation_id>/branches/<branch_id>/interventions', methods=['GET'])
+def list_interventions_for_branch(simulation_id: str, branch_id: str):
+    """List interventions for a specific branch."""
+    try:
+        state, err = _require_consumer_simulation(simulation_id)
+        if err:
+            return err
+
+        mgr = ConsumerInterventionManager()
+        interventions = mgr.list_interventions(simulation_id, branch_id=branch_id)
+        return jsonify({
+            "success": True,
+            "data": {"interventions": [i.model_dump() for i in interventions]},
+        })
+    except ValueError as e:
+        status = 404 if "branch not found" in str(e).lower() else 400
+        return jsonify({"success": False, "error": str(e)}), status
+    except Exception as e:
+        logger.error(f"列出分支干预失败: {str(e)}")
+        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+
+
+@simulation_bp.route('/<simulation_id>/branches/<branch_id>/comparison', methods=['GET'])
+def get_branch_comparison(simulation_id: str, branch_id: str):
+    """Fetch branch comparison context with base-vs-branch summaries."""
+    try:
+        state, err = _require_consumer_simulation(simulation_id)
+        if err:
+            return err
+
+        mgr = ConsumerInterventionManager()
+        branch = mgr.get_branch(simulation_id, branch_id)
+        if branch is None:
+            return jsonify({"success": False, "error": "Branch not found"}), 404
+        context = mgr.build_comparison_context(simulation_id, branch_id)
+        return jsonify({"success": True, "data": context})
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 404
+    except Exception as e:
+        logger.error(f"获取分支对比失败: {str(e)}")
+        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
 
 
 @simulation_bp.route('/<simulation_id>/config/realtime', methods=['GET'])

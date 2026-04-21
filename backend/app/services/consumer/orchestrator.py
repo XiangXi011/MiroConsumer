@@ -13,6 +13,7 @@ from .event_engine import (
     derive_speech_act_from_bucket,
     derive_trigger_from_findings,
 )
+from .intervention_manager import ConsumerIntervention
 from .models import GraphVisibility, ResearchFinding
 from .persona_pack import can_access_deep_graph
 
@@ -30,6 +31,7 @@ class ConsumerSimulationOrchestrator:
         brief_summary: str,
         visible_graph_nodes: Iterable[Mapping[str, Any]],
         research_findings: Optional[Iterable[ResearchFinding]] = None,
+        interventions: Optional[Iterable[ConsumerIntervention]] = None,
     ) -> str:
         visible_nodes = self.filter_visible_graph_nodes(
             round_num=round_num,
@@ -59,7 +61,38 @@ class ConsumerSimulationOrchestrator:
             for finding in visible_findings:
                 lines.append(f"- [{finding.finding_type}] {finding.summary}")
 
+        # Inject active interventions for this round
+        active_interventions = self._active_interventions_for_round(round_num, interventions)
+        if active_interventions:
+            lines.append("Interventions:")
+            for intervention in active_interventions:
+                payload_text = self._render_intervention_payload(intervention)
+                if payload_text:
+                    lines.append(f"- [{intervention.intervention_type}] {payload_text}")
+
         return "\n".join(lines)
+
+    def _active_interventions_for_round(
+        self,
+        round_num: int,
+        interventions: Optional[Iterable[ConsumerIntervention]],
+    ) -> List[ConsumerIntervention]:
+        if interventions is None:
+            return []
+        return [
+            i for i in interventions
+            if i.target_round is None or i.target_round == round_num
+        ]
+
+    def _render_intervention_payload(self, intervention: ConsumerIntervention) -> str:
+        payload = intervention.payload
+        if intervention.intervention_type == "clarification_injection":
+            return str(payload.get("message", "")).strip()
+        if intervention.intervention_type == "revised_claim_injection":
+            return str(payload.get("claim", "")).strip()
+        if intervention.intervention_type == "evidence_reveal":
+            return str(payload.get("evidence", "")).strip()
+        return str(payload) if payload else ""
 
     def filter_visible_graph_nodes(
         self,
