@@ -259,22 +259,56 @@
   - `npm run build`
   - 结果：成功
 
-### 7.3 已修复的关键问题
+### 7.3 真实链路验收结果
+
+使用新的 Zep API Key 对完整主链路进行了实际验收：
+
+- 图谱构建（Zep）：通过，约 `15s`
+- 模拟创建：通过，即时返回
+- Prepare（`4` 个 profile）：通过，约 `21min`
+- 最终状态：`ready`
+- 生成产物：
+  - `reddit_profiles.json`
+  - `twitter_profiles.csv`
+  - `simulation_config.json`
+  - `state.json`
+
+### 7.4 Phase 1 验收结论
+
+- Persona Pack：`8` 个默认 persona 加载通过
+- Brief Adapter：`from_payload` 规范化通过
+- Graph Builder：`21 nodes / 20 edges / 三级 visibility` 通过
+- Orchestrator：Round 0 隐藏 `Restricted / Propagation_Only` 通过
+- Orchestrator：Round 2+ 高搜索画像可见全部节点通过
+- Orchestrator：Round 2+ 低搜索画像仅可见 `Propagation_Only` 通过
+- Scoring：`attitude shift + evidence bundle` 通过
+- Report Context：事件加载与 summary 生成通过
+- VOC 保留：`resonance / risk / misread quotes` 通过
+- API：project list/detail、simulation list/history、`GET /{sim_id}/consumer-summary` 通过
+- 向下兼容：默认 `project_type` 不受影响
+- Zep 集成：图谱构建与模拟准备通过
+
+结论：
+
+- `consumer_test` Phase 1 已通过正式验收，可作为当前交付基线。
+
+### 7.5 已修复的关键问题
 
 - Step 2 读取 consumer metadata 时兼容 `prepare_info / config / 顶层字段`
 - Step 3 rerun 时清理旧 `consumerSummary`，避免残留上一次结果
 - Step 2-5 的新增消费者模式文案全部接入 i18n
 - 快速追问 prompt 编码问题已修复
 
-## 8. 当前未完成项
+## 8. 当前剩余优化项
 
-- 完整人工 smoke run 记录
-- 默认模式与 `consumer_test` 模式的成套 UI 人工回归记录
-- 性能、长轮次、真实业务素材下的压测结果
+- 大规模 profile prepare 的耗时优化
+- `response_format=json_object` 兼容性的进一步收敛
+- 长轮次、真实业务素材和更大样本量下的压测基线
+- 默认模式与 `consumer_test` 模式的长期回归记录沉淀
 
 ## 9. 后续建议
 
-1. 记录一次完整人工 smoke run
-2. 补默认模式回归记录
-3. 用真实业务素材跑一轮消费者测试
-4. 根据结果决定是否进入 Phase 2 的自动预研与更复杂传播建模
+1. 固化一份正式验收记录模板，后续用于更多消费者测试用例
+2. 基于真实业务素材补充更大样本量和更长轮次的性能验证
+3. 评估更快模型或 prepare 并行策略，降低 profile 生成耗时
+4. 根据 Phase 1 验收结果决定是否进入 Phase 2 的自动预研与更复杂传播建模

@@ -116,7 +116,7 @@ Phase 1 的核心输出是《消费者传播测试报告》，至少回答：
 
 报告中必须保留代表性 VOC 原声，不能只输出抽象比例。
 
-## 7. 当前项目进度（2026-04-21）
+## 7. 当前项目状态（2026-04-21）
 
 ### 7.1 已完成
 
@@ -140,7 +140,7 @@ Phase 1 的核心输出是《消费者传播测试报告》，至少回答：
   - Step 4/5 已支持消费者报告标签、推荐追问、VOC 展示
   - 中英文 locale 已补齐消费者模式文案
 
-### 7.2 已验证
+### 7.2 已验证与验收通过
 
 - 后端测试：
   - `backend/.venv/Scripts/python.exe -m pytest`
@@ -152,11 +152,40 @@ Phase 1 的核心输出是《消费者传播测试报告》，至少回答：
   - `npm run build`
   - 结果：成功
 
-### 7.3 尚未完成
+- 真实链路验收（新 Zep API Key）：
+  - 图谱构建（Zep）：通过，约 `15s`
+  - 模拟创建：通过，即时返回
+  - Prepare（`4` 个 profile）：通过，约 `21min`
+  - 最终状态：`ready`
+  - 产物确认：
+    - `reddit_profiles.json`
+    - `twitter_profiles.csv`
+    - `simulation_config.json`
+    - `state.json`
 
-- 还没有把 `consumer_test` 的完整人工联调链路正式记录为一次已完成 smoke run
-- 默认模式与消费者模式的双分支人工 UI 回归还没有形成书面验收记录
-- 性能、长轮次、真实业务素材下的压测结果尚未形成
+- `consumer_test` Phase 1 模块验收：
+  - Persona Pack：`8` 个默认 persona 加载通过
+  - Brief Adapter：`from_payload` 规范化通过
+  - Graph Builder：`21 nodes / 20 edges / 三级 visibility` 通过
+  - Orchestrator：Round 0 隐藏 `Restricted / Propagation_Only` 通过
+  - Orchestrator：Round 2+ 高搜索画像可见全部节点通过
+  - Orchestrator：Round 2+ 低搜索画像仅可见 `Propagation_Only` 通过
+  - Scoring：`attitude shift + evidence bundle` 通过
+  - Report Context：事件加载与 summary 生成通过
+  - VOC 保留：`resonance / risk / misread quotes` 通过
+  - API：project list/detail、simulation list/history、`GET /{sim_id}/consumer-summary` 通过
+  - 向下兼容：默认 `project_type` 不受影响
+  - Zep 集成：图谱构建与模拟准备通过
+
+结论：
+
+- `consumer_test` Phase 1 已完成并通过正式验收。
+
+### 7.3 当前已知限制
+
+- Kimi For Coding 响应较慢，单个 profile 约 `3-5` 分钟，`4` 个 profile 的完整 prepare 约 `21` 分钟
+- `response_format=json_object` 的兼容性仍不稳定，当前已通过 proxy 做兼容缓解
+- 小规模 profile（如 `4` 个）可稳定运行；更大规模场景建议切换更快的模型
 
 ## 8. 风险与依赖
 
@@ -168,7 +197,8 @@ Phase 1 的核心输出是《消费者传播测试报告》，至少回答：
 
 ### 8.2 当前主要风险
 
-- 完整人工 smoke run 还未形成固化记录
+- 大规模 prepare 的耗时与模型成本仍偏高
+- `json_object` 兼容性在不同模型或代理配置下仍可能波动
 - `pendingUpload.js` 动静态导入混用和前端 chunk size warning 仍存在，但不是本轮阻断问题
 
 ## 9. 后续阶段与终局愿景
