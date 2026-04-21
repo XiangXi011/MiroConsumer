@@ -146,6 +146,7 @@ class ConsumerPhase2Summary:
     top_clarification_opportunities: List[Dict[str, Any]]
     causal_voc_quotes: List[Dict[str, Any]]
     evidence_bundle: ConsumerEvidenceBundle
+    cascade_metrics: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -155,6 +156,7 @@ class ConsumerPhase2Summary:
             "top_clarification_opportunities": self.top_clarification_opportunities,
             "causal_voc_quotes": self.causal_voc_quotes,
             "evidence_bundle": self.evidence_bundle.to_dict(),
+            "cascade_metrics": self.cascade_metrics,
         }
 
 
@@ -261,6 +263,12 @@ def build_consumer_summary(
         quote_metadata=[],
     )
 
+    from .cascade_metrics import compute_cascade_metrics
+
+    cascade_metrics = compute_cascade_metrics(
+        [e.model_dump() if hasattr(e, "model_dump") else dict(e) for e in typed_events],
+    )
+
     return ConsumerPhase2Summary(
         attitude_summary=attitude_summary,
         event_counts=event_counts,
@@ -268,6 +276,7 @@ def build_consumer_summary(
         top_clarification_opportunities=top_clarification_opportunities,
         causal_voc_quotes=causal_voc_quotes,
         evidence_bundle=evidence_bundle,
+        cascade_metrics=cascade_metrics,
     )
 
 

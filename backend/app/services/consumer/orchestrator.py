@@ -15,14 +15,24 @@ from .event_engine import (
 )
 from .intervention_manager import ConsumerIntervention
 from .models import GraphVisibility, ResearchFinding
-from .persona_pack import can_access_deep_graph
+from .persona_pack import can_access_deep_graph, load_default_persona_pack
+from .social_topology import (
+    SocialTopology,
+    build_social_topology,
+    select_topology_aware_targets,
+)
 
 
 class ConsumerSimulationOrchestrator:
     """Build pinned prompts and persist consumer propagation snapshots."""
 
-    def __init__(self, output_path: Optional[Path | str] = None):
+    def __init__(
+        self,
+        output_path: Optional[Path | str] = None,
+        topology: Optional[SocialTopology] = None,
+    ):
         self.output_path = Path(output_path) if output_path is not None else None
+        self._topology = topology or build_social_topology()
 
     def build_round_prompt(
         self,
@@ -206,13 +216,34 @@ class ConsumerSimulationOrchestrator:
             trigger=trigger,
             speech_act=speech_act,
         )
+
+        all_persona_ids = list(self._topology.persona_community.keys())
+        target_ids = select_topology_aware_targets(
+            actor_id=agent_id,
+            event_type=event_type,
+            topology=self._topology,
+            all_persona_ids=all_persona_ids,
+            round_index=round_num,
+        )
+
+        actor_community = self._topology.persona_community.get(agent_id, "")
+        actor_role = self._topology.persona_role.get(agent_id, "")
+        target_communities = [self._topology.persona_community.get(t, "") for t in target_ids]
+        cross_community = actor_community != "" and any(
+            tc != actor_community for tc in target_communities
+        )
+
         event = build_propagation_event(
             actor_id=agent_id,
-            target_ids=[],
+            target_ids=target_ids,
             event_type=event_type,
             trigger_finding_ids=list(visible_finding_ids),
             supporting_quote=quote,
             round_index=round_num,
+            actor_community=actor_community,
+            actor_role=actor_role,
+            cross_community=cross_community,
+            target_communities=target_communities,
         )
         return [event.model_dump()]
 

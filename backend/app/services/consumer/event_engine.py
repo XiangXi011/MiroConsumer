@@ -59,6 +59,10 @@ def build_propagation_event(
     trigger_finding_ids: List[str],
     supporting_quote: str,
     round_index: int,
+    actor_community: str = "",
+    actor_role: str = "",
+    cross_community: bool = False,
+    target_communities: Optional[List[str]] = None,
 ) -> PropagationEvent:
     """Build a typed PropagationEvent with a deterministic ID."""
     event_id = f"evt_{actor_id}_r{round_index}_{event_type[:3]}"
@@ -70,6 +74,10 @@ def build_propagation_event(
         trigger_finding_ids=list(trigger_finding_ids),
         supporting_quote=supporting_quote,
         round_index=round_index,
+        actor_community=actor_community,
+        actor_role=actor_role,
+        cross_community=cross_community,
+        target_communities=list(target_communities or []),
     )
 
 

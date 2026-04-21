@@ -107,6 +107,10 @@ class PropagationEvent(BaseModel):
     trigger_finding_ids: List[str] = Field(default_factory=list)
     supporting_quote: str = ""
     round_index: int
+    actor_community: str = ""
+    actor_role: str = ""
+    cross_community: bool = False
+    target_communities: List[str] = Field(default_factory=list)
 
 
 def _normalize_string_list(value: Any, field_name: str) -> List[str]:

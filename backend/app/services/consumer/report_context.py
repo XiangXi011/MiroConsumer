@@ -453,6 +453,7 @@ def build_consumer_report_context(
         "persona_group_signals": persona_events,
         "trigger_finding_count": len(causal_chains),
         "event_count": len(typed_events),
+        "cascade_metrics": summary_dict.get("cascade_metrics", {}),
     }
 
     typed_traces = []
