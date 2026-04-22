@@ -193,6 +193,16 @@
                   <span class="snapshot-label">{{ $t('consumer.snapshotTraces') }}</span>
                 </div>
               </div>
+              <div v-if="consumerSourceQualitySummary.length > 0" class="snapshot-quality-grid">
+                <div
+                  v-for="item in consumerSourceQualitySummary"
+                  :key="item.key"
+                  class="snapshot-quality-item"
+                >
+                  <span class="snapshot-quality-value">{{ item.value }}</span>
+                  <span class="snapshot-quality-label">{{ item.label }}</span>
+                </div>
+              </div>
               <div v-if="consumerEnableLaneB" class="snapshot-lane-b-badge">{{ $t('consumer.laneBEnabled') }}</div>
             </div>
             <!-- 时间配置 -->
@@ -701,7 +711,7 @@ import {
   getSimulationConfig,
   getSimulationConfigRealtime
 } from '../api/simulation'
-import { isConsumerProject } from '../utils/consumerMode'
+import { isConsumerProject, formatSourceQualitySummary } from '../utils/consumerMode'
 
 const { t } = useI18n()
 
@@ -790,6 +800,11 @@ const pinnedBriefSummary = computed(() => consumerConfigMeta.value.pinned_brief_
 const consumerResearchFindings = computed(() => consumerConfigMeta.value.research_findings || [])
 
 const consumerResearchSnapshot = computed(() => consumerConfigMeta.value.research_snapshot || {})
+
+const consumerSourceQualitySummary = computed(() => {
+  const snapshot = consumerConfigMeta.value.research_snapshot || {}
+  return formatSourceQualitySummary(snapshot.source_quality_summary, t)
+})
 
 const consumerEnableLaneB = computed(() => consumerConfigMeta.value.enable_lane_b || false)
 
@@ -2816,5 +2831,37 @@ onUnmounted(() => {
   font-family: 'JetBrains Mono', monospace;
   border-radius: 4px;
   display: inline-block;
+}
+
+.snapshot-quality-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #EEE;
+}
+
+.snapshot-quality-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px;
+  background: #F8FAFC;
+  border-radius: 4px;
+}
+
+.snapshot-quality-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #1E293B;
+}
+
+.snapshot-quality-label {
+  font-size: 0.65rem;
+  color: #94A3B8;
+  margin-top: 2px;
+  text-align: center;
 }
 </style>

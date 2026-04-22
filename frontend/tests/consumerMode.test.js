@@ -10,6 +10,12 @@ import {
   buildComparisonAwarePrompts,
   isConsumerProject,
   pickTopVocQuotes,
+  formatSourceQualitySummary,
+  getConfidenceBadgeClass,
+  getConfidenceLabelText,
+  mergeFindingConfidence,
+  buildConfidenceAwarePrompts,
+  formatComparisonConfidence,
 } from '../src/utils/consumerMode.js'
 
 test('isConsumerProject supports backend and frontend project type shapes', () => {
@@ -587,4 +593,122 @@ test('buildComparisonAwarePrompts returns empty array for null or empty snapshot
   assert.deepEqual(buildComparisonAwarePrompts(null), [])
   assert.deepEqual(buildComparisonAwarePrompts({}), [])
   assert.deepEqual(buildComparisonAwarePrompts(undefined), [])
+})
+
+// ============== Phase 4A: Source Quality / Confidence helpers ==============
+
+test('formatSourceQualitySummary returns empty array when summary is missing', () => {
+  assert.deepEqual(formatSourceQualitySummary(null), [])
+  assert.deepEqual(formatSourceQualitySummary({}), [])
+})
+
+test('formatSourceQualitySummary formats backend source_quality_summary into display items', () => {
+  const items = formatSourceQualitySummary({
+    source_count: 5,
+    lane_a_count: 2,
+    lane_b_count: 3,
+    average_source_confidence: 0.72,
+    average_freshness_score: 65,
+    trust_tier_distribution: { '1': 2, '2': 3 },
+    coverage_tag_distribution: { user_provided: 2, public_web: 3 },
+  })
+  assert.ok(items.length > 0, 'Expected non-empty items')
+  assert.ok(items.some(i => i.key === 'source_count' && i.value === '5'), 'Expected source_count item')
+  assert.ok(items.some(i => i.key === 'lane_a_count' && i.value === '2'), 'Expected lane_a_count item')
+  assert.ok(items.some(i => i.key === 'lane_b_count' && i.value === '3'), 'Expected lane_b_count item')
+  assert.ok(items.some(i => i.key === 'average_source_confidence' && i.value === '72%'), 'Expected confidence formatted as percent')
+  assert.ok(items.some(i => i.key === 'average_freshness_score' && i.value === '65'), 'Expected freshness score')
+})
+
+test('getConfidenceBadgeClass maps confidence labels to CSS classes', () => {
+  assert.equal(getConfidenceBadgeClass('high'), 'badge-high')
+  assert.equal(getConfidenceBadgeClass('medium'), 'badge-medium')
+  assert.equal(getConfidenceBadgeClass('low'), 'badge-low')
+  assert.equal(getConfidenceBadgeClass('unknown'), 'badge-unknown')
+  assert.equal(getConfidenceBadgeClass(''), 'badge-unknown')
+})
+
+test('getConfidenceLabelText maps confidence labels to readable text', () => {
+  assert.equal(getConfidenceLabelText('high'), 'High Confidence')
+  assert.equal(getConfidenceLabelText('medium'), 'Medium Confidence')
+  assert.equal(getConfidenceLabelText('low'), 'Low Confidence')
+  assert.equal(getConfidenceLabelText('unknown'), 'Unknown')
+  assert.equal(getConfidenceLabelText(''), 'Unknown')
+})
+
+test('mergeFindingConfidence attaches confidence data to matching findings by finding_id', () => {
+  const findings = [
+    { findingId: 'f1', summary: 'Sugar concern' },
+    { findingId: 'f2', summary: 'Protein benefit' },
+  ]
+  const confidences = [
+    { finding_id: 'f1', confidence_label: 'high', confidence_score: 0.85 },
+    { finding_id: 'f2', confidence_label: 'medium', confidence_score: 0.55 },
+  ]
+  const merged = mergeFindingConfidence(findings, confidences)
+  assert.equal(merged[0].confidenceLabel, 'high')
+  assert.equal(merged[0].confidenceScore, 0.85)
+  assert.equal(merged[1].confidenceLabel, 'medium')
+  assert.equal(merged[1].confidenceScore, 0.55)
+})
+
+test('mergeFindingConfidence falls back to unknown when no matching confidence', () => {
+  const findings = [{ findingId: 'f1', summary: 'Sugar concern' }]
+  const merged = mergeFindingConfidence(findings, [])
+  assert.equal(merged[0].confidenceLabel, 'unknown')
+  assert.equal(merged[0].confidenceScore, 0)
+})
+
+test('buildConfidenceAwarePrompts generates weak-evidence prompt when low-confidence findings exist', () => {
+  const prompts = buildConfidenceAwarePrompts({
+    report_confidence: {
+      confidence_label: 'medium',
+      confidence_score: 0.55,
+      finding_confidences: [
+        { finding_id: 'f1', confidence_label: 'low', confidence_score: 0.3 },
+      ],
+    },
+  })
+  assert.ok(prompts.some(p => p.includes('weak') || p.includes('low confidence') || p.includes('evidence')), 'Expected weak-evidence prompt')
+})
+
+test('buildConfidenceAwarePrompts generates replay prompt when replay_alignment is not_replayed', () => {
+  const prompts = buildConfidenceAwarePrompts({
+    report_confidence: {
+      confidence_label: 'medium',
+      confidence_score: 0.55,
+      replay_alignment: 'not_replayed',
+      finding_confidences: [],
+    },
+  })
+  assert.ok(prompts.some(p => p.includes('replay') || p.includes('benchmark') || p.includes('calibration')), 'Expected replay prompt')
+})
+
+test('buildConfidenceAwarePrompts returns empty array when report_confidence is missing', () => {
+  assert.deepEqual(buildConfidenceAwarePrompts({}), [])
+  assert.deepEqual(buildConfidenceAwarePrompts(null), [])
+})
+
+test('formatComparisonConfidence formats comparison confidence into readable summary', () => {
+  const result = formatComparisonConfidence({
+    comparison_label: 'strongly_supported',
+    confidence_delta: 0.15,
+    left_confidence_label: 'medium',
+    right_confidence_label: 'high',
+    left_confidence_score: 0.55,
+    right_confidence_score: 0.7,
+  })
+  assert.equal(result.label, 'strongly_supported')
+  assert.equal(result.delta, 0.15)
+  assert.equal(result.leftLabel, 'medium')
+  assert.equal(result.rightLabel, 'high')
+  assert.equal(result.leftScore, 0.55)
+  assert.equal(result.rightScore, 0.7)
+})
+
+test('formatComparisonConfidence returns null-like fallback for missing data', () => {
+  const result = formatComparisonConfidence(null)
+  assert.equal(result.label, 'unknown')
+  assert.equal(result.leftScore, 0)
+  assert.equal(result.rightScore, 0)
 })

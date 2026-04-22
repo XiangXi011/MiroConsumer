@@ -364,7 +364,10 @@
       "comparisonResonanceOverlap": "重叠的共鸣信号说明了什么核心信息？",
       "comparisonRecurringRisks": "为什么这些风险信号在两个运行中反复出现？",
       "comparisonDivergence": "信号\"{signal}\"在两个运行中出现分歧。原因是什么？",
-      "comparisonAcceptanceDelta": "接受度{direction}了{delta}个百分点。驱动因素是什么？"
+      "comparisonAcceptanceDelta": "接受度{direction}了{delta}个百分点。驱动因素是什么？",
+      "lowConfidenceFindings": "{count}条发现置信度较低。应加强哪些证据？",
+      "weakEvidence": "{count}条发现依赖薄弱或不足的证据。哪些额外来源可以提升支持度？",
+      "replayCalibration": "本报告尚未进行基准测试。运行回放以校准置信度。"
     },
     "eventTypes": {
       "positive_relay": "正向传播",
@@ -391,6 +394,35 @@
     "snapshotFindings": "发现数",
     "snapshotTraces": "检索轨迹",
     "laneBEnabled": "Lane B（公开网络）已启用",
+    "sourceQuality": {
+      "title": "来源质量",
+      "sources": "来源数",
+      "laneA": "Lane A",
+      "laneB": "Lane B",
+      "avgConfidence": "平均置信度",
+      "avgFreshness": "平均新鲜度"
+    },
+    "confidence": {
+      "high": "高置信度",
+      "medium": "中等置信度",
+      "low": "低置信度",
+      "unknown": "未知"
+    },
+    "reportConfidence": {
+      "title": "报告置信度",
+      "overallLabel": "总体",
+      "scoreLabel": "分数",
+      "replayLabel": "回放"
+    },
+    "evidenceValidation": {
+      "title": "证据验证",
+      "supported": "已支持",
+      "weak": "弱支持",
+      "insufficient": "不足"
+    },
+    "comparisonConfidence": {
+      "title": "对比置信度"
+    },
     "citationReadyFindings": "可引用发现",
     "retrievalTraces": "检索轨迹",
     "sourcesUsed": "参考来源",

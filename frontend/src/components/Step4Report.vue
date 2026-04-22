@@ -22,6 +22,55 @@
               </div>
             </div>
 
+            <!-- Report Confidence Summary -->
+            <div v-if="isConsumerMode && consumerReportConfidence" class="consumer-confidence-strip">
+              <div class="consumer-confidence-header">{{ $t('consumer.reportConfidence.title') }}</div>
+              <div class="consumer-confidence-grid">
+                <div class="consumer-confidence-card">
+                  <span class="consumer-confidence-label">{{ $t('consumer.reportConfidence.overallLabel') }}</span>
+                  <span class="consumer-confidence-value mono" :class="getConfidenceBadgeClass(consumerReportConfidence.confidence_label)">{{ getConfidenceLabelText(consumerReportConfidence.confidence_label, t) }}</span>
+                </div>
+                <div class="consumer-confidence-card">
+                  <span class="consumer-confidence-label">{{ $t('consumer.reportConfidence.scoreLabel') }}</span>
+                  <span class="consumer-confidence-value mono">{{ Math.round((consumerReportConfidence.confidence_score || 0) * 100) }}%</span>
+                </div>
+                <div v-if="consumerReportConfidence.replay_alignment" class="consumer-confidence-card">
+                  <span class="consumer-confidence-label">{{ $t('consumer.reportConfidence.replayLabel') }}</span>
+                  <span class="consumer-confidence-value mono">{{ consumerReportConfidence.replay_alignment }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Evidence Validation Summary -->
+            <div v-if="isConsumerMode && consumerEvidenceValidationSummary" class="consumer-confidence-strip">
+              <div class="consumer-confidence-header">{{ $t('consumer.evidenceValidation.title') }}</div>
+              <div class="consumer-confidence-grid">
+                <div class="consumer-confidence-card">
+                  <span class="consumer-confidence-label">{{ $t('consumer.evidenceValidation.supported') }}</span>
+                  <span class="consumer-confidence-value mono">{{ consumerEvidenceValidationSummary.supported_count || 0 }}</span>
+                </div>
+                <div class="consumer-confidence-card">
+                  <span class="consumer-confidence-label">{{ $t('consumer.evidenceValidation.weak') }}</span>
+                  <span class="consumer-confidence-value mono">{{ consumerEvidenceValidationSummary.weak_support_count || 0 }}</span>
+                </div>
+                <div class="consumer-confidence-card">
+                  <span class="consumer-confidence-label">{{ $t('consumer.evidenceValidation.insufficient') }}</span>
+                  <span class="consumer-confidence-value mono">{{ consumerEvidenceValidationSummary.insufficient_support_count || 0 }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Source Quality Summary -->
+            <div v-if="isConsumerMode && consumerSourceQualitySummary.length > 0" class="consumer-confidence-strip">
+              <div class="consumer-confidence-header">{{ $t('consumer.sourceQuality.title') }}</div>
+              <div class="consumer-confidence-grid">
+                <div v-for="item in consumerSourceQualitySummary" :key="item.key" class="consumer-confidence-card">
+                  <span class="consumer-confidence-label">{{ item.label }}</span>
+                  <span class="consumer-confidence-value mono">{{ item.value }}</span>
+                </div>
+              </div>
+            </div>
+
             <div v-if="isConsumerMode && consumerVocHighlights.length > 0" class="consumer-voc-strip">
               <div class="consumer-voc-header">{{ $t('consumer.representativeVoc') }}</div>
               <div class="consumer-voc-list">
@@ -151,6 +200,7 @@
                   :class="'type-' + f.findingType"
                 >
                   <span class="finding-type">{{ f.findingType }}</span>
+                  <span v-if="f.confidenceLabel" class="confidence-badge" :class="getConfidenceBadgeClass(f.confidenceLabel)">{{ getConfidenceLabelText(f.confidenceLabel, t) }}</span>
                   <span class="finding-text">{{ f.summary }}</span>
                   <div v-if="f.sourceTitle || f.sourceUri || f.evidencePreview" class="finding-evidence">
                     <div v-if="f.sourceTitle" class="evidence-source">
@@ -408,6 +458,21 @@
                 <div class="comparison-metric">
                   <span class="comparison-metric-label">{{ $t('consumer.researchAssets.sourceOverlap') }}</span>
                   <span class="comparison-metric-value mono">{{ comparisonSnapshot.source_overlap_count ?? '—' }}</span>
+                </div>
+
+                <!-- Comparison Confidence -->
+                <div v-if="comparisonConfidenceFormatted" class="comparison-confidence-section">
+                  <span class="comparison-list-label">{{ $t('consumer.comparisonConfidence.title') }}</span>
+                  <div class="comparison-confidence-grid">
+                    <div class="comparison-confidence-side">
+                      <span class="comparison-confidence-label">{{ $t('consumer.researchAssets.left') }}</span>
+                      <span class="comparison-confidence-value mono" :class="getConfidenceBadgeClass(comparisonConfidenceFormatted.leftLabel)">{{ getConfidenceLabelText(comparisonConfidenceFormatted.leftLabel, t) }}</span>
+                    </div>
+                    <div class="comparison-confidence-side">
+                      <span class="comparison-confidence-label">{{ $t('consumer.researchAssets.right') }}</span>
+                      <span class="comparison-confidence-value mono" :class="getConfidenceBadgeClass(comparisonConfidenceFormatted.rightLabel)">{{ getConfidenceLabelText(comparisonConfidenceFormatted.rightLabel, t) }}</span>
+                    </div>
+                  </div>
                 </div>
 
                 <!-- Resonance Overlap -->
@@ -853,6 +918,11 @@ import {
   clearSelectedBranch,
   saveSelectedComparison,
   clearSelectedComparison,
+  mergeFindingConfidence,
+  getConfidenceBadgeClass,
+  getConfidenceLabelText,
+  formatComparisonConfidence,
+  formatSourceQualitySummary,
 } from '../utils/consumerMode'
 
 const router = useRouter()
@@ -1194,8 +1264,9 @@ const consumerSourceCatalog = computed(() => {
 const consumerEnrichedFindings = computed(() => {
   if (!isConsumerMode.value || !props.reportData?.report_context) return []
   const enriched = props.reportData.report_context.enriched_findings || []
-  if (enriched.length > 0) {
-    return enriched
+  const findingConfidences = props.reportData.report_context.report_confidence?.finding_confidences || []
+  const baseFindings = enriched.length > 0
+    ? enriched
       .filter(f => f && f.summary)
       .map(f => ({
         findingId: f.finding_id || '',
@@ -1214,28 +1285,27 @@ const consumerEnrichedFindings = computed(() => {
         snippetId: f.snippet_id || '',
         retrievalTraceId: f.retrieval_trace_id || '',
       }))
-  }
-  // Graceful fallback to raw findings when enrichment is absent
-  const findings = props.reportData.report_context.research_findings || []
-  return findings
-    .filter(f => f && f.summary)
-    .map(f => ({
-      findingId: f.finding_id || '',
-      findingType: f.finding_type || '',
-      summary: f.summary,
-      sourceTitle: '',
-      sourceUri: '',
-      sourceLane: f.source_label || '',
-      sourceType: '',
-      trustTier: 0,
-      evidencePreview: '',
-      confidence: f.confidence || 0,
-      visibility: f.visibility || '',
-      sourceLabel: f.source_label || '',
-      sourceId: f.source_id || '',
-      snippetId: f.snippet_id || '',
-      retrievalTraceId: f.retrieval_trace_id || '',
-    }))
+    // Graceful fallback to raw findings when enrichment is absent
+    : (props.reportData.report_context.research_findings || [])
+      .filter(f => f && f.summary)
+      .map(f => ({
+        findingId: f.finding_id || '',
+        findingType: f.finding_type || '',
+        summary: f.summary,
+        sourceTitle: '',
+        sourceUri: '',
+        sourceLane: f.source_label || '',
+        sourceType: '',
+        trustTier: 0,
+        evidencePreview: '',
+        confidence: f.confidence || 0,
+        visibility: f.visibility || '',
+        sourceLabel: f.source_label || '',
+        sourceId: f.source_id || '',
+        snippetId: f.snippet_id || '',
+        retrievalTraceId: f.retrieval_trace_id || '',
+      }))
+  return mergeFindingConfidence(baseFindings, findingConfidences)
 })
 
 const consumerEnrichedTraces = computed(() => {
@@ -1269,6 +1339,27 @@ const consumerEnrichedTraces = computed(() => {
     chunkPreviews: [],
     sourceCount: 0,
   }))
+})
+
+const consumerReportConfidence = computed(() => {
+  if (!isConsumerMode.value || !props.reportData?.report_context) return null
+  return props.reportData.report_context.report_confidence || null
+})
+
+const consumerEvidenceValidationSummary = computed(() => {
+  if (!isConsumerMode.value || !props.reportData?.report_context) return null
+  return props.reportData.report_context.evidence_validation_summary || null
+})
+
+const consumerSourceQualitySummary = computed(() => {
+  if (!isConsumerMode.value || !props.reportData?.report_context) return []
+  const snapshot = props.reportData.report_context.research_snapshot || {}
+  return formatSourceQualitySummary(snapshot.source_quality_summary, t)
+})
+
+const comparisonConfidenceFormatted = computed(() => {
+  if (!comparisonSnapshot.value?.comparison_confidence) return null
+  return formatComparisonConfidence(comparisonSnapshot.value.comparison_confidence)
 })
 
 // Toggle functions
@@ -6677,6 +6768,91 @@ watch(() => props.reportId, (newId) => {
   background: #F3F4F6;
   color: #4B5563;
   border-radius: 4px;
+}
+
+/* Phase 4A: Confidence badges */
+.confidence-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+  margin-right: 6px;
+}
+.badge-high {
+  background: #D1FAE5;
+  color: #065F46;
+}
+.badge-medium {
+  background: #FEF3C7;
+  color: #92400E;
+}
+.badge-low {
+  background: #FEE2E2;
+  color: #991B1B;
+}
+.badge-unknown {
+  background: #F3F4F6;
+  color: #6B7280;
+}
+
+/* Phase 4A: Report confidence strip */
+.consumer-confidence-strip {
+  margin-top: 12px;
+  padding: 12px;
+  background: #F9FAFB;
+  border-radius: 8px;
+  border: 1px solid #E5E7EB;
+}
+.consumer-confidence-header {
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 8px;
+}
+.consumer-confidence-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+}
+.consumer-confidence-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.consumer-confidence-label {
+  font-size: 11px;
+  color: #6B7280;
+}
+.consumer-confidence-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+}
+
+/* Phase 4A: Comparison confidence */
+.comparison-confidence-section {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #E5E7EB;
+}
+.comparison-confidence-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 6px;
+}
+.comparison-confidence-side {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.comparison-confidence-label {
+  font-size: 11px;
+  color: #6B7280;
+}
+.comparison-confidence-value {
+  font-size: 13px;
+  font-weight: 600;
 }
 </style>
 

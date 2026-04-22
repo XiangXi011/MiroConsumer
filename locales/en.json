@@ -358,7 +358,10 @@
       "comparisonResonanceOverlap": "What do the overlapping resonance signals tell us about the core message?",
       "comparisonRecurringRisks": "Why do these risk signals keep appearing across both runs?",
       "comparisonDivergence": "The signal \"{signal}\" diverges between runs. What explains this?",
-      "comparisonAcceptanceDelta": "Acceptance {direction} by {delta} percentage points. What drove this?"
+      "comparisonAcceptanceDelta": "Acceptance {direction} by {delta} percentage points. What drove this?",
+      "lowConfidenceFindings": "{count} finding(s) have low confidence. Which evidence should be strengthened?",
+      "weakEvidence": "{count} finding(s) rely on weak or insufficient evidence. What additional sources could improve support?",
+      "replayCalibration": "This report has not been benchmarked. Run a replay to calibrate confidence."
     },
     "eventTypes": {
       "positive_relay": "Positive Relay",
@@ -385,6 +388,35 @@
     "snapshotFindings": "Findings",
     "snapshotTraces": "Traces",
     "laneBEnabled": "Lane B (Public Web) Enabled",
+    "sourceQuality": {
+      "title": "Source Quality",
+      "sources": "Sources",
+      "laneA": "Lane A",
+      "laneB": "Lane B",
+      "avgConfidence": "Avg Confidence",
+      "avgFreshness": "Avg Freshness"
+    },
+    "confidence": {
+      "high": "High Confidence",
+      "medium": "Medium Confidence",
+      "low": "Low Confidence",
+      "unknown": "Unknown"
+    },
+    "reportConfidence": {
+      "title": "Report Confidence",
+      "overallLabel": "Overall",
+      "scoreLabel": "Score",
+      "replayLabel": "Replay"
+    },
+    "evidenceValidation": {
+      "title": "Evidence Validation",
+      "supported": "Supported",
+      "weak": "Weak Support",
+      "insufficient": "Insufficient"
+    },
+    "comparisonConfidence": {
+      "title": "Comparison Confidence"
+    },
     "citationReadyFindings": "Citation-Ready Findings",
     "retrievalTraces": "Retrieval Traces",
     "sourcesUsed": "Sources Used",
