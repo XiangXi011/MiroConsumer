@@ -6,31 +6,26 @@
 import json
 import os
 import traceback
-import threading
 from flask import request, jsonify
 
 from . import graph_bp
 from ..config import Config
-from ..services.consumer import ConsumerBriefAdapter, ConsumerGraphBuilder, load_default_persona_pack
+from ..services.consumer import ConsumerBriefAdapter
 from ..services.consumer.document_ingest import DocumentIngestService
 from ..services.consumer.models import ResearchSourceLane, ResearchSourceType
-from ..services.consumer.lane_b_provider import build_lane_b_provider
-from ..services.consumer.project_research_persistence import persist_findings, persist_snapshot
-from ..services.consumer.research_ingest import build_research_summary, resolve_research_findings, default_auto_research_provider, build_research_snapshot
-from ..services.consumer.source_quality import build_source_quality_summary
 from ..services.consumer.source_registry import SourceRegistry
-from ..services.consumer.url_ingest import ingest_background_url_sources
 from ..services.ontology_generator import OntologyGenerator
 from ..services.graph_builder import GraphBuilderService
 from ..services.text_processor import TextProcessor
 from ..utils.file_parser import FileParser
 from ..utils.logger import get_logger
-from ..utils.locale import t, get_locale, set_locale
+from ..utils.locale import t
 from ..models.task import TaskManager, TaskStatus
 from ..models.project import ProjectManager, ProjectStatus
+from ..services.application.graph_app_service import GraphAppService
 
 # 获取日志器
-logger = get_logger('mirofish.api')
+logger = get_logger('miroconsumer.api')
 
 
 def _normalize_consumer_brief_payload(raw_payload):
@@ -47,10 +42,6 @@ def _normalize_consumer_brief_payload(raw_payload):
 
     brief = ConsumerBriefAdapter.from_payload(payload)
     return brief.to_summary()
-
-
-def _consumer_graph_id(project_id: str) -> str:
-    return f"consumer_{project_id}"
 
 
 def _get_consumer_graph_payload(project):
@@ -81,88 +72,6 @@ def _ingest_project_files_into_research_workspace(project_id: str, file_texts: l
             text=text,
             title=original_filename,
         )
-
-
-def _build_consumer_graph(project, text: str):
-    if not project.consumer_brief:
-        raise ValueError("consumer_brief is required for consumer_test graph builds")
-
-    brief = ConsumerBriefAdapter.from_payload(project.consumer_brief)
-
-    # Ingest any URL entries from optional_background_materials into Lane A
-    ingest_background_url_sources(
-        project.project_id,
-        brief=brief,
-        upload_root=Config.UPLOAD_FOLDER,
-    )
-
-    lane_b_provider = build_lane_b_provider(project.project_id, upload_root=Config.UPLOAD_FOLDER)
-    research_findings = resolve_research_findings(
-        brief,
-        provider=default_auto_research_provider,
-        project_id=project.project_id,
-        upload_root=Config.UPLOAD_FOLDER,
-        enable_lane_b=brief.enable_lane_b,
-        lane_b_provider=lane_b_provider,
-    )
-    graph_payload = ConsumerGraphBuilder().build(
-        brief=brief,
-        background_text=text,
-        persona_pack=load_default_persona_pack(),
-        graph_id=_consumer_graph_id(project.project_id),
-        research_findings=research_findings,
-    )
-
-    ProjectManager.save_consumer_graph_payload(project.project_id, graph_payload)
-    project.graph_id = graph_payload["graph_id"]
-    project.status = ProjectStatus.GRAPH_COMPLETED
-
-    # Build research snapshot for Phase 3A provenance
-    snapshot = build_research_snapshot(
-        project.project_id,
-        brief=brief,
-        upload_root=Config.UPLOAD_FOLDER,
-        provider=default_auto_research_provider,
-        enable_lane_b=brief.enable_lane_b,
-        lane_b_provider=lane_b_provider,
-    )
-
-    # Persist formal project-level research artifacts
-    persist_findings(project.project_id, research_findings, upload_root=Config.UPLOAD_FOLDER)
-    persist_snapshot(project.project_id, snapshot, upload_root=Config.UPLOAD_FOLDER)
-
-    # Persist research context for downstream simulation/reporting
-    source_quality_summary = build_source_quality_summary(snapshot.sources)
-    project.consumer_context = {
-        "research_mode": brief.research_mode,
-        "enable_lane_b": brief.enable_lane_b,
-        "research_summary": build_research_summary(research_findings),
-        "research_findings_count": len(research_findings),
-        "auto_enrich_count": sum(
-            1 for f in research_findings if f.source_label == "auto_enrich"
-        ),
-        "manual_background_count": sum(
-            1 for f in research_findings if f.source_label == "brief_background"
-        ),
-        "ingested_document_count": sum(
-            1 for f in research_findings if f.source_label == "ingested_document"
-        ),
-        "public_web_count": sum(
-            1 for f in research_findings if f.source_label == "public_web"
-        ),
-        "research_snapshot": {
-            "snapshot_id": snapshot.snapshot_id,
-            "source_count": len(snapshot.sources),
-            "document_count": len(snapshot.documents),
-            "chunk_count": len(snapshot.chunks),
-            "finding_count": len(snapshot.findings),
-            "retrieval_trace_count": len(snapshot.retrieval_traces),
-        },
-        "source_quality_summary": source_quality_summary,
-    }
-    ProjectManager.save_project(project)
-
-    return graph_payload
 
 
 def allowed_file(filename: str) -> bool:
@@ -520,39 +429,8 @@ def build_graph():
             ProjectManager.save_project(project)
 
             try:
-                task_manager.update_task(
-                    task_id,
-                    status=TaskStatus.PROCESSING,
-                    message=t('progress.initGraphService'),
-                    progress=10
-                )
-                graph_data = _build_consumer_graph(project, text)
-                node_count = graph_data.get("node_count", 0)
-                edge_count = graph_data.get("edge_count", 0)
-                task_manager.update_task(
-                    task_id,
-                    status=TaskStatus.COMPLETED,
-                    message=t('progress.graphBuildComplete'),
-                    progress=100,
-                    result={
-                        "project_id": project_id,
-                        "graph_id": graph_data["graph_id"],
-                        "node_count": node_count,
-                        "edge_count": edge_count,
-                        "chunk_count": 1
-                    }
-                )
-            except Exception as e:
-                logger.error(f"消费测试图谱构建失败: {str(e)}")
-                project.status = ProjectStatus.FAILED
-                project.error = str(e)
-                ProjectManager.save_project(project)
-                task_manager.update_task(
-                    task_id,
-                    status=TaskStatus.FAILED,
-                    message=t('progress.buildFailed', error=str(e)),
-                    error=traceback.format_exc()
-                )
+                GraphAppService.build_consumer_graph_sync(project, text, task_manager, task_id)
+            except Exception:
                 raise
 
             return jsonify({
@@ -574,158 +452,22 @@ def build_graph():
                 "success": False,
                 "error": t('api.configError', details="; ".join(errors))
             }), 500
-        
+
         # 创建异步任务
         task_manager = TaskManager()
         task_id = task_manager.create_task(f"构建图谱: {graph_name}")
         logger.info(f"创建图谱构建任务: task_id={task_id}, project_id={project_id}")
-        
+
         # 更新项目状态
         project.status = ProjectStatus.GRAPH_BUILDING
         project.graph_build_task_id = task_id
         ProjectManager.save_project(project)
-        
-        # Capture locale before spawning background thread
-        current_locale = get_locale()
 
-        # 启动后台任务
-        def build_task():
-            set_locale(current_locale)
-            build_logger = get_logger('mirofish.build')
-            try:
-                build_logger.info(f"[{task_id}] 开始构建图谱...")
-                task_manager.update_task(
-                    task_id, 
-                    status=TaskStatus.PROCESSING,
-                    message=t('progress.initGraphService')
-                )
-                
-                # 创建图谱构建服务
-                builder = GraphBuilderService(api_key=Config.ZEP_API_KEY)
-                
-                # 分块
-                task_manager.update_task(
-                    task_id,
-                    message=t('progress.textChunking'),
-                    progress=5
-                )
-                chunks = TextProcessor.split_text(
-                    text, 
-                    chunk_size=chunk_size, 
-                    overlap=chunk_overlap
-                )
-                total_chunks = len(chunks)
-                
-                # 创建图谱
-                task_manager.update_task(
-                    task_id,
-                    message=t('progress.creatingZepGraph'),
-                    progress=10
-                )
-                graph_id = builder.create_graph(name=graph_name)
-                
-                # 更新项目的graph_id
-                project.graph_id = graph_id
-                ProjectManager.save_project(project)
-                
-                # 设置本体
-                task_manager.update_task(
-                    task_id,
-                    message=t('progress.settingOntology'),
-                    progress=15
-                )
-                builder.set_ontology(graph_id, ontology)
-                
-                # 添加文本（progress_callback 签名是 (msg, progress_ratio)）
-                def add_progress_callback(msg, progress_ratio):
-                    progress = 15 + int(progress_ratio * 40)  # 15% - 55%
-                    task_manager.update_task(
-                        task_id,
-                        message=msg,
-                        progress=progress
-                    )
-                
-                task_manager.update_task(
-                    task_id,
-                    message=t('progress.addingChunks', count=total_chunks),
-                    progress=15
-                )
-                
-                episode_uuids = builder.add_text_batches(
-                    graph_id, 
-                    chunks,
-                    batch_size=3,
-                    progress_callback=add_progress_callback
-                )
-                
-                # 等待Zep处理完成（查询每个episode的processed状态）
-                task_manager.update_task(
-                    task_id,
-                    message=t('progress.waitingZepProcess'),
-                    progress=55
-                )
-                
-                def wait_progress_callback(msg, progress_ratio):
-                    progress = 55 + int(progress_ratio * 35)  # 55% - 90%
-                    task_manager.update_task(
-                        task_id,
-                        message=msg,
-                        progress=progress
-                    )
-                
-                builder._wait_for_episodes(episode_uuids, wait_progress_callback)
-                
-                # 获取图谱数据
-                task_manager.update_task(
-                    task_id,
-                    message=t('progress.fetchingGraphData'),
-                    progress=95
-                )
-                graph_data = builder.get_graph_data(graph_id)
-                
-                # 更新项目状态
-                project.status = ProjectStatus.GRAPH_COMPLETED
-                ProjectManager.save_project(project)
-                
-                node_count = graph_data.get("node_count", 0)
-                edge_count = graph_data.get("edge_count", 0)
-                build_logger.info(f"[{task_id}] 图谱构建完成: graph_id={graph_id}, 节点={node_count}, 边={edge_count}")
-                
-                # 完成
-                task_manager.update_task(
-                    task_id,
-                    status=TaskStatus.COMPLETED,
-                    message=t('progress.graphBuildComplete'),
-                    progress=100,
-                    result={
-                        "project_id": project_id,
-                        "graph_id": graph_id,
-                        "node_count": node_count,
-                        "edge_count": edge_count,
-                        "chunk_count": total_chunks
-                    }
-                )
-                
-            except Exception as e:
-                # 更新项目状态为失败
-                build_logger.error(f"[{task_id}] 图谱构建失败: {str(e)}")
-                build_logger.debug(traceback.format_exc())
-                
-                project.status = ProjectStatus.FAILED
-                project.error = str(e)
-                ProjectManager.save_project(project)
-                
-                task_manager.update_task(
-                    task_id,
-                    status=TaskStatus.FAILED,
-                    message=t('progress.buildFailed', error=str(e)),
-                    error=traceback.format_exc()
-                )
-        
-        # 启动后台线程
-        thread = threading.Thread(target=build_task, daemon=True)
-        thread.start()
-        
+        GraphAppService.spawn_legacy_graph_build(
+            project, task_id, graph_name, text, ontology,
+            chunk_size, chunk_overlap
+        )
+
         return jsonify({
             "success": True,
             "data": {

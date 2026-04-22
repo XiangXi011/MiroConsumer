@@ -5,7 +5,6 @@ Report API路由
 
 import os
 import traceback
-import threading
 from flask import request, jsonify, send_file
 
 from . import report_bp
@@ -15,7 +14,9 @@ from ..services.simulation_manager import SimulationManager
 from ..models.project import ProjectManager
 from ..models.task import TaskManager, TaskStatus
 from ..utils.logger import get_logger
-from ..utils.locale import t, get_locale, set_locale
+from ..utils.locale import t
+from ..services.application.report_app_service import ReportAppService
+from ..services.application.benchmark_app_service import BenchmarkAppService
 from ..services.consumer.asset_library import (
     export_asset,
     list_assets,
@@ -26,17 +27,16 @@ from ..services.consumer.comparison_engine import (
     list_comparisons,
     get_comparison,
 )
-from ..services.consumer.benchmark_registry import (
-    register_benchmark,
-    list_benchmarks,
-    get_benchmark,
-)
-from ..services.consumer.benchmark_replay import (
-    replay_benchmark,
-    get_replay_result,
-)
 
-logger = get_logger('mirofish.api.report')
+logger = get_logger('miroconsumer.api.report')
+
+
+def _status_from_value_error(e: ValueError) -> int:
+    """Map ValueError messages to HTTP status codes for backward compatibility."""
+    msg = str(e).lower()
+    if "not found" in msg:
+        return 404
+    return 400
 
 
 # ============== 报告生成接口 ==============
@@ -68,7 +68,7 @@ def generate_report():
     """
     try:
         data = request.get_json() or {}
-        
+
         simulation_id = data.get('simulation_id')
         if not simulation_id:
             return jsonify({
@@ -77,145 +77,18 @@ def generate_report():
             }), 400
 
         force_regenerate = data.get('force_regenerate', False)
-        
-        # 获取模拟信息
-        manager = SimulationManager()
-        state = manager.get_simulation(simulation_id)
-        
-        if not state:
-            return jsonify({
-                "success": False,
-                "error": t('api.simulationNotFound', id=simulation_id)
-            }), 404
-
-        # 检查是否已有报告
-        if not force_regenerate:
-            existing_report = ReportManager.get_report_by_simulation(simulation_id)
-            if existing_report and existing_report.status == ReportStatus.COMPLETED:
-                return jsonify({
-                    "success": True,
-                    "data": {
-                        "simulation_id": simulation_id,
-                        "report_id": existing_report.report_id,
-                        "status": "completed",
-                        "message": t('api.reportAlreadyExists'),
-                        "already_generated": True
-                    }
-                })
-        
-        # 获取项目信息
-        project = ProjectManager.get_project(state.project_id)
-        if not project:
-            return jsonify({
-                "success": False,
-                "error": t('api.projectNotFound', id=state.project_id)
-            }), 404
-        
-        graph_id = state.graph_id or project.graph_id
-        if not graph_id:
-            return jsonify({
-                "success": False,
-                "error": t('api.missingGraphIdEnsure')
-            }), 400
-        
-        consumer_mode = (project.project_type == 'consumer_test') or state.project_type == 'consumer_test'
-
-        simulation_requirement = project.simulation_requirement or ""
-        if not consumer_mode and not simulation_requirement:
-            return jsonify({
-                "success": False,
-                "error": t('api.missingSimRequirement')
-            }), 400
-        if consumer_mode and not simulation_requirement:
-            simulation_requirement = "Consumer propagation test"
-        
-        # 提前生成 report_id，以便立即返回给前端
-        import uuid
-        report_id = f"report_{uuid.uuid4().hex[:12]}"
-        
-        # 创建异步任务
-        task_manager = TaskManager()
-        task_id = task_manager.create_task(
-            task_type="report_generate",
-            metadata={
-                "simulation_id": simulation_id,
-                "graph_id": graph_id,
-                "report_id": report_id
-            }
-        )
-        
-        # Capture locale before spawning background thread
-        current_locale = get_locale()
-
-        # 定义后台任务
-        def run_generate():
-            set_locale(current_locale)
-            try:
-                task_manager.update_task(
-                    task_id,
-                    status=TaskStatus.PROCESSING,
-                    progress=0,
-                    message=t('api.initReportAgent')
-                )
-                
-                # 创建Report Agent
-                agent = ReportAgent(
-                    graph_id=graph_id,
-                    simulation_id=simulation_id,
-                    simulation_requirement=simulation_requirement,
-                    project_type=project.project_type or state.project_type or "default",
-                    project_id=project.project_id,
-                )
-                
-                # 进度回调
-                def progress_callback(stage, progress, message):
-                    task_manager.update_task(
-                        task_id,
-                        progress=progress,
-                        message=f"[{stage}] {message}"
-                    )
-                
-                # 生成报告（传入预先生成的 report_id）
-                report = agent.generate_report(
-                    progress_callback=progress_callback,
-                    report_id=report_id
-                )
-                
-                # 保存报告
-                ReportManager.save_report(report)
-                
-                if report.status == ReportStatus.COMPLETED:
-                    task_manager.complete_task(
-                        task_id,
-                        result={
-                            "report_id": report.report_id,
-                            "simulation_id": simulation_id,
-                            "status": "completed"
-                        }
-                    )
-                else:
-                    task_manager.fail_task(task_id, report.error or t('api.reportGenerateFailed'))
-                
-            except Exception as e:
-                logger.error(f"报告生成失败: {str(e)}")
-                task_manager.fail_task(task_id, str(e))
-        
-        # 启动后台线程
-        thread = threading.Thread(target=run_generate, daemon=True)
-        thread.start()
-        
+        result = ReportAppService.generate_report(simulation_id, force_regenerate=force_regenerate)
         return jsonify({
             "success": True,
-            "data": {
-                "simulation_id": simulation_id,
-                "report_id": report_id,
-                "task_id": task_id,
-                "status": "generating",
-                "message": t('api.reportGenerateStarted'),
-                "already_generated": False
-            }
+            "data": result
         })
-        
+
+    except ValueError as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), _status_from_value_error(e)
+
     except Exception as e:
         logger.error(f"启动报告生成任务失败: {str(e)}")
         return jsonify({
@@ -1313,14 +1186,7 @@ def register_benchmark_route():
         {
             "name": "Benchmark name",
             "source_pack_lineage": "asset_pack_xxx",
-            "expected_signals": {
-                "acceptance_band": "positive_lean",
-                "top_resonance_labels": [...],
-                "top_risk_labels": [...],
-                "misread_present": false,
-                "clarification_recovery_present": false,
-                "cascade_band": "contained"
-            },
+            "expected_signals": { ... },
             "simulation_context": { ... }  // optional
         }
 
@@ -1329,37 +1195,15 @@ def register_benchmark_route():
     """
     try:
         data = request.get_json() or {}
-        name = data.get("name")
-        source_pack_lineage = data.get("source_pack_lineage")
-        expected_signals = data.get("expected_signals")
-
-        if not name:
-            return jsonify({"success": False, "error": "name is required"}), 400
-        if not source_pack_lineage:
-            return jsonify({"success": False, "error": "source_pack_lineage is required"}), 400
-        if not expected_signals:
-            return jsonify({"success": False, "error": "expected_signals is required"}), 400
-
-        # Verify source asset pack exists and belongs to a consumer_test project
-        asset_pack = get_asset(source_pack_lineage)
-        if not asset_pack:
-            return jsonify({"success": False, "error": f"Asset pack not found: {source_pack_lineage}"}), 404
-
-        pack_project_id = asset_pack.get("project_id")
-        if pack_project_id:
-            project = ProjectManager.get_project(pack_project_id)
-            if not project:
-                return jsonify({"success": False, "error": t('api.projectNotFound', id=pack_project_id)}), 404
-            if project.project_type != 'consumer_test':
-                return jsonify({"success": False, "error": "Benchmarks are only available for consumer_test projects"}), 400
-
-        benchmark = register_benchmark(
-            name=name,
-            source_pack_lineage=source_pack_lineage,
-            expected_signals=expected_signals,
+        result = BenchmarkAppService.register_benchmark(
+            name=data.get("name"),
+            source_pack_lineage=data.get("source_pack_lineage"),
+            expected_signals=data.get("expected_signals"),
             simulation_context=data.get("simulation_context"),
         )
-        return jsonify({"success": True, "data": benchmark})
+        return jsonify({"success": True, "data": result})
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"注册基准测试失败: {str(e)}")
         return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
@@ -1374,7 +1218,7 @@ def list_benchmarks_route():
         { "success": true, "data": { "items": benchmark[] } }
     """
     try:
-        items = list_benchmarks()
+        items = BenchmarkAppService.list_benchmarks()
         return jsonify({"success": True, "data": {"items": items}})
     except Exception as e:
         logger.error(f"列出基准测试失败: {str(e)}")
@@ -1390,7 +1234,7 @@ def get_benchmark_route(benchmark_id: str):
         { "success": true, "data": benchmark }
     """
     try:
-        benchmark = get_benchmark(benchmark_id)
+        benchmark = BenchmarkAppService.get_benchmark(benchmark_id)
         if not benchmark:
             return jsonify({"success": False, "error": f"Benchmark not found: {benchmark_id}"}), 404
         return jsonify({"success": True, "data": benchmark})
@@ -1417,38 +1261,18 @@ def replay_benchmark_route(benchmark_id: str):
     try:
         data = request.get_json() or {}
         report_context = data.get("report_context")
-
         if not report_context:
             return jsonify({"success": False, "error": "report_context is required"}), 400
 
-        project_id = data.get("project_id")
-        simulation_id = data.get("simulation_id")
-
-        if project_id:
-            project = ProjectManager.get_project(project_id)
-            if not project:
-                return jsonify({"success": False, "error": t('api.projectNotFound', id=project_id)}), 404
-            if project.project_type != 'consumer_test':
-                return jsonify({"success": False, "error": "Benchmark replays are only available for consumer_test projects"}), 400
-        elif simulation_id:
-            manager = SimulationManager()
-            state = manager.get_simulation(simulation_id)
-            if not state:
-                return jsonify({"success": False, "error": t('api.simulationNotFound', id=simulation_id)}), 404
-            if not state.consumer_mode:
-                return jsonify({"success": False, "error": "Benchmark replays are only available for consumer_test simulations"}), 400
-        else:
-            return jsonify({"success": False, "error": "project_id or simulation_id is required"}), 400
-
-        replay = replay_benchmark(
+        result = BenchmarkAppService.replay_benchmark(
             benchmark_id=benchmark_id,
             report_context=report_context,
             project_id=data.get("project_id"),
             simulation_id=data.get("simulation_id"),
         )
-        return jsonify({"success": True, "data": replay})
+        return jsonify({"success": True, "data": result})
     except ValueError as e:
-        return jsonify({"success": False, "error": str(e)}), 404
+        return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"回放基准测试失败: {str(e)}")
         return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
@@ -1463,24 +1287,10 @@ def get_replay_result_route(replay_id: str):
         { "success": true, "data": replayResult }
     """
     try:
-        replay = get_replay_result(replay_id)
-        if not replay:
-            return jsonify({"success": False, "error": f"Replay not found: {replay_id}"}), 404
-
-        # Verify replay belongs to a consumer_test project/simulation
-        replay_project_id = replay.get("project_id")
-        replay_simulation_id = replay.get("simulation_id")
-        if replay_project_id:
-            project = ProjectManager.get_project(replay_project_id)
-            if project and project.project_type != 'consumer_test':
-                return jsonify({"success": False, "error": "Benchmark replay results are only available for consumer_test projects"}), 400
-        elif replay_simulation_id:
-            manager = SimulationManager()
-            state = manager.get_simulation(replay_simulation_id)
-            if state and not state.consumer_mode:
-                return jsonify({"success": False, "error": "Benchmark replay results are only available for consumer_test simulations"}), 400
-
+        replay = BenchmarkAppService.get_replay_result(replay_id)
         return jsonify({"success": True, "data": replay})
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"获取回放结果失败: {str(e)}")
         return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500

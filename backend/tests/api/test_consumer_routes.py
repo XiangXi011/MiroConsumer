@@ -558,8 +558,9 @@ def test_default_build_route_keeps_legacy_graph_builder_path(tmp_path, monkeypat
         def start(self):
             self._target()
 
-    monkeypatch.setattr(graph_api, "GraphBuilderService", FakeGraphBuilderService)
-    monkeypatch.setattr(graph_api.threading, "Thread", ImmediateThread)
+    import app.services.application.graph_app_service as _graph_app_svc
+    monkeypatch.setattr(_graph_app_svc, "GraphBuilderService", FakeGraphBuilderService)
+    monkeypatch.setattr(_graph_app_svc.threading, "Thread", ImmediateThread)
     monkeypatch.setattr(graph_api.TextProcessor, "split_text", staticmethod(lambda text, chunk_size, overlap: [text]))
 
     project = ProjectManager.create_project(name="Default Build")
@@ -1292,10 +1293,12 @@ def test_register_benchmark_rejects_non_consumer_project(tmp_path, monkeypatch):
     non_consumer_project.project_type = "default"
     ProjectManager.save_project(non_consumer_project)
 
+    import app.services.application.benchmark_app_service as _bench_svc
+
     def fake_get_asset(asset_id):
         return {"asset_id": asset_id, "project_id": non_consumer_project.project_id}
 
-    monkeypatch.setattr(report_api, "get_asset", fake_get_asset)
+    monkeypatch.setattr(_bench_svc, "get_asset", fake_get_asset)
 
     app = _create_test_app()
     client = app.test_client()
@@ -1345,10 +1348,12 @@ def test_register_benchmark_accepts_consumer_project(tmp_path, monkeypatch):
     consumer_project.project_type = "consumer_test"
     ProjectManager.save_project(consumer_project)
 
+    import app.services.application.benchmark_app_service as _bench_svc
+
     def fake_get_asset(asset_id):
         return {"asset_id": asset_id, "project_id": consumer_project.project_id}
 
-    monkeypatch.setattr(report_api, "get_asset", fake_get_asset)
+    monkeypatch.setattr(_bench_svc, "get_asset", fake_get_asset)
 
     app = _create_test_app()
     client = app.test_client()

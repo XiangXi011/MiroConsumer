@@ -13,19 +13,32 @@ from ..services.zep_entity_reader import ZepEntityReader
 from ..services.oasis_profile_generator import OasisProfileGenerator
 from ..services.simulation_manager import SimulationManager, SimulationStatus
 from ..services.simulation_runner import SimulationRunner, RunnerStatus
-from ..services.consumer.persona_pack import load_default_persona_pack
 from ..services.consumer.report_context import ConsumerReportContextBuilder, build_consumer_report_context
 from ..services.consumer.scoring import build_consumer_summary
 from ..services.consumer.brief_adapter import ConsumerBriefAdapter
-from ..services.consumer.intervention_manager import (
-    ConsumerInterventionManager,
-    InterventionType,
-)
+from ..services.consumer.intervention_manager import ConsumerInterventionManager
 from ..utils.logger import get_logger
 from ..utils.locale import t, get_locale, set_locale
 from ..models.project import ProjectManager
+from ..services.application.simulation_app_service import SimulationAppService
+from ..services.application.branch_app_service import BranchAppService
 
-logger = get_logger('mirofish.api.simulation')
+logger = get_logger('miroconsumer.api.simulation')
+
+
+def _status_from_value_error(e: ValueError) -> int:
+    """Map ValueError messages to HTTP status codes for backward compatibility."""
+    msg = str(e).lower()
+    if "parent branch not found" in msg:
+        return 400
+    if "not found" in msg:
+        return 404
+    return 400
+
+
+def _check_simulation_prepared(simulation_id: str):
+    """Backward-compatible wrapper retained for existing imports/tests."""
+    return SimulationAppService.check_prepared(simulation_id)
 
 
 # Interview prompt 优化前缀
@@ -188,9 +201,9 @@ def get_entities_by_type(graph_id: str, entity_type: str):
 def create_simulation():
     """
     创建新的模拟
-    
+
     注意：max_rounds等参数由LLM智能生成，无需手动设置
-    
+
     请求（JSON）：
         {
             "project_id": "proj_xxxx",      // 必填
@@ -198,7 +211,7 @@ def create_simulation():
             "enable_twitter": true,          // 可选，默认true
             "enable_reddit": true            // 可选，默认true
         }
-    
+
     返回：
         {
             "success": true,
@@ -215,42 +228,16 @@ def create_simulation():
     """
     try:
         data = request.get_json() or {}
-        
-        project_id = data.get('project_id')
-        if not project_id:
-            return jsonify({
-                "success": False,
-                "error": t('api.requireProjectId')
-            }), 400
-        
-        project = ProjectManager.get_project(project_id)
-        if not project:
-            return jsonify({
-                "success": False,
-                "error": t('api.projectNotFound', id=project_id)
-            }), 404
-        
-        graph_id = data.get('graph_id') or project.graph_id
-        if not graph_id:
-            return jsonify({
-                "success": False,
-                "error": t('api.graphNotBuilt')
-            }), 400
-        
-        manager = SimulationManager()
-        state = manager.create_simulation(
-            project_id=project_id,
-            graph_id=graph_id,
-            project_type=project.project_type or "default",
-            enable_twitter=data.get('enable_twitter', True),
-            enable_reddit=data.get('enable_reddit', True),
-        )
-        
+        result = SimulationAppService.create_simulation(data)
         return jsonify({
             "success": True,
-            "data": state.to_dict()
+            "data": result
         })
-        
+    except ValueError as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"创建模拟失败: {str(e)}")
         return jsonify({
@@ -258,136 +245,6 @@ def create_simulation():
             "error": str(e),
             "traceback": traceback.format_exc()
         }), 500
-
-
-def _check_simulation_prepared(simulation_id: str) -> tuple:
-    """
-    检查模拟是否已经准备完成
-    
-    检查条件：
-    1. state.json 存在且 status 为 "ready"
-    2. 必要文件存在：reddit_profiles.json, twitter_profiles.csv, simulation_config.json
-    
-    注意：运行脚本(run_*.py)保留在 backend/scripts/ 目录，不再复制到模拟目录
-    
-    Args:
-        simulation_id: 模拟ID
-        
-    Returns:
-        (is_prepared: bool, info: dict)
-    """
-    import os
-    from ..config import Config
-    from ..services.prepare_manifest import read_manifest
-
-    simulation_dir = os.path.join(Config.OASIS_SIMULATION_DATA_DIR, simulation_id)
-    
-    # 检查目录是否存在
-    if not os.path.exists(simulation_dir):
-        return False, {"reason": "模拟目录不存在"}
-    
-    # 必要文件列表（不包括脚本，脚本位于 backend/scripts/）
-    required_files = [
-        "state.json",
-        "simulation_config.json",
-        "reddit_profiles.json",
-        "twitter_profiles.csv"
-    ]
-    
-    # 检查文件是否存在
-    existing_files = []
-    missing_files = []
-    for f in required_files:
-        file_path = os.path.join(simulation_dir, f)
-        if os.path.exists(file_path):
-            existing_files.append(f)
-        else:
-            missing_files.append(f)
-    
-    if missing_files:
-        return False, {
-            "reason": "缺少必要文件",
-            "missing_files": missing_files,
-            "existing_files": existing_files
-        }
-    
-    # 检查state.json中的状态
-    state_file = os.path.join(simulation_dir, "state.json")
-    try:
-        import json
-        with open(state_file, 'r', encoding='utf-8') as f:
-            state_data = json.load(f)
-        
-        status = state_data.get("status", "")
-        config_generated = state_data.get("config_generated", False)
-        
-        # 详细日志
-        logger.debug(f"检测模拟准备状态: {simulation_id}, status={status}, config_generated={config_generated}")
-        
-        # 如果 config_generated=True 且文件存在，认为准备完成
-        # 以下状态都说明准备工作已完成：
-        # - ready: 准备完成，可以运行
-        # - preparing: 如果 config_generated=True 说明已完成
-        # - running: 正在运行，说明准备早就完成了
-        # - completed: 运行完成，说明准备早就完成了
-        # - stopped: 已停止，说明准备早就完成了
-        # - failed: 运行失败（但准备是完成的）
-        prepared_statuses = ["ready", "preparing", "running", "completed", "stopped", "failed"]
-        if status in prepared_statuses and config_generated:
-            # 获取文件统计信息
-            profiles_file = os.path.join(simulation_dir, "reddit_profiles.json")
-            config_file = os.path.join(simulation_dir, "simulation_config.json")
-            
-            profiles_count = 0
-            if os.path.exists(profiles_file):
-                with open(profiles_file, 'r', encoding='utf-8') as f:
-                    profiles_data = json.load(f)
-                    profiles_count = len(profiles_data) if isinstance(profiles_data, list) else 0
-            
-            # 如果状态是preparing但文件已完成，自动更新状态为ready
-            if status == "preparing":
-                try:
-                    state_data["status"] = "ready"
-                    from datetime import datetime
-                    state_data["updated_at"] = datetime.now().isoformat()
-                    with open(state_file, 'w', encoding='utf-8') as f:
-                        json.dump(state_data, f, ensure_ascii=False, indent=2)
-                    logger.info(f"自动更新模拟状态: {simulation_id} preparing -> ready")
-                    status = "ready"
-                except Exception as e:
-                    logger.warning(f"自动更新状态失败: {e}")
-            
-            logger.info(f"模拟 {simulation_id} 检测结果: 已准备完成 (status={status}, config_generated={config_generated})")
-
-            manifest = read_manifest(simulation_dir)
-            prepare_info = {
-                "status": status,
-                "entities_count": state_data.get("entities_count", 0),
-                "profiles_count": profiles_count,
-                "entity_types": state_data.get("entity_types", []),
-                "config_generated": config_generated,
-                "project_type": state_data.get("project_type", "default"),
-                "consumer_mode": state_data.get("consumer_mode", False),
-                "persona_pack_id": state_data.get("persona_pack_id", ""),
-                "pinned_brief_summary": state_data.get("pinned_brief_summary", ""),
-                "enable_lane_b": state_data.get("enable_lane_b", False),
-                "created_at": state_data.get("created_at"),
-                "updated_at": state_data.get("updated_at"),
-                "existing_files": existing_files,
-            }
-            if manifest:
-                prepare_info["prepare_manifest"] = manifest.to_dict()
-            return True, prepare_info
-        else:
-            logger.warning(f"模拟 {simulation_id} 检测结果: 未准备完成 (status={status}, config_generated={config_generated})")
-            return False, {
-                "reason": f"状态不在已准备列表中或config_generated为false: status={status}, config_generated={config_generated}",
-                "status": status,
-                "config_generated": config_generated
-            }
-            
-    except Exception as e:
-        return False, {"reason": f"读取状态文件失败: {str(e)}"}
 
 
 @simulation_bp.route('/prepare', methods=['POST'])
@@ -431,250 +288,28 @@ def prepare_simulation():
             }
         }
     """
-    import threading
-    import os
-    from ..models.task import TaskManager, TaskStatus
-    from ..config import Config
-    
     try:
         data = request.get_json() or {}
-        
+
         simulation_id = data.get('simulation_id')
         if not simulation_id:
             return jsonify({
                 "success": False,
                 "error": t('api.requireSimulationId')
             }), 400
-        
-        manager = SimulationManager()
-        state = manager.get_simulation(simulation_id)
-        
-        if not state:
-            return jsonify({
-                "success": False,
-                "error": t('api.simulationNotFound', id=simulation_id)
-            }), 404
-        
-        # 检查是否强制重新生成
-        force_regenerate = data.get('force_regenerate', False)
-        logger.info(f"开始处理 /prepare 请求: simulation_id={simulation_id}, force_regenerate={force_regenerate}")
-        
-        # 检查是否已经准备完成（避免重复生成）
-        if not force_regenerate:
-            logger.debug(f"检查模拟 {simulation_id} 是否已准备完成...")
-            is_prepared, prepare_info = _check_simulation_prepared(simulation_id)
-            logger.debug(f"检查结果: is_prepared={is_prepared}, prepare_info={prepare_info}")
-            if is_prepared:
-                logger.info(f"模拟 {simulation_id} 已准备完成，跳过重复生成")
-                manifest_dict = manager.record_manifest_reuse(simulation_id)
-                response_data = {
-                    "simulation_id": simulation_id,
-                    "status": "ready",
-                    "message": t('api.alreadyPrepared'),
-                    "already_prepared": True,
-                    "prepare_info": prepare_info,
-                }
-                if manifest_dict:
-                    response_data["prepare_manifest"] = manifest_dict
-                return jsonify({
-                    "success": True,
-                    "data": response_data
-                })
-            else:
-                logger.info(f"模拟 {simulation_id} 未准备完成，将启动准备任务")
-        
-        # 从项目获取必要信息
-        project = ProjectManager.get_project(state.project_id)
-        if not project:
-            return jsonify({
-                "success": False,
-                "error": t('api.projectNotFound', id=state.project_id)
-            }), 404
-        
-        # 获取模拟需求
-        consumer_mode = state.consumer_mode or (project.project_type == 'consumer_test')
-        simulation_requirement = project.simulation_requirement or ""
-        if not consumer_mode and not simulation_requirement:
-            return jsonify({
-                "success": False,
-                "error": t('api.projectMissingRequirement')
-            }), 400
-        
-        # 获取文档文本
-        document_text = ProjectManager.get_extracted_text(state.project_id) or ""
-        
-        entity_types_list = data.get('entity_types')
-        use_llm_for_profiles = data.get('use_llm_for_profiles', True)
-        parallel_profile_count = data.get('parallel_profile_count', 5)
-        
-        # ========== 同步获取实体数量（在后台任务启动前） ==========
-        # 这样前端在调用prepare后立即就能获取到预期Agent总数
-        try:
-            if consumer_mode:
-                persona_pack = load_default_persona_pack()
-                state.entities_count = len(persona_pack)
-                state.entity_types = ['AudienceSegment']
-                logger.info(f"consumer_test 预览 Persona 数量: {state.entities_count}")
-            else:
-                logger.info(f"同步获取实体数量: graph_id={state.graph_id}")
-                reader = ZepEntityReader()
-                # 快速读取实体（不需要边信息，只统计数量）
-                filtered_preview = reader.filter_defined_entities(
-                    graph_id=state.graph_id,
-                    defined_entity_types=entity_types_list,
-                    enrich_with_edges=False  # 不获取边信息，加快速度
-                )
-                # 保存实体数量到状态（供前端立即获取）
-                state.entities_count = filtered_preview.filtered_count
-                state.entity_types = list(filtered_preview.entity_types)
-                logger.info(f"预期实体数量: {filtered_preview.filtered_count}, 类型: {filtered_preview.entity_types}")
-        except Exception as e:
-            logger.warning(f"同步获取实体数量失败（将在后台任务中重试）: {e}")
-            # 失败不影响后续流程，后台任务会重新获取
-        
-        # 创建异步任务
-        task_manager = TaskManager()
-        task_id = task_manager.create_task(
-            task_type="simulation_prepare",
-            metadata={
-                "simulation_id": simulation_id,
-                "project_id": state.project_id
-            }
-        )
-        
-        # 更新模拟状态（包含预先获取的实体数量）
-        state.status = SimulationStatus.PREPARING
-        manager._save_simulation_state(state)
-        
-        # Capture locale before spawning background thread
-        current_locale = get_locale()
 
-        # 定义后台任务
-        def run_prepare():
-            set_locale(current_locale)
-            try:
-                task_manager.update_task(
-                    task_id,
-                    status=TaskStatus.PROCESSING,
-                    progress=0,
-                    message=t('progress.startPreparingEnv')
-                )
-                
-                # 准备模拟（带进度回调）
-                # 存储阶段进度详情
-                stage_details = {}
-                
-                def progress_callback(stage, progress, message, **kwargs):
-                    # 计算总进度
-                    stage_weights = {
-                        "reading": (0, 20),           # 0-20%
-                        "generating_profiles": (20, 70),  # 20-70%
-                        "generating_config": (70, 90),    # 70-90%
-                        "copying_scripts": (90, 100)       # 90-100%
-                    }
-                    
-                    start, end = stage_weights.get(stage, (0, 100))
-                    current_progress = int(start + (end - start) * progress / 100)
-                    
-                    # 构建详细进度信息
-                    stage_names = {
-                        "reading": t('progress.readingGraphEntities'),
-                        "generating_profiles": t('progress.generatingProfiles'),
-                        "generating_config": t('progress.generatingSimConfig'),
-                        "copying_scripts": t('progress.preparingScripts')
-                    }
-                    
-                    stage_index = list(stage_weights.keys()).index(stage) + 1 if stage in stage_weights else 1
-                    total_stages = len(stage_weights)
-                    
-                    # 更新阶段详情
-                    stage_details[stage] = {
-                        "stage_name": stage_names.get(stage, stage),
-                        "stage_progress": progress,
-                        "current": kwargs.get("current", 0),
-                        "total": kwargs.get("total", 0),
-                        "item_name": kwargs.get("item_name", "")
-                    }
-                    
-                    # 构建详细进度信息
-                    detail = stage_details[stage]
-                    progress_detail_data = {
-                        "current_stage": stage,
-                        "current_stage_name": stage_names.get(stage, stage),
-                        "stage_index": stage_index,
-                        "total_stages": total_stages,
-                        "stage_progress": progress,
-                        "current_item": detail["current"],
-                        "total_items": detail["total"],
-                        "item_description": message
-                    }
-                    
-                    # 构建简洁消息
-                    if detail["total"] > 0:
-                        detailed_message = (
-                            f"[{stage_index}/{total_stages}] {stage_names.get(stage, stage)}: "
-                            f"{detail['current']}/{detail['total']} - {message}"
-                        )
-                    else:
-                        detailed_message = f"[{stage_index}/{total_stages}] {stage_names.get(stage, stage)}: {message}"
-                    
-                    task_manager.update_task(
-                        task_id,
-                        progress=current_progress,
-                        message=detailed_message,
-                        progress_detail=progress_detail_data
-                    )
-                
-                result_state = manager.prepare_simulation(
-                    simulation_id=simulation_id,
-                    simulation_requirement=simulation_requirement,
-                    document_text=document_text,
-                    defined_entity_types=entity_types_list,
-                    use_llm_for_profiles=use_llm_for_profiles,
-                    progress_callback=progress_callback,
-                    parallel_profile_count=parallel_profile_count
-                )
-                
-                # 任务完成
-                task_manager.complete_task(
-                    task_id,
-                    result=result_state.to_simple_dict()
-                )
-                
-            except Exception as e:
-                logger.error(f"准备模拟失败: {str(e)}")
-                task_manager.fail_task(task_id, str(e))
-                
-                # 更新模拟状态为失败
-                state = manager.get_simulation(simulation_id)
-                if state:
-                    state.status = SimulationStatus.FAILED
-                    state.error = str(e)
-                    manager._save_simulation_state(state)
-        
-        # 启动后台线程
-        thread = threading.Thread(target=run_prepare, daemon=True)
-        thread.start()
-        
+        result = SimulationAppService.prepare_simulation(simulation_id, data)
         return jsonify({
             "success": True,
-            "data": {
-                "simulation_id": simulation_id,
-                "task_id": task_id,
-                "status": "preparing",
-                "message": t('api.prepareStarted'),
-                "already_prepared": False,
-                "expected_entities_count": state.entities_count,  # 预期的Agent总数
-                "entity_types": state.entity_types  # 实体类型列表
-            }
+            "data": result
         })
-        
+
     except ValueError as e:
         return jsonify({
             "success": False,
             "error": str(e)
-        }), 404
-        
+        }), _status_from_value_error(e)
+
     except Exception as e:
         logger.error(f"启动准备任务失败: {str(e)}")
         return jsonify({
@@ -722,7 +357,7 @@ def get_prepare_status():
         
         # 如果提供了simulation_id，先检查是否已准备完成
         if simulation_id:
-            is_prepared, prepare_info = _check_simulation_prepared(simulation_id)
+            is_prepared, prepare_info = SimulationAppService.check_prepared(simulation_id)
             if is_prepared:
                 status_data = {
                     "simulation_id": simulation_id,
@@ -764,7 +399,7 @@ def get_prepare_status():
         if not task:
             # 任务不存在，但如果有simulation_id，检查是否已准备完成
             if simulation_id:
-                is_prepared, prepare_info = _check_simulation_prepared(simulation_id)
+                is_prepared, prepare_info = SimulationAppService.check_prepared(simulation_id)
                 if is_prepared:
                     status_data = {
                         "simulation_id": simulation_id,
@@ -1329,33 +964,17 @@ def get_consumer_summary(simulation_id: str):
 def create_branch(simulation_id: str):
     """Create a new branch for a consumer simulation."""
     try:
-        state, err = _require_consumer_simulation(simulation_id)
-        if err:
-            return err
-
         data = request.get_json() or {}
-        name = data.get('name', '').strip()
-        fork_round = data.get('fork_round')
-        description = data.get('description', '').strip()
-        parent_branch_id = data.get('parent_branch_id')
-
-        if not name:
-            return jsonify({"success": False, "error": "name is required"}), 400
-        if fork_round is None or not isinstance(fork_round, int) or fork_round < 0:
-            return jsonify({"success": False, "error": "fork_round must be a non-negative integer"}), 400
-
-        mgr = ConsumerInterventionManager()
-        branch = mgr.create_branch(
+        result = BranchAppService.create_branch(
             simulation_id=simulation_id,
-            name=name,
-            fork_round=fork_round,
-            description=description,
-            parent_branch_id=parent_branch_id,
+            name=data.get('name', ''),
+            fork_round=data.get('fork_round'),
+            description=data.get('description', ''),
+            parent_branch_id=data.get('parent_branch_id'),
         )
-        return jsonify({"success": True, "data": branch.model_dump()}), 201
+        return jsonify({"success": True, "data": result}), 201
     except ValueError as e:
-        status = 400 if "parent branch not found" in str(e).lower() else 400
-        return jsonify({"success": False, "error": str(e)}), status
+        return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"创建分支失败: {str(e)}")
         return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
@@ -1365,16 +984,13 @@ def create_branch(simulation_id: str):
 def list_branches(simulation_id: str):
     """List all branches for a simulation."""
     try:
-        state, err = _require_consumer_simulation(simulation_id)
-        if err:
-            return err
-
-        mgr = ConsumerInterventionManager()
-        branches = mgr.list_branches(simulation_id)
+        result = BranchAppService.list_branches(simulation_id)
         return jsonify({
             "success": True,
-            "data": {"branches": [b.model_dump() for b in branches]},
+            "data": {"branches": result},
         })
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"列出分支失败: {str(e)}")
         return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
@@ -1384,20 +1000,14 @@ def list_branches(simulation_id: str):
 def list_interventions_for_simulation(simulation_id: str):
     """List interventions for a simulation (across all branches or filtered by branch_id)."""
     try:
-        state, err = _require_consumer_simulation(simulation_id)
-        if err:
-            return err
-
-        branch_id = request.args.get('branch_id')
-        mgr = ConsumerInterventionManager()
-        interventions = mgr.list_interventions(simulation_id, branch_id=branch_id)
+        branch_id = request.args.get('branch_id') or None
+        result = BranchAppService.list_interventions(simulation_id, branch_id=branch_id)
         return jsonify({
             "success": True,
-            "data": {"interventions": [i.model_dump() for i in interventions]},
+            "data": {"interventions": result},
         })
     except ValueError as e:
-        status = 404 if "branch not found" in str(e).lower() else 400
-        return jsonify({"success": False, "error": str(e)}), status
+        return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"列出干预失败: {str(e)}")
         return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
@@ -1407,36 +1017,17 @@ def list_interventions_for_simulation(simulation_id: str):
 def add_intervention(simulation_id: str, branch_id: str):
     """Add an intervention to a branch."""
     try:
-        state, err = _require_consumer_simulation(simulation_id)
-        if err:
-            return err
-
         data = request.get_json() or {}
-        intervention_type = data.get('intervention_type')
-        payload = data.get('payload', {})
-        target_round = data.get('target_round')
-
-        if not intervention_type:
-            return jsonify({"success": False, "error": "intervention_type is required"}), 400
-
-        # Validate intervention_type
-        try:
-            InterventionType(intervention_type)
-        except ValueError:
-            return jsonify({"success": False, "error": f"Unsupported intervention_type: {intervention_type}"}), 400
-
-        mgr = ConsumerInterventionManager()
-        intervention = mgr.add_intervention(
+        result = BranchAppService.add_intervention(
             simulation_id=simulation_id,
             branch_id=branch_id,
-            intervention_type=intervention_type,
-            payload=payload,
-            target_round=target_round,
+            intervention_type=data.get('intervention_type'),
+            payload=data.get('payload', {}),
+            target_round=data.get('target_round'),
         )
-        return jsonify({"success": True, "data": intervention.model_dump()}), 201
+        return jsonify({"success": True, "data": result}), 201
     except ValueError as e:
-        status = 404 if "branch not found" in str(e).lower() else 400
-        return jsonify({"success": False, "error": str(e)}), status
+        return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"添加干预失败: {str(e)}")
         return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
@@ -1446,19 +1037,13 @@ def add_intervention(simulation_id: str, branch_id: str):
 def list_interventions_for_branch(simulation_id: str, branch_id: str):
     """List interventions for a specific branch."""
     try:
-        state, err = _require_consumer_simulation(simulation_id)
-        if err:
-            return err
-
-        mgr = ConsumerInterventionManager()
-        interventions = mgr.list_interventions(simulation_id, branch_id=branch_id)
+        result = BranchAppService.list_interventions(simulation_id, branch_id=branch_id)
         return jsonify({
             "success": True,
-            "data": {"interventions": [i.model_dump() for i in interventions]},
+            "data": {"interventions": result},
         })
     except ValueError as e:
-        status = 404 if "branch not found" in str(e).lower() else 400
-        return jsonify({"success": False, "error": str(e)}), status
+        return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"列出分支干预失败: {str(e)}")
         return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
@@ -1468,18 +1053,10 @@ def list_interventions_for_branch(simulation_id: str, branch_id: str):
 def get_branch_comparison(simulation_id: str, branch_id: str):
     """Fetch branch comparison context with base-vs-branch summaries."""
     try:
-        state, err = _require_consumer_simulation(simulation_id)
-        if err:
-            return err
-
-        mgr = ConsumerInterventionManager()
-        branch = mgr.get_branch(simulation_id, branch_id)
-        if branch is None:
-            return jsonify({"success": False, "error": "Branch not found"}), 404
-        context = mgr.build_comparison_context(simulation_id, branch_id)
-        return jsonify({"success": True, "data": context})
+        result = BranchAppService.get_branch_comparison(simulation_id, branch_id)
+        return jsonify({"success": True, "data": result})
     except ValueError as e:
-        return jsonify({"success": False, "error": str(e)}), 404
+        return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"获取分支对比失败: {str(e)}")
         return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
@@ -1559,23 +1136,10 @@ def resume_branch(simulation_id: str, branch_id: str):
 def get_branch_run_status_route(simulation_id: str, branch_id: str):
     """Get branch simulation run status."""
     try:
-        state, err = _require_consumer_simulation(simulation_id)
-        if err:
-            return err
-
-        mgr = ConsumerInterventionManager()
-        branch = mgr.get_branch(simulation_id, branch_id)
-        if branch is None:
-            return jsonify({"success": False, "error": "Branch not found"}), 404
-
-        run_status = mgr.get_branch_run_status(simulation_id, branch_id)
-        return jsonify({
-            "success": True,
-            "data": {
-                **run_status,
-                "branch_status": branch.status,
-            },
-        })
+        result = BranchAppService.get_branch_run_status(simulation_id, branch_id)
+        return jsonify({"success": True, "data": result})
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"获取分支状态失败: {str(e)}")
         return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
@@ -1945,139 +1509,18 @@ def start_simulation():
                 "error": t('api.requireSimulationId')
             }), 400
 
-        platform = data.get('platform', 'parallel')
-        max_rounds = data.get('max_rounds')  # 可选：最大模拟轮数
-        enable_graph_memory_update = data.get('enable_graph_memory_update', False)  # 可选：是否启用图谱记忆更新
-        force = data.get('force', False)  # 可选：强制重新开始
-
-        # 验证 max_rounds 参数
-        if max_rounds is not None:
-            try:
-                max_rounds = int(max_rounds)
-                if max_rounds <= 0:
-                    return jsonify({
-                        "success": False,
-                        "error": t('api.maxRoundsPositive')
-                    }), 400
-            except (ValueError, TypeError):
-                return jsonify({
-                    "success": False,
-                    "error": t('api.maxRoundsInvalid')
-                }), 400
-
-        if platform not in ['twitter', 'reddit', 'parallel']:
-            return jsonify({
-                "success": False,
-                "error": t('api.invalidPlatform', platform=platform)
-            }), 400
-
-        # 检查模拟是否已准备好
-        manager = SimulationManager()
-        state = manager.get_simulation(simulation_id)
-
-        if not state:
-            return jsonify({
-                "success": False,
-                "error": t('api.simulationNotFound', id=simulation_id)
-            }), 404
-
-        force_restarted = False
-        
-        # 智能处理状态：如果准备工作已完成，允许重新启动
-        if state.status != SimulationStatus.READY:
-            # 检查准备工作是否已完成
-            is_prepared, prepare_info = _check_simulation_prepared(simulation_id)
-
-            if is_prepared:
-                # 准备工作已完成，检查是否有正在运行的进程
-                if state.status == SimulationStatus.RUNNING:
-                    # 检查模拟进程是否真的在运行
-                    run_state = SimulationRunner.get_run_state(simulation_id)
-                    if run_state and run_state.runner_status.value == "running":
-                        # 进程确实在运行
-                        if force:
-                            # 强制模式：停止运行中的模拟
-                            logger.info(f"强制模式：停止运行中的模拟 {simulation_id}")
-                            try:
-                                SimulationRunner.stop_simulation(simulation_id)
-                            except Exception as e:
-                                logger.warning(f"停止模拟时出现警告: {str(e)}")
-                        else:
-                            return jsonify({
-                                "success": False,
-                                "error": t('api.simRunningForceHint')
-                            }), 400
-
-                # 如果是强制模式，清理运行日志
-                if force:
-                    logger.info(f"强制模式：清理模拟日志 {simulation_id}")
-                    cleanup_result = SimulationRunner.cleanup_simulation_logs(simulation_id)
-                    if not cleanup_result.get("success"):
-                        logger.warning(f"清理日志时出现警告: {cleanup_result.get('errors')}")
-                    force_restarted = True
-
-                # 进程不存在或已结束，重置状态为 ready
-                logger.info(f"模拟 {simulation_id} 准备工作已完成，重置状态为 ready（原状态: {state.status.value}）")
-                state.status = SimulationStatus.READY
-                manager._save_simulation_state(state)
-            else:
-                # 准备工作未完成
-                return jsonify({
-                    "success": False,
-                    "error": t('api.simNotReady', status=state.status.value)
-                }), 400
-        
-        # 获取图谱ID（用于图谱记忆更新）
-        graph_id = None
-        if enable_graph_memory_update:
-            # 从模拟状态或项目中获取 graph_id
-            graph_id = state.graph_id
-            if not graph_id:
-                # 尝试从项目中获取
-                project = ProjectManager.get_project(state.project_id)
-                if project:
-                    graph_id = project.graph_id
-            
-            if not graph_id:
-                return jsonify({
-                    "success": False,
-                    "error": t('api.graphIdRequiredForMemory')
-                }), 400
-            
-            logger.info(f"启用图谱记忆更新: simulation_id={simulation_id}, graph_id={graph_id}")
-        
-        # 启动模拟
-        run_state = SimulationRunner.start_simulation(
-            simulation_id=simulation_id,
-            platform=platform,
-            max_rounds=max_rounds,
-            enable_graph_memory_update=enable_graph_memory_update,
-            graph_id=graph_id
-        )
-        
-        # 更新模拟状态
-        state.status = SimulationStatus.RUNNING
-        manager._save_simulation_state(state)
-        
-        response_data = run_state.to_dict()
-        if max_rounds:
-            response_data['max_rounds_applied'] = max_rounds
-        response_data['graph_memory_update_enabled'] = enable_graph_memory_update
-        response_data['force_restarted'] = force_restarted
-        if enable_graph_memory_update:
-            response_data['graph_id'] = graph_id
-        
+        result = SimulationAppService.start_simulation(simulation_id, data)
         return jsonify({
             "success": True,
-            "data": response_data
+            "data": result
         })
-        
+
     except ValueError as e:
         return jsonify({
             "success": False,
             "error": str(e)
-        }), 400
-        
+        }), _status_from_value_error(e)
+
     except Exception as e:
         logger.error(f"启动模拟失败: {str(e)}")
         return jsonify({
