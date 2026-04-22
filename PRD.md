@@ -293,15 +293,48 @@ Phase 4A 在 Phase 3 基线上增加了可信决策层，使系统不仅能回�
 
 - `consumer_test` Phase 1、Phase 2、Phase 3 与 Phase 4A 均已完成并通过当前正式验收。
 
+### 7.6 Phase 4C 已完成（效率与工程化升级）
+
+Phase 4C 在 Phase 4A 的可信度基线上，补齐了效率、兼容性和工程可维护性三条线，使系统不仅“可解释”，也更“可重复、可复用、可稳定运行”。
+
+- **Prepare Manifest 与复用可观测性**
+  - 新增 `backend/app/services/prepare_manifest.py`
+  - prepare 成功后会在 simulation workspace 写入 `prepare_manifest.json`
+  - `POST /api/simulation/prepare` 与 `POST /api/simulation/prepare/status` 会暴露 `prepare_manifest`
+  - 重复 prepare 会累加 `reuse_count` 并记录 `last_reused_at`
+
+- **LLM JSON 兼容层**
+  - `backend/app/utils/llm_client.py` 新增统一 JSON 兼容路径：
+    - `chat_with_finish_reason()`
+    - `clean_llm_text()`
+    - `extract_json()`
+    - `chat_json_with_meta()`
+  - `oasis_profile_generator.py` 与 `simulation_config_generator.py` 不再各自维护重复的 `json_object` 解析逻辑
+  - 当 provider / proxy 对 `response_format=json_object` 兼容性波动时，系统会回退到 plain-text JSON-only 路径
+
+- **前端 warning 清理与分包**
+  - `Home.vue` 改为统一静态导入 `pendingUpload`
+  - 非首页路由改为 lazy import
+  - `frontend/vite.config.js` 增加 manual chunking
+  - 原有 `pendingUpload.js` mixed import warning 已清除
+  - 原有 Vite chunk size warning 已清除
+
+- **Phase 4C 回归结果（2026-04-22）：**
+  - 后端定向回归：`57 passed`
+  - 后端完整非集成回归：`373 passed`
+  - 前端定向回归：`73 passed`
+  - 前端 build：成功
+
+结论：
+
+- `consumer_test` Phase 1、Phase 2、Phase 3、Phase 4A 与 Phase 4C 均已完成并通过当前正式验收。
+
 ### 7.5 当前已知限制
 
 - `auto_enrich` 已升级为双源 research 底座的一部分：当前包含 `Lane B` 外部检索 provider 与 deterministic fallback；若需更强的真实全网预研能力，后续仍建议替换为更稳定的外部 provider
 - Kimi For Coding 响应较慢，单个 profile 约 `3-5` 分钟，`4` 个 profile 的完整 prepare 约 `21` 分钟
-- `response_format=json_object` 的兼容性仍不稳定，当前已通过 proxy 做兼容缓解
 - 小规模 profile（如 `4` 个）可稳定运行；更大规模场景建议切换更快的模型
 - `project_vs_project` 对比当前优先基于项目 research artifacts 与发现差异；若项目没有完整 run-level 结果，其接受度字段会保守显示
-- `pendingUpload.js` 动静态导入混用 warning 仍存在，非阻断
-- 前端 chunk size warning 仍存在，非阻断
 
 ## 8. 风险与依赖
 

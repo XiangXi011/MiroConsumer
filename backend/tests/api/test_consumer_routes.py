@@ -1558,3 +1558,115 @@ def test_get_replay_result_accepts_consumer_project(tmp_path, monkeypatch):
     payload = response.get_json()
     assert payload["success"] is True
     assert payload["data"]["replay_id"] == replay["replay_id"]
+
+
+def test_repeated_prepare_reports_reuse_metadata(tmp_path, monkeypatch):
+    """Calling /prepare on an already-prepared simulation should report reuse metadata."""
+    uploads_dir = tmp_path / "uploads"
+    projects_dir = uploads_dir / "projects"
+    simulations_dir = _configure_simulation_storage(tmp_path, monkeypatch)
+    monkeypatch.setattr(graph_api.Config, "UPLOAD_FOLDER", str(uploads_dir))
+    monkeypatch.setattr(ProjectManager, "PROJECTS_DIR", str(projects_dir))
+    _reset_task_manager()
+
+    class ExplodingZepEntityReader:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError("Consumer prepare should not initialize ZepEntityReader")
+
+    class ImmediateThread:
+        def __init__(self, target=None, daemon=None):
+            self._target = target
+            self.daemon = daemon
+
+        def start(self):
+            self._target()
+
+    monkeypatch.setattr(simulation_api, "ZepEntityReader", ExplodingZepEntityReader)
+    monkeypatch.setattr(threading, "Thread", ImmediateThread)
+
+    project = ProjectManager.create_project(name="Consumer Reuse")
+    project.project_type = "consumer_test"
+    project.graph_id = f"consumer_{project.project_id}"
+    project.consumer_brief = _consumer_brief_payload()
+    ProjectManager.save_project(project)
+    ProjectManager.save_extracted_text(project.project_id, "Some extracted text.")
+
+    app = _create_test_app()
+    client = app.test_client()
+
+    create_response = client.post("/api/simulation/create", json={"project_id": project.project_id})
+    assert create_response.status_code == 200
+    simulation_id = create_response.get_json()["data"]["simulation_id"]
+
+    # First prepare
+    prepare_response = client.post("/api/simulation/prepare", json={"simulation_id": simulation_id})
+    assert prepare_response.status_code == 200
+    first_data = prepare_response.get_json()["data"]
+    assert first_data["already_prepared"] is False
+
+    # Second prepare (reuse)
+    reuse_response = client.post("/api/simulation/prepare", json={"simulation_id": simulation_id})
+    assert reuse_response.status_code == 200
+    reuse_data = reuse_response.get_json()["data"]
+    assert reuse_data["already_prepared"] is True
+    assert "prepare_manifest" in reuse_data
+    assert reuse_data["prepare_manifest"]["reuse_count"] == 1
+    assert reuse_data["prepare_manifest"]["last_reused_at"] is not None
+
+    # Third prepare (reuse again)
+    reuse_response3 = client.post("/api/simulation/prepare", json={"simulation_id": simulation_id})
+    assert reuse_response3.status_code == 200
+    reuse_data3 = reuse_response3.get_json()["data"]
+    assert reuse_data3["prepare_manifest"]["reuse_count"] == 2
+
+
+def test_prepare_status_includes_manifest_when_prepared(tmp_path, monkeypatch):
+    """GET /prepare/status should include prepare_manifest when simulation is already prepared."""
+    uploads_dir = tmp_path / "uploads"
+    projects_dir = uploads_dir / "projects"
+    simulations_dir = _configure_simulation_storage(tmp_path, monkeypatch)
+    monkeypatch.setattr(graph_api.Config, "UPLOAD_FOLDER", str(uploads_dir))
+    monkeypatch.setattr(ProjectManager, "PROJECTS_DIR", str(projects_dir))
+    _reset_task_manager()
+
+    class ExplodingZepEntityReader:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError("Consumer prepare should not initialize ZepEntityReader")
+
+    class ImmediateThread:
+        def __init__(self, target=None, daemon=None):
+            self._target = target
+            self.daemon = daemon
+
+        def start(self):
+            self._target()
+
+    monkeypatch.setattr(simulation_api, "ZepEntityReader", ExplodingZepEntityReader)
+    monkeypatch.setattr(threading, "Thread", ImmediateThread)
+
+    project = ProjectManager.create_project(name="Consumer Status Manifest")
+    project.project_type = "consumer_test"
+    project.graph_id = f"consumer_{project.project_id}"
+    project.consumer_brief = _consumer_brief_payload()
+    ProjectManager.save_project(project)
+    ProjectManager.save_extracted_text(project.project_id, "Some extracted text.")
+
+    app = _create_test_app()
+    client = app.test_client()
+
+    create_response = client.post("/api/simulation/create", json={"project_id": project.project_id})
+    assert create_response.status_code == 200
+    simulation_id = create_response.get_json()["data"]["simulation_id"]
+
+    prepare_response = client.post("/api/simulation/prepare", json={"simulation_id": simulation_id})
+    assert prepare_response.status_code == 200
+
+    status_response = client.post("/api/simulation/prepare/status", json={"simulation_id": simulation_id})
+    assert status_response.status_code == 200
+    status_data = status_response.get_json()["data"]
+    assert status_data["already_prepared"] is True
+    assert "prepare_manifest" in status_data
+    assert status_data["prepare_manifest"]["simulation_id"] == simulation_id
+    assert status_data["prepare_manifest"]["project_type"] == "consumer_test"
+    assert status_data["prepare_manifest"]["consumer_mode"] is True
+    assert status_data["prepare_manifest"]["reuse_count"] == 0

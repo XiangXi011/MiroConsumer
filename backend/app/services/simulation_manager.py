@@ -26,6 +26,7 @@ from .consumer.research_ingest import (
     resolve_research_findings,
 )
 from .consumer.url_ingest import ingest_background_url_sources
+from .prepare_manifest import read_manifest, touch_reuse, write_manifest
 from .oasis_profile_generator import OasisProfileGenerator
 from .simulation_config_generator import (
     AgentActivityConfig,
@@ -454,6 +455,20 @@ class SimulationManager:
         state.status = SimulationStatus.READY
         self._save_simulation_state(state)
 
+        sim_dir = self._get_simulation_dir(state.simulation_id)
+        write_manifest(
+            simulation_dir=sim_dir,
+            simulation_id=state.simulation_id,
+            project_id=state.project_id,
+            project_type=state.project_type,
+            consumer_mode=state.consumer_mode,
+            profiles_count=state.profiles_count,
+            entities_count=state.entities_count,
+            entity_types=state.entity_types,
+            config_generated=state.config_generated,
+            persona_pack_id=state.persona_pack_id,
+        )
+
         logger.info(
             f"模拟准备完成: {state.simulation_id}, "
             f"entities={state.entities_count}, profiles={state.profiles_count}"
@@ -638,6 +653,20 @@ class SimulationManager:
         state.status = SimulationStatus.READY
         self._save_simulation_state(state)
 
+        sim_dir = self._get_simulation_dir(state.simulation_id)
+        write_manifest(
+            simulation_dir=sim_dir,
+            simulation_id=state.simulation_id,
+            project_id=state.project_id,
+            project_type=state.project_type,
+            consumer_mode=state.consumer_mode,
+            profiles_count=state.profiles_count,
+            entities_count=state.entities_count,
+            entity_types=state.entity_types,
+            config_generated=state.config_generated,
+            persona_pack_id=state.persona_pack_id,
+        )
+
         if progress_callback:
             progress_callback(
                 "generating_config",
@@ -820,6 +849,18 @@ class SimulationManager:
 
         with open(config_path, "r", encoding="utf-8") as f:
             return json.load(f)
+
+    def get_prepare_manifest(self, simulation_id: str) -> Optional[Dict[str, Any]]:
+        """Return the prepare manifest for a simulation, or None if absent."""
+        sim_dir = self._get_simulation_dir(simulation_id)
+        manifest = read_manifest(sim_dir)
+        return manifest.to_dict() if manifest else None
+
+    def record_manifest_reuse(self, simulation_id: str) -> Optional[Dict[str, Any]]:
+        """Increment reuse_count on the manifest and return the updated manifest dict."""
+        sim_dir = self._get_simulation_dir(simulation_id)
+        manifest = touch_reuse(sim_dir)
+        return manifest.to_dict() if manifest else None
 
     def get_run_instructions(self, simulation_id: str) -> Dict[str, str]:
         sim_dir = self._get_simulation_dir(simulation_id)

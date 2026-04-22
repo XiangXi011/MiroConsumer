@@ -15,10 +15,10 @@ from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from openai import OpenAI
 from zep_cloud.client import Zep
 
 from ..config import Config
+from ..utils.llm_client import LLMClient
 from ..utils.logger import get_logger
 from ..utils.locale import get_language_instruction, get_locale, set_locale, t
 from .zep_entity_reader import EntityNode, ZepEntityReader
@@ -192,10 +192,11 @@ class OasisProfileGenerator:
         
         if not self.api_key:
             raise ValueError("LLM_API_KEY 未配置")
-        
-        self.client = OpenAI(
+
+        self.client = LLMClient(
             api_key=self.api_key,
-            base_url=self.base_url
+            base_url=self.base_url,
+            model=self.model_name
         )
         
         # Zep客户端用于检索丰富上下文
@@ -524,57 +525,46 @@ class OasisProfileGenerator:
         # 尝试多次生成，直到成功或达到最大重试次数
         max_attempts = 3
         last_error = None
-        
+
         for attempt in range(max_attempts):
             try:
-                response = self.client.chat.completions.create(
-                    model=self.model_name,
+                content, finish_reason = self.client.chat_with_finish_reason(
                     messages=[
                         {"role": "system", "content": self._get_system_prompt(is_individual)},
                         {"role": "user", "content": prompt}
                     ],
-                    response_format={"type": "json_object"},
-                    temperature=0.7 - (attempt * 0.1)  # 每次重试降低温度
+                    temperature=0.7 - (attempt * 0.1),  # 每次重试降低温度
                     # 不设置max_tokens，让LLM自由发挥
+                    response_format={"type": "json_object"},
                 )
-                
-                content = response.choices[0].message.content
-                
+
                 # 检查是否被截断（finish_reason不是'stop'）
-                finish_reason = response.choices[0].finish_reason
                 if finish_reason == 'length':
                     logger.warning(f"LLM输出被截断 (attempt {attempt+1}), 尝试修复...")
                     content = self._fix_truncated_json(content)
-                
-                # 尝试解析JSON
+
+                # 使用共享helper解析JSON
                 try:
-                    result = json.loads(content)
-                    
-                    # 验证必需字段
-                    if "bio" not in result or not result["bio"]:
-                        result["bio"] = entity_summary[:200] if entity_summary else f"{entity_type}: {entity_name}"
-                    if "persona" not in result or not result["persona"]:
-                        result["persona"] = entity_summary or f"{entity_name}是一个{entity_type}。"
-                    
-                    return result
-                    
-                except json.JSONDecodeError as je:
+                    result = self.client.extract_json(content)
+                except ValueError as je:
                     logger.warning(f"JSON解析失败 (attempt {attempt+1}): {str(je)[:80]}")
-                    
-                    # 尝试修复JSON
-                    result = self._try_fix_json(content, entity_name, entity_type, entity_summary)
-                    if result.get("_fixed"):
-                        del result["_fixed"]
-                        return result
-                    
                     last_error = je
-                    
+                    continue
+
+                # 验证必需字段
+                if "bio" not in result or not result["bio"]:
+                    result["bio"] = entity_summary[:200] if entity_summary else f"{entity_type}: {entity_name}"
+                if "persona" not in result or not result["persona"]:
+                    result["persona"] = entity_summary or f"{entity_name}是一个{entity_type}。"
+
+                return result
+
             except Exception as e:
                 logger.warning(f"LLM调用失败 (attempt {attempt+1}): {str(e)[:80]}")
                 last_error = e
                 import time
                 time.sleep(1 * (attempt + 1))  # 指数退避
-        
+
         logger.warning(f"LLM生成人设失败（{max_attempts}次尝试）: {last_error}, 使用规则生成")
         return self._generate_profile_rule_based(
             entity_name, entity_type, entity_summary, entity_attributes
@@ -602,72 +592,6 @@ class OasisProfileGenerator:
         content += '}' * open_braces
         
         return content
-    
-    def _try_fix_json(self, content: str, entity_name: str, entity_type: str, entity_summary: str = "") -> Dict[str, Any]:
-        """尝试修复损坏的JSON"""
-        import re
-        
-        # 1. 首先尝试修复被截断的情况
-        content = self._fix_truncated_json(content)
-        
-        # 2. 尝试提取JSON部分
-        json_match = re.search(r'\{[\s\S]*\}', content)
-        if json_match:
-            json_str = json_match.group()
-            
-            # 3. 处理字符串中的换行符问题
-            # 找到所有字符串值并替换其中的换行符
-            def fix_string_newlines(match):
-                s = match.group(0)
-                # 替换字符串内的实际换行符为空格
-                s = s.replace('\n', ' ').replace('\r', ' ')
-                # 替换多余空格
-                s = re.sub(r'\s+', ' ', s)
-                return s
-            
-            # 匹配JSON字符串值
-            json_str = re.sub(r'"[^"\\]*(?:\\.[^"\\]*)*"', fix_string_newlines, json_str)
-            
-            # 4. 尝试解析
-            try:
-                result = json.loads(json_str)
-                result["_fixed"] = True
-                return result
-            except json.JSONDecodeError as e:
-                # 5. 如果还是失败，尝试更激进的修复
-                try:
-                    # 移除所有控制字符
-                    json_str = re.sub(r'[\x00-\x1f\x7f-\x9f]', ' ', json_str)
-                    # 替换所有连续空白
-                    json_str = re.sub(r'\s+', ' ', json_str)
-                    result = json.loads(json_str)
-                    result["_fixed"] = True
-                    return result
-                except:
-                    pass
-        
-        # 6. 尝试从内容中提取部分信息
-        bio_match = re.search(r'"bio"\s*:\s*"([^"]*)"', content)
-        persona_match = re.search(r'"persona"\s*:\s*"([^"]*)', content)  # 可能被截断
-        
-        bio = bio_match.group(1) if bio_match else (entity_summary[:200] if entity_summary else f"{entity_type}: {entity_name}")
-        persona = persona_match.group(1) if persona_match else (entity_summary or f"{entity_name}是一个{entity_type}。")
-        
-        # 如果提取到了有意义的内容，标记为已修复
-        if bio_match or persona_match:
-            logger.info(f"从损坏的JSON中提取了部分信息")
-            return {
-                "bio": bio,
-                "persona": persona,
-                "_fixed": True
-            }
-        
-        # 7. 完全失败，返回基础结构
-        logger.warning(f"JSON修复失败，返回基础结构")
-        return {
-            "bio": entity_summary[:200] if entity_summary else f"{entity_type}: {entity_name}",
-            "persona": entity_summary or f"{entity_name}是一个{entity_type}。"
-        }
     
     def _get_system_prompt(self, is_individual: bool) -> str:
         """获取系统提示词"""

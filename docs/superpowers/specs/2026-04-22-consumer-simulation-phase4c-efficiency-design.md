@@ -62,19 +62,22 @@ Phase 4C adds a lightweight prepare manifest:
 
 - persisted under the simulation workspace
 - records:
-  - `input_fingerprint`
+  - `simulation_id`
+  - `project_id`
   - `prepared_at`
   - `project_type`
   - `consumer_mode`
   - `profiles_count`
+  - `entities_count`
+  - `entity_types`
   - `config_generated`
   - `persona_pack_id`
-  - `research_snapshot_id`
-  - `artifact_status`
+  - `reuse_count`
+  - `last_reused_at`
 - reused by:
   - `POST /api/simulation/prepare`
   - `POST /api/simulation/prepare/status`
-  - `GET /api/simulation/<simulation_id>/config`
+  - simulation-manager level inspection helpers
 
 The goal is observability first, not an unsafe cross-project cache.
 
@@ -165,9 +168,39 @@ This is an engineering-only change; route URLs and page behavior stay unchanged.
 
 ---
 
-## 7. Risks
+## 7. Implementation Outcome (2026-04-22)
+
+Phase 4C is now implemented on `codex/consumer-simulation-phase1`.
+
+Delivered changes:
+
+- backend JSON compatibility now routes through `LLMClient` shared helpers:
+  - `chat_with_finish_reason()`
+  - `clean_llm_text()`
+  - `extract_json()`
+  - `chat_json_with_meta()`
+- `oasis_profile_generator.py` and `simulation_config_generator.py` no longer open-code JSON parsing logic
+- simulation prepare now persists `prepare_manifest.json` and exposes it via:
+  - `POST /api/simulation/prepare`
+  - `POST /api/simulation/prepare/status`
+- repeated prepare calls increment manifest reuse metadata instead of silently short-circuiting
+- `Home.vue` now uses a single static `pendingUpload` import path
+- non-home routes now lazy-load in `frontend/src/router/index.js`
+- `frontend/vite.config.js` now defines manual chunking for vendor-heavy bundles
+
+Verified results:
+
+- backend targeted regression: `57 passed`
+- backend full non-integration regression: `373 passed`
+- frontend targeted tests: `73 passed`
+- frontend build: success
+- old `pendingUpload` mixed-import warning: removed
+- old Vite chunk-size warning: removed
+
+---
+
+## 8. Risks
 
 - over-engineering cache semantics; keep the manifest descriptive, not globally shared
 - accidental behavior changes in legacy prepare logic; tests must cover `project_type=default`
 - over-splitting frontend chunks; only split where it clearly improves entry size
-

@@ -16,9 +16,8 @@ from typing import Dict, Any, List, Optional, Callable
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 
-from openai import OpenAI
-
 from ..config import Config
+from ..utils.llm_client import LLMClient
 from ..utils.logger import get_logger
 from ..utils.locale import get_language_instruction, t
 from .zep_entity_reader import EntityNode, ZepEntityReader
@@ -231,13 +230,14 @@ class SimulationConfigGenerator:
         self.api_key = api_key or Config.LLM_API_KEY
         self.base_url = base_url or Config.LLM_BASE_URL
         self.model_name = model_name or Config.LLM_MODEL_NAME
-        
+
         if not self.api_key:
             raise ValueError("LLM_API_KEY 未配置")
-        
-        self.client = OpenAI(
+
+        self.client = LLMClient(
             api_key=self.api_key,
-            base_url=self.base_url
+            base_url=self.base_url,
+            model=self.model_name
         )
     
     def generate_config(
@@ -432,52 +432,39 @@ class SimulationConfigGenerator:
         return "\n".join(lines)
     
     def _call_llm_with_retry(self, prompt: str, system_prompt: str) -> Dict[str, Any]:
-        """带重试的LLM调用，包含JSON修复逻辑"""
-        import re
-        
+        """带重试的LLM调用，使用共享helper解析JSON"""
         max_attempts = 3
         last_error = None
-        
+
         for attempt in range(max_attempts):
             try:
-                response = self.client.chat.completions.create(
-                    model=self.model_name,
+                content, finish_reason = self.client.chat_with_finish_reason(
                     messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": prompt}
                     ],
+                    temperature=0.7 - (attempt * 0.1),  # 每次重试降低温度
                     response_format={"type": "json_object"},
-                    temperature=0.7 - (attempt * 0.1)  # 每次重试降低温度
-                    # 不设置max_tokens，让LLM自由发挥
                 )
-                
-                content = response.choices[0].message.content
-                finish_reason = response.choices[0].finish_reason
-                
+
                 # 检查是否被截断
                 if finish_reason == 'length':
                     logger.warning(f"LLM输出被截断 (attempt {attempt+1})")
                     content = self._fix_truncated_json(content)
-                
-                # 尝试解析JSON
+
+                # 使用共享helper解析JSON
                 try:
-                    return json.loads(content)
-                except json.JSONDecodeError as e:
+                    return self.client.extract_json(content)
+                except ValueError as e:
                     logger.warning(f"JSON解析失败 (attempt {attempt+1}): {str(e)[:80]}")
-                    
-                    # 尝试修复JSON
-                    fixed = self._try_fix_config_json(content)
-                    if fixed:
-                        return fixed
-                    
                     last_error = e
-                    
+
             except Exception as e:
                 logger.warning(f"LLM调用失败 (attempt {attempt+1}): {str(e)[:80]}")
                 last_error = e
                 import time
                 time.sleep(2 * (attempt + 1))
-        
+
         raise last_error or Exception("LLM调用失败")
     
     def _fix_truncated_json(self, content: str) -> str:
@@ -497,41 +484,7 @@ class SimulationConfigGenerator:
         content += '}' * open_braces
         
         return content
-    
-    def _try_fix_config_json(self, content: str) -> Optional[Dict[str, Any]]:
-        """尝试修复配置JSON"""
-        import re
-        
-        # 修复被截断的情况
-        content = self._fix_truncated_json(content)
-        
-        # 提取JSON部分
-        json_match = re.search(r'\{[\s\S]*\}', content)
-        if json_match:
-            json_str = json_match.group()
-            
-            # 移除字符串中的换行符
-            def fix_string(match):
-                s = match.group(0)
-                s = s.replace('\n', ' ').replace('\r', ' ')
-                s = re.sub(r'\s+', ' ', s)
-                return s
-            
-            json_str = re.sub(r'"[^"\\]*(?:\\.[^"\\]*)*"', fix_string, json_str)
-            
-            try:
-                return json.loads(json_str)
-            except:
-                # 尝试移除所有控制字符
-                json_str = re.sub(r'[\x00-\x1f\x7f-\x9f]', ' ', json_str)
-                json_str = re.sub(r'\s+', ' ', json_str)
-                try:
-                    return json.loads(json_str)
-                except:
-                    pass
-        
-        return None
-    
+
     def _generate_time_config(self, context: str, num_entities: int) -> Dict[str, Any]:
         """生成时间配置"""
         # 使用配置的上下文截断长度

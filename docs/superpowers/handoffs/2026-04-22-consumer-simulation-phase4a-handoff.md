@@ -97,10 +97,13 @@ Phase 4A upgraded `consumer_test` from a research-grade simulation workflow into
 
 - `auto_enrich` still uses deterministic synthetic research rather than live external search; Lane B public-web supplementation quality depends on the grounded provider implementation
 - Kimi For Coding response time remains ~3-5 minutes per profile; full prepare for 4 profiles still ~21 minutes
-- `json_object` compatibility remains mitigated by proxy but may fluctuate with model or proxy configuration changes
 - Small-scale profiles (4) are stable; larger scales still recommend faster models
-- `pendingUpload.js` dynamic/static import mix warning persists (non-blocking)
-- Frontend chunk size warning persists (non-blocking)
+
+Resolved later in Phase 4C:
+
+- shared `json_object` compatibility fallback now lives in `backend/app/utils/llm_client.py`
+- the `pendingUpload.js` mixed-import warning is removed
+- the frontend chunk-size warning is removed through route lazy loading and manual chunking
 
 ---
 

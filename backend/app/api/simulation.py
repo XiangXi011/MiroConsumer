@@ -277,7 +277,8 @@ def _check_simulation_prepared(simulation_id: str) -> tuple:
     """
     import os
     from ..config import Config
-    
+    from ..services.prepare_manifest import read_manifest
+
     simulation_dir = os.path.join(Config.OASIS_SIMULATION_DATA_DIR, simulation_id)
     
     # 检查目录是否存在
@@ -356,7 +357,9 @@ def _check_simulation_prepared(simulation_id: str) -> tuple:
                     logger.warning(f"自动更新状态失败: {e}")
             
             logger.info(f"模拟 {simulation_id} 检测结果: 已准备完成 (status={status}, config_generated={config_generated})")
-            return True, {
+
+            manifest = read_manifest(simulation_dir)
+            prepare_info = {
                 "status": status,
                 "entities_count": state_data.get("entities_count", 0),
                 "profiles_count": profiles_count,
@@ -369,8 +372,11 @@ def _check_simulation_prepared(simulation_id: str) -> tuple:
                 "enable_lane_b": state_data.get("enable_lane_b", False),
                 "created_at": state_data.get("created_at"),
                 "updated_at": state_data.get("updated_at"),
-                "existing_files": existing_files
+                "existing_files": existing_files,
             }
+            if manifest:
+                prepare_info["prepare_manifest"] = manifest.to_dict()
+            return True, prepare_info
         else:
             logger.warning(f"模拟 {simulation_id} 检测结果: 未准备完成 (status={status}, config_generated={config_generated})")
             return False, {
@@ -459,15 +465,19 @@ def prepare_simulation():
             logger.debug(f"检查结果: is_prepared={is_prepared}, prepare_info={prepare_info}")
             if is_prepared:
                 logger.info(f"模拟 {simulation_id} 已准备完成，跳过重复生成")
+                manifest_dict = manager.record_manifest_reuse(simulation_id)
+                response_data = {
+                    "simulation_id": simulation_id,
+                    "status": "ready",
+                    "message": t('api.alreadyPrepared'),
+                    "already_prepared": True,
+                    "prepare_info": prepare_info,
+                }
+                if manifest_dict:
+                    response_data["prepare_manifest"] = manifest_dict
                 return jsonify({
                     "success": True,
-                    "data": {
-                        "simulation_id": simulation_id,
-                        "status": "ready",
-                        "message": t('api.alreadyPrepared'),
-                        "already_prepared": True,
-                        "prepare_info": prepare_info
-                    }
+                    "data": response_data
                 })
             else:
                 logger.info(f"模拟 {simulation_id} 未准备完成，将启动准备任务")
@@ -713,16 +723,19 @@ def get_prepare_status():
         if simulation_id:
             is_prepared, prepare_info = _check_simulation_prepared(simulation_id)
             if is_prepared:
+                status_data = {
+                    "simulation_id": simulation_id,
+                    "status": "ready",
+                    "progress": 100,
+                    "message": t('api.alreadyPrepared'),
+                    "already_prepared": True,
+                    "prepare_info": prepare_info,
+                }
+                if prepare_info.get("prepare_manifest"):
+                    status_data["prepare_manifest"] = prepare_info["prepare_manifest"]
                 return jsonify({
                     "success": True,
-                    "data": {
-                        "simulation_id": simulation_id,
-                        "status": "ready",
-                        "progress": 100,
-                        "message": t('api.alreadyPrepared'),
-                        "already_prepared": True,
-                        "prepare_info": prepare_info
-                    }
+                    "data": status_data
                 })
         
         # 如果没有task_id，返回错误
@@ -752,19 +765,22 @@ def get_prepare_status():
             if simulation_id:
                 is_prepared, prepare_info = _check_simulation_prepared(simulation_id)
                 if is_prepared:
+                    status_data = {
+                        "simulation_id": simulation_id,
+                        "task_id": task_id,
+                        "status": "ready",
+                        "progress": 100,
+                        "message": t('api.taskCompletedPrepared'),
+                        "already_prepared": True,
+                        "prepare_info": prepare_info,
+                    }
+                    if prepare_info.get("prepare_manifest"):
+                        status_data["prepare_manifest"] = prepare_info["prepare_manifest"]
                     return jsonify({
                         "success": True,
-                        "data": {
-                            "simulation_id": simulation_id,
-                            "task_id": task_id,
-                            "status": "ready",
-                            "progress": 100,
-                            "message": t('api.taskCompletedPrepared'),
-                            "already_prepared": True,
-                            "prepare_info": prepare_info
-                        }
+                        "data": status_data
                     })
-            
+
             return jsonify({
                 "success": False,
                 "error": t('api.taskNotFound', id=task_id)
