@@ -95,3 +95,124 @@ def test_graph_builder_adds_research_findings_with_visibility():
     research_nodes = [node for node in graph["nodes"] if "ResearchFinding" in node["labels"]]
     assert research_nodes[0]["visibility"] == "Restricted"
     assert research_nodes[0]["attributes"]["provenance"]["source_label"] == "brief_background"
+
+
+def test_packaging_test_creates_packaging_cue_nodes():
+    brief = ConsumerBusinessBrief(
+        task_type=ConsumerTaskType.PackagingTest,
+        product_concept_assets=[],
+        packaging_assets=["box-front.png", "label-detail.png"],
+        research_goal="Evaluate shelf appeal",
+    )
+    graph = ConsumerGraphBuilder().build(
+        brief=brief,
+        persona_pack=[],
+        graph_id="consumer_proj_pkg",
+    )
+
+    cue_nodes = [node for node in graph["nodes"] if "PackagingCue" in node["labels"]]
+    assert len(cue_nodes) == 2
+    assert all(node["visibility"] == GraphVisibility.Initial.value for node in cue_nodes)
+    assert all(node["attributes"]["round0_visible"] is True for node in cue_nodes)
+
+
+def test_ab_test_creates_variant_nodes():
+    brief = ConsumerBusinessBrief(
+        task_type=ConsumerTaskType.ABTest,
+        product_concept_assets=[],
+        variants=["Headline A", "Headline B"],
+        research_goal="Compare messaging",
+    )
+    graph = ConsumerGraphBuilder().build(
+        brief=brief,
+        persona_pack=[],
+        graph_id="consumer_proj_ab",
+    )
+
+    variant_nodes = [node for node in graph["nodes"] if "Variant" in node["labels"]]
+    assert len(variant_nodes) == 2
+    assert all(node["visibility"] == GraphVisibility.Initial.value for node in variant_nodes)
+    assert all(node["attributes"]["round0_visible"] is True for node in variant_nodes)
+
+
+def test_price_test_creates_price_point_nodes():
+    brief = ConsumerBusinessBrief(
+        task_type=ConsumerTaskType.PriceTest,
+        product_concept_assets=[],
+        price_points=["$9.99", "$12.99", "$14.99"],
+        research_goal="Test price sensitivity",
+    )
+    graph = ConsumerGraphBuilder().build(
+        brief=brief,
+        persona_pack=[],
+        graph_id="consumer_proj_price",
+    )
+
+    price_nodes = [node for node in graph["nodes"] if "PricePoint" in node["labels"]]
+    assert len(price_nodes) == 3
+    assert all(node["visibility"] == GraphVisibility.Initial.value for node in price_nodes)
+    assert all(node["attributes"]["round0_visible"] is True for node in price_nodes)
+
+
+def test_new_task_types_generate_secondary_topics():
+    brief = ConsumerBusinessBrief(
+        task_type=ConsumerTaskType.ABTest,
+        product_concept_assets=[],
+        variants=["Headline A variant text", "Headline B variant text"],
+        copy_material=["Main body copy"],
+        research_goal="Compare messaging",
+    )
+    graph = ConsumerGraphBuilder().build(
+        brief=brief,
+        persona_pack=[],
+        graph_id="consumer_proj_ab_topics",
+    )
+
+    talking_nodes = [node for node in graph["nodes"] if "TalkingPoint" in node["labels"]]
+    assert any("Main body copy" in node["name"] for node in talking_nodes)
+    assert any("Headline A variant text" in node["name"] for node in talking_nodes)
+    assert all(node["visibility"] == GraphVisibility.Propagation_Only.value for node in talking_nodes)
+
+
+def test_ab_test_with_test_variant_objects_creates_variant_nodes():
+    from app.services.consumer.models import TestVariant
+    brief = ConsumerBusinessBrief(
+        task_type=ConsumerTaskType.ABTest,
+        product_concept_assets=[],
+        test_variants=[
+            TestVariant(variant_id="v1", label="Variant A", concept_assets=[], copy_material=[], claims=[]),
+            TestVariant(variant_id="v2", label="Variant B", concept_assets=[], copy_material=[], claims=[]),
+        ],
+        research_goal="Compare messaging",
+    )
+    graph = ConsumerGraphBuilder().build(
+        brief=brief,
+        persona_pack=[],
+        graph_id="consumer_proj_ab_obj",
+    )
+
+    variant_nodes = [node for node in graph["nodes"] if "Variant" in node["labels"]]
+    assert len(variant_nodes) == 2
+    assert any(node["name"] == "Variant A" for node in variant_nodes)
+    assert any(node["name"] == "Variant B" for node in variant_nodes)
+    assert all(node["visibility"] == GraphVisibility.Initial.value for node in variant_nodes)
+
+
+def test_price_test_with_price_context_builds_graph():
+    brief = ConsumerBusinessBrief(
+        task_type=ConsumerTaskType.PriceTest,
+        product_concept_assets=[],
+        price_points=["$9.99", "$12.99"],
+        price_context="Competitor range: $8-$15",
+        research_goal="Test price sensitivity",
+    )
+    graph = ConsumerGraphBuilder().build(
+        brief=brief,
+        persona_pack=[],
+        graph_id="consumer_proj_price_ctx",
+    )
+
+    price_nodes = [node for node in graph["nodes"] if "PricePoint" in node["labels"]]
+    assert len(price_nodes) == 2
+    assert any(node["name"] == "$9.99" for node in price_nodes)
+    assert any(node["name"] == "$12.99" for node in price_nodes)

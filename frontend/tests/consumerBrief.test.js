@@ -125,3 +125,148 @@ test('buildConsumerBrief carries enable_lane_b when false', () => {
 
   assert.equal(brief.enable_lane_b, false)
 })
+
+// ========== Phase 4B: New task types ==========
+
+test('buildConsumerBrief emits packaging_test task type and packaging_assets', () => {
+  const brief = buildConsumerBrief({
+    consumerTaskType: 'packaging_test',
+    consumerPackagingAssets: 'Eco-friendly glass jar\nRecyclable label',
+    consumerCopy: 'Sustainable packaging\nZero waste',
+    consumerAudience: 'eco-conscious millennials',
+    consumerResearchGoal: 'Test packaging trust signals',
+  })
+
+  assert.equal(brief.task_type, 'packaging_test')
+  assert.deepEqual(brief.packaging_assets, ['Eco-friendly glass jar', 'Recyclable label'])
+  assert.deepEqual(brief.copy_material, ['Sustainable packaging', 'Zero waste'])
+  assert.deepEqual(brief.target_audience, ['eco-conscious millennials'])
+})
+
+test('buildConsumerBrief emits ab_test task type and test_variants', () => {
+  const brief = buildConsumerBrief({
+    consumerTaskType: 'ab_test',
+    consumerTestVariants: 'Variant A: Bold claim\nVariant B: Soft claim',
+    consumerAudience: 'working moms',
+    consumerResearchGoal: 'Compare variant resonance',
+  })
+
+  assert.equal(brief.task_type, 'ab_test')
+  assert.equal(brief.test_variants.length, 2)
+  assert.equal(brief.test_variants[0].variant_id, 'v1')
+  assert.equal(brief.test_variants[0].label, 'Variant A: Bold claim')
+  assert.equal(brief.test_variants[1].variant_id, 'v2')
+  assert.equal(brief.test_variants[1].label, 'Variant B: Soft claim')
+})
+
+test('buildConsumerBrief emits ab_test variants from array input', () => {
+  const brief = buildConsumerBrief({
+    consumerTaskType: 'ab_test',
+    consumerTestVariants: [
+      { variant_id: 'control', label: 'Control', concept_assets: ['Original'] },
+      { variant_id: 'treatment', label: 'Treatment', concept_assets: ['New'] },
+    ],
+    consumerAudience: 'working moms',
+    consumerResearchGoal: 'Compare variant resonance',
+  })
+
+  assert.equal(brief.test_variants.length, 2)
+  assert.equal(brief.test_variants[0].variant_id, 'control')
+  assert.deepEqual(brief.test_variants[0].concept_assets, ['Original'])
+})
+
+test('buildConsumerBrief emits price_test task type and price fields', () => {
+  const brief = buildConsumerBrief({
+    consumerTaskType: 'price_test',
+    consumerPricePoints: '$9.99, $14.99\n$19.99',
+    consumerPriceContext: 'subscription monthly',
+    consumerConcept: 'Premium protein yogurt',
+    consumerCopy: '14g protein',
+    consumerAudience: 'fitness enthusiasts',
+    consumerResearchGoal: 'Find optimal price point',
+  })
+
+  assert.equal(brief.task_type, 'price_test')
+  assert.deepEqual(brief.price_points, ['$9.99', '$14.99', '$19.99'])
+  assert.equal(brief.price_context, 'subscription monthly')
+  assert.deepEqual(brief.product_concept_assets, ['Premium protein yogurt'])
+})
+
+test('isConsumerBriefComplete validates packaging_test requires packaging_assets', () => {
+  assert.equal(
+    isConsumerBriefComplete({
+      consumerTaskType: 'packaging_test',
+      consumerPackagingAssets: 'Glass jar',
+      consumerAudience: 'audience',
+      consumerResearchGoal: 'goal',
+    }),
+    true
+  )
+
+  assert.equal(
+    isConsumerBriefComplete({
+      consumerTaskType: 'packaging_test',
+      consumerPackagingAssets: '',
+      consumerAudience: 'audience',
+      consumerResearchGoal: 'goal',
+    }),
+    false
+  )
+})
+
+test('isConsumerBriefComplete validates ab_test requires at least 2 variants', () => {
+  assert.equal(
+    isConsumerBriefComplete({
+      consumerTaskType: 'ab_test',
+      consumerTestVariants: 'Variant A\nVariant B',
+      consumerAudience: 'audience',
+      consumerResearchGoal: 'goal',
+    }),
+    true
+  )
+
+  assert.equal(
+    isConsumerBriefComplete({
+      consumerTaskType: 'ab_test',
+      consumerTestVariants: 'Only one',
+      consumerAudience: 'audience',
+      consumerResearchGoal: 'goal',
+    }),
+    false
+  )
+})
+
+test('isConsumerBriefComplete validates price_test requires price_points', () => {
+  assert.equal(
+    isConsumerBriefComplete({
+      consumerTaskType: 'price_test',
+      consumerPricePoints: '$9.99',
+      consumerAudience: 'audience',
+      consumerResearchGoal: 'goal',
+    }),
+    true
+  )
+
+  assert.equal(
+    isConsumerBriefComplete({
+      consumerTaskType: 'price_test',
+      consumerPricePoints: '',
+      consumerAudience: 'audience',
+      consumerResearchGoal: 'goal',
+    }),
+    false
+  )
+})
+
+test('buildConsumerBrief backward compatible: concept_test when task type omitted', () => {
+  const brief = buildConsumerBrief({
+    consumerConcept: 'Concept',
+    consumerCopy: 'Copy',
+    consumerAudience: 'Audience',
+    consumerResearchGoal: 'Goal',
+  })
+
+  assert.equal(brief.task_type, 'concept_test')
+  assert.deepEqual(brief.product_concept_assets, ['Concept'])
+  assert.deepEqual(brief.copy_material, ['Copy'])
+})

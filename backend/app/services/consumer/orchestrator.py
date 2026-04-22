@@ -42,6 +42,7 @@ class ConsumerSimulationOrchestrator:
         visible_graph_nodes: Iterable[Mapping[str, Any]],
         research_findings: Optional[Iterable[ResearchFinding]] = None,
         interventions: Optional[Iterable[ConsumerIntervention]] = None,
+        task_type: Optional[str] = None,
     ) -> str:
         visible_nodes = self.filter_visible_graph_nodes(
             round_num=round_num,
@@ -54,10 +55,11 @@ class ConsumerSimulationOrchestrator:
             round_index=round_num,
         )
         round_stage = "initial reaction" if round_num == 0 else "propagation discussion"
+        focus_line = self._task_aware_focus_line(task_type)
         lines = [
             brief_summary.strip(),
             f"Current round: {round_num} ({round_stage})",
-            "Focus only on the product concept, copy, and discussion context listed below.",
+            focus_line,
             "Visible graph context:",
         ]
         if visible_nodes:
@@ -81,6 +83,16 @@ class ConsumerSimulationOrchestrator:
                     lines.append(f"- [{intervention.intervention_type}] {payload_text}")
 
         return "\n".join(lines)
+
+    @staticmethod
+    def _task_aware_focus_line(task_type: Optional[str]) -> str:
+        if task_type == "packaging_test":
+            return "Focus on packaging design, shelf appeal, and trust cues."
+        if task_type == "ab_test":
+            return "Focus on comparing messaging variants and preference differences."
+        if task_type == "price_test":
+            return "Focus on price perception, value trade-offs, and purchase intent."
+        return "Focus only on the product concept, copy, and discussion context listed below."
 
     def _active_interventions_for_round(
         self,
@@ -137,6 +149,7 @@ class ConsumerSimulationOrchestrator:
         agent_id: str,
         agent_name: str,
         research_findings: Optional[Iterable[ResearchFinding]] = None,
+        task_type: Optional[str] = None,
     ) -> Dict[str, Any]:
         normalized_nodes = self.filter_visible_graph_nodes(
             round_num=round_num,
@@ -149,6 +162,7 @@ class ConsumerSimulationOrchestrator:
             brief_summary=brief_summary,
             visible_graph_nodes=visible_graph_nodes,
             research_findings=research_findings,
+            task_type=task_type,
         )
         visible_findings = resolve_visible_findings(
             persona=agent_traits,

@@ -246,6 +246,17 @@ class ConsumerReportContextBuilder:
             },
             "evidence_bundle": evidence.to_dict(),
             "events_count": len(normalized),
+            # Task-aware placeholders (populated downstream when brief is available)
+            "top_packaging_hooks": [],
+            "top_trust_objections": [],
+            "top_confusion_triggers": [],
+            "winning_variant": "",
+            "top_variant_deltas": [],
+            "top_persona_divergences": [],
+            "acceptable_price_points": [],
+            "resisted_price_points": [],
+            "top_price_objections": [],
+            "price_context": "",
         }
 
     def _normalize_event(self, event: Mapping[str, Any]) -> Dict[str, Any]:
@@ -447,8 +458,10 @@ def build_consumer_report_context(
             persona_events[actor]["blocked"].append(event.event_type)
 
     summary_dict = summary.to_dict() if hasattr(summary, "to_dict") else dict(summary)
+    task_type = str(summary_dict.get("task_type", "concept_test") or "concept_test")
 
     context: Dict[str, Any] = {
+        "task_type": task_type,
         "phase2_summary": summary_dict,
         "causal_chains": causal_chains,
         "event_led_reversals": reversals,
@@ -456,6 +469,16 @@ def build_consumer_report_context(
         "trigger_finding_count": len(causal_chains),
         "event_count": len(typed_events),
         "cascade_metrics": summary_dict.get("cascade_metrics", {}),
+        "top_packaging_hooks": summary_dict.get("top_packaging_hooks", []),
+        "top_trust_objections": summary_dict.get("top_trust_objections", []),
+        "top_confusion_triggers": summary_dict.get("top_confusion_triggers", []),
+        "winning_variant": summary_dict.get("winning_variant", ""),
+        "top_variant_deltas": summary_dict.get("top_variant_deltas", []),
+        "top_persona_divergences": summary_dict.get("top_persona_divergences", []),
+        "acceptable_price_points": summary_dict.get("acceptable_price_points", []),
+        "resisted_price_points": summary_dict.get("resisted_price_points", []),
+        "top_price_objections": summary_dict.get("top_price_objections", []),
+        "price_context": summary_dict.get("price_context", ""),
     }
 
     typed_traces = []

@@ -223,6 +223,44 @@
               </div>
               <div class="brief-grid">
                 <div class="brief-field brief-field-wide">
+                  <label>{{ $t('home.consumerTaskTypeLabel') }}</label>
+                  <div class="research-mode-switch">
+                    <button
+                      class="mode-btn"
+                      :class="{ active: formData.consumerTaskType === 'concept_test' }"
+                      @click="formData.consumerTaskType = 'concept_test'"
+                      :disabled="loading"
+                    >
+                      {{ $t('home.consumerTaskTypeConcept') }}
+                    </button>
+                    <button
+                      class="mode-btn"
+                      :class="{ active: formData.consumerTaskType === 'packaging_test' }"
+                      @click="formData.consumerTaskType = 'packaging_test'"
+                      :disabled="loading"
+                    >
+                      {{ $t('home.consumerTaskTypePackaging') }}
+                    </button>
+                    <button
+                      class="mode-btn"
+                      :class="{ active: formData.consumerTaskType === 'ab_test' }"
+                      @click="formData.consumerTaskType = 'ab_test'"
+                      :disabled="loading"
+                    >
+                      {{ $t('home.consumerTaskTypeAB') }}
+                    </button>
+                    <button
+                      class="mode-btn"
+                      :class="{ active: formData.consumerTaskType === 'price_test' }"
+                      @click="formData.consumerTaskType = 'price_test'"
+                      :disabled="loading"
+                    >
+                      {{ $t('home.consumerTaskTypePrice') }}
+                    </button>
+                  </div>
+                </div>
+
+                <div v-if="formData.consumerTaskType === 'concept_test' || formData.consumerTaskType === 'price_test'" class="brief-field brief-field-wide">
                   <label>{{ $t('home.consumerConceptLabel') }}</label>
                   <textarea
                     v-model="formData.consumerConcept"
@@ -232,7 +270,7 @@
                     :disabled="loading"
                   ></textarea>
                 </div>
-                <div class="brief-field brief-field-wide">
+                <div v-if="formData.consumerTaskType === 'concept_test' || formData.consumerTaskType === 'packaging_test' || formData.consumerTaskType === 'price_test'" class="brief-field brief-field-wide">
                   <label>{{ $t('home.consumerCopyLabel') }}</label>
                   <textarea
                     v-model="formData.consumerCopy"
@@ -242,7 +280,47 @@
                     :disabled="loading"
                   ></textarea>
                 </div>
-                <div class="brief-field">
+                <div v-if="formData.consumerTaskType === 'packaging_test'" class="brief-field brief-field-wide">
+                  <label>{{ $t('home.consumerPackagingAssetsLabel') }}</label>
+                  <textarea
+                    v-model="formData.consumerPackagingAssets"
+                    class="brief-input"
+                    rows="3"
+                    :placeholder="$t('home.consumerPackagingAssetsPlaceholder')"
+                    :disabled="loading"
+                  ></textarea>
+                </div>
+                <div v-if="formData.consumerTaskType === 'ab_test'" class="brief-field brief-field-wide">
+                  <label>{{ $t('home.consumerTestVariantsLabel') }}</label>
+                  <textarea
+                    v-model="formData.consumerTestVariants"
+                    class="brief-input"
+                    rows="4"
+                    :placeholder="$t('home.consumerTestVariantsPlaceholder')"
+                    :disabled="loading"
+                  ></textarea>
+                </div>
+                <div v-if="formData.consumerTaskType === 'price_test'" class="brief-field">
+                  <label>{{ $t('home.consumerPricePointsLabel') }}</label>
+                  <textarea
+                    v-model="formData.consumerPricePoints"
+                    class="brief-input"
+                    rows="2"
+                    :placeholder="$t('home.consumerPricePointsPlaceholder')"
+                    :disabled="loading"
+                  ></textarea>
+                </div>
+                <div v-if="formData.consumerTaskType === 'price_test'" class="brief-field">
+                  <label>{{ $t('home.consumerPriceContextLabel') }}</label>
+                  <textarea
+                    v-model="formData.consumerPriceContext"
+                    class="brief-input"
+                    rows="2"
+                    :placeholder="$t('home.consumerPriceContextPlaceholder')"
+                    :disabled="loading"
+                  ></textarea>
+                </div>
+                <div v-if="formData.consumerTaskType !== 'packaging_test'" class="brief-field">
                   <label>{{ $t('home.consumerClaimsLabel') }}</label>
                   <textarea
                     v-model="formData.consumerClaims"
@@ -381,6 +459,7 @@ const { t } = useI18n()
 const formData = ref({
   projectType: 'default',
   simulationRequirement: '',
+  consumerTaskType: 'concept_test',
   consumerConcept: '',
   consumerCopy: '',
   consumerClaims: '',
@@ -389,7 +468,11 @@ const formData = ref({
   consumerResearchGoal: '',
   consumerResearchMode: 'manual_only',
   consumerEnableLaneB: false,
-  consumerBackgroundMaterials: ''
+  consumerBackgroundMaterials: '',
+  consumerPackagingAssets: '',
+  consumerTestVariants: '',
+  consumerPricePoints: '',
+  consumerPriceContext: ''
 })
 
 // 文件列表

@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 import {
   buildConsumerMetricCards,
   buildConsumerQuickPrompts,
+  buildTaskAwareConsumerQuickPrompts,
   buildSourceAwarePrompts,
   formatCascadeMetrics,
   buildCascadeAwarePrompts,
@@ -17,6 +18,7 @@ import {
   mergeFindingConfidence,
   buildConfidenceAwarePrompts,
   formatComparisonConfidence,
+  getConsumerTaskType,
 } from '../src/utils/consumerMode.js'
 
 test('isConsumerProject supports backend and frontend project type shapes', () => {
@@ -723,4 +725,165 @@ test('formatComparisonConfidence returns null-like fallback for missing data', (
   assert.equal(result.label, 'unknown')
   assert.equal(result.leftScore, 0)
   assert.equal(result.rightScore, 0)
+})
+
+// ============== Phase 4B: Task-aware quick prompts ==============
+
+test('buildTaskAwareConsumerQuickPrompts generates packaging_test prompts', () => {
+  const prompts = buildTaskAwareConsumerQuickPrompts({
+    task_type: 'packaging_test',
+    top_packaging_hooks: ['Eco-friendly design', 'Clear label'],
+    top_trust_objections: ['Looks expensive'],
+    top_confusion_triggers: ['Unclear disposal instructions'],
+  })
+  assert.ok(prompts.some(p => p.includes('Eco-friendly design')), 'Expected packaging hook prompt')
+  assert.ok(prompts.some(p => p.includes('Looks expensive')), 'Expected trust objection prompt')
+  assert.ok(prompts.some(p => p.includes('Unclear disposal instructions')), 'Expected confusion trigger prompt')
+})
+
+test('getConsumerTaskType reads task_type from report_context when present', () => {
+  assert.equal(
+    getConsumerTaskType({ report_context: { task_type: 'price_test' } }),
+    'price_test'
+  )
+})
+
+test('buildTaskAwareConsumerQuickPrompts generates ab_test prompts', () => {
+  const prompts = buildTaskAwareConsumerQuickPrompts({
+    task_type: 'ab_test',
+    winning_variant: 'Variant A',
+    top_variant_deltas: [{ left: 'Variant A', right: 'Variant B', description: 'A outperforms B on trust' }],
+    top_persona_divergences: [{ variant_a: 'Variant A', variant_b: 'Variant B', description: 'Moms prefer A' }],
+  })
+  assert.ok(prompts.some(p => p.includes('Variant A') && p.includes('outperform')), 'Expected winning variant prompt')
+  assert.ok(prompts.some(p => p.includes('Variant A') && p.includes('Variant B')), 'Expected variant delta prompt')
+  assert.ok(prompts.some(p => p.includes('diverge') && p.includes('Variant A') && p.includes('Variant B')), 'Expected persona divergence prompt')
+})
+
+test('buildTaskAwareConsumerQuickPrompts generates price_test prompts', () => {
+  const prompts = buildTaskAwareConsumerQuickPrompts({
+    task_type: 'price_test',
+    acceptable_price_points: ['$9.99', '$12.99'],
+    resisted_price_points: ['$19.99'],
+    top_price_objections: ['Too expensive for students'],
+  })
+  assert.ok(prompts.some(p => p.includes('$9.99')), 'Expected acceptable price prompt')
+  assert.ok(prompts.some(p => p.includes('$19.99')), 'Expected resisted price prompt')
+  assert.ok(prompts.some(p => p.includes('Too expensive for students')), 'Expected price objection prompt')
+})
+
+test('buildTaskAwareConsumerQuickPrompts returns empty array for concept_test with no task data', () => {
+  const prompts = buildTaskAwareConsumerQuickPrompts({
+    task_type: 'concept_test',
+  })
+  assert.deepEqual(prompts, [])
+})
+
+test('buildConsumerQuickPrompts includes task-aware prompts for packaging_test', () => {
+  const prompts = buildConsumerQuickPrompts({
+    task_type: 'packaging_test',
+    top_packaging_hooks: ['Eco-friendly design'],
+    top_resonance_points: ['portable breakfast'],
+  })
+  assert.ok(prompts.some(p => p.includes('Eco-friendly design')), 'Expected packaging hook prompt')
+  assert.ok(!prompts.some(p => p.includes('portable breakfast')), 'Expected no resonance prompt in packaging_test')
+})
+
+test('buildConsumerQuickPrompts includes task-aware prompts for ab_test', () => {
+  const prompts = buildConsumerQuickPrompts({
+    task_type: 'ab_test',
+    winning_variant: 'Variant A',
+    top_resonance_points: ['portable breakfast'],
+  })
+  assert.ok(prompts.some(p => p.includes('Variant A')), 'Expected winning variant prompt')
+  assert.ok(prompts.some(p => p.includes('portable breakfast')), 'Expected resonance prompt in ab_test')
+})
+
+test('buildConsumerQuickPrompts includes task-aware prompts for price_test', () => {
+  const prompts = buildConsumerQuickPrompts({
+    task_type: 'price_test',
+    acceptable_price_points: ['$9.99'],
+    top_resonance_points: ['portable breakfast'],
+  })
+  assert.ok(prompts.some(p => p.includes('$9.99')), 'Expected acceptable price prompt')
+  assert.ok(prompts.some(p => p.includes('portable breakfast')), 'Expected resonance prompt in price_test')
+})
+
+// Mirrors Step4Report.vue computed-property mapping for task-aware fields.
+test('Step4Report task-aware field mapping renders non-empty results for packaging_test', () => {
+  const reportContext = {
+    task_type: 'packaging_test',
+    top_packaging_hooks: ['Eco-friendly design', 'Clear label'],
+    top_trust_objections: ['Looks expensive'],
+    top_confusion_triggers: ['Unclear disposal instructions'],
+  }
+
+  const hooks = (reportContext.top_packaging_hooks || []).filter(Boolean).map(text => ({ text }))
+  const trust = (reportContext.top_trust_objections || []).filter(Boolean).map(text => ({ text }))
+  const confusion = (reportContext.top_confusion_triggers || []).filter(Boolean).map(text => ({ text }))
+
+  assert.equal(hooks.length, 2)
+  assert.equal(hooks[0].text, 'Eco-friendly design')
+  assert.equal(trust.length, 1)
+  assert.equal(trust[0].text, 'Looks expensive')
+  assert.equal(confusion.length, 1)
+  assert.equal(confusion[0].text, 'Unclear disposal instructions')
+})
+
+test('Step4Report task-aware field mapping renders non-empty results for ab_test', () => {
+  const reportContext = {
+    task_type: 'ab_test',
+    winning_variant: 'Variant A',
+    top_variant_deltas: [
+      { left: 'Variant A', right: 'Variant B', description: 'A outperforms B on trust' },
+    ],
+    top_persona_divergences: [
+      { variant_a: 'Variant A', variant_b: 'Variant B', description: 'Moms prefer A' },
+    ],
+  }
+
+  const winning = reportContext.winning_variant || ''
+  const deltas = (reportContext.top_variant_deltas || [])
+    .filter(d => d && (d.left || d.right))
+    .map(d => ({
+      left: d.left || '',
+      right: d.right || '',
+      description: d.description || `${d.left || ''} vs ${d.right || ''}`,
+    }))
+  const divergences = (reportContext.top_persona_divergences || [])
+    .filter(d => d && (d.variant_a || d.variant_b))
+    .map(d => ({
+      variantA: d.variant_a || '',
+      variantB: d.variant_b || '',
+      description: d.description || `${d.variant_a || ''} vs ${d.variant_b || ''}`,
+    }))
+
+  assert.equal(winning, 'Variant A')
+  assert.equal(deltas.length, 1)
+  assert.equal(deltas[0].description, 'A outperforms B on trust')
+  assert.equal(divergences.length, 1)
+  assert.equal(divergences[0].description, 'Moms prefer A')
+})
+
+test('Step4Report task-aware field mapping renders non-empty results for price_test', () => {
+  const reportContext = {
+    task_type: 'price_test',
+    acceptable_price_points: ['$9.99', '$12.99'],
+    resisted_price_points: ['$19.99'],
+    top_price_objections: ['Too expensive for students'],
+    price_context: 'subscription monthly',
+  }
+
+  const acceptable = (reportContext.acceptable_price_points || []).filter(Boolean).map(text => ({ text }))
+  const resisted = (reportContext.resisted_price_points || []).filter(Boolean).map(text => ({ text }))
+  const objections = (reportContext.top_price_objections || []).filter(Boolean).map(text => ({ text }))
+  const context = reportContext.price_context || ''
+
+  assert.equal(acceptable.length, 2)
+  assert.equal(acceptable[0].text, '$9.99')
+  assert.equal(resisted.length, 1)
+  assert.equal(resisted[0].text, '$19.99')
+  assert.equal(objections.length, 1)
+  assert.equal(objections[0].text, 'Too expensive for students')
+  assert.equal(context, 'subscription monthly')
 })

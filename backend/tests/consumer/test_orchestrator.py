@@ -23,6 +23,36 @@ def test_round_zero_prompt_pins_brief_and_hides_deep_risk():
     assert "ingredient controversy" not in prompt
 
 
+def test_packaging_prompt_uses_task_aware_focus_line():
+    prompt = ConsumerSimulationOrchestrator().build_round_prompt(
+        round_num=0,
+        agent_traits={"search_propensity": "low", "cognition_level": "medium"},
+        brief_summary="Pinned BusinessBrief Summary: packaging test",
+        visible_graph_nodes=[
+            {"type": "PackagingCue", "visibility": "Initial", "text": "glass jar"},
+        ],
+        task_type="packaging_test",
+    )
+
+    assert "packaging design, shelf appeal, and trust cues" in prompt
+
+
+def test_price_snapshot_carries_task_aware_prompt_focus():
+    snapshot = ConsumerSimulationOrchestrator().build_round_snapshot(
+        round_num=1,
+        agent_traits={"search_propensity": "high", "cognition_level": "high"},
+        brief_summary="Pinned BusinessBrief Summary: price test",
+        visible_graph_nodes=[
+            {"type": "PricePoint", "visibility": "Initial", "text": "$9.99"},
+        ],
+        agent_id="agent_1",
+        agent_name="Agent 1",
+        task_type="price_test",
+    )
+
+    assert "price perception, value trade-offs, and purchase intent" in snapshot["prompt"]
+
+
 def test_propagation_round_allows_high_search_agents_to_see_deep_nodes():
     prompt = ConsumerSimulationOrchestrator().build_round_prompt(
         round_num=2,

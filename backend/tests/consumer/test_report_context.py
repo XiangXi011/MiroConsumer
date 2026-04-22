@@ -16,6 +16,8 @@ from app.services.consumer.report_context import (
     enrich_report_context_with_snapshot,
 )
 from app.services.consumer.scoring import ConsumerScoringService
+from app.services.consumer.models import ConsumerBusinessBrief, ConsumerTaskType
+from app.services.consumer.scoring import build_consumer_summary
 
 
 def test_build_consumer_report_context_without_traces():
@@ -318,3 +320,41 @@ def test_build_consumer_report_context_without_snapshot_omits_enrichment():
     context = build_consumer_report_context(summary, findings, [])
     assert "source_catalog" not in context
     assert "enriched_findings" not in context
+
+
+def test_build_consumer_summary_and_context_surface_price_task_fields():
+    brief = ConsumerBusinessBrief(
+        task_type=ConsumerTaskType.PriceTest,
+        product_concept_assets=[],
+        price_points=["$9.99", "$14.99"],
+        price_context="subscription monthly",
+        research_goal="Test price sensitivity",
+    )
+    events = [
+        {
+            "event_id": "ev_1",
+            "event_type": "risk_discovery",
+            "actor_id": "M01",
+            "target_ids": [],
+            "trigger_finding_ids": [],
+            "supporting_quote": "This price feels expensive for a daily purchase.",
+            "round_index": 1,
+        }
+    ]
+
+    summary = build_consumer_summary(
+        events=events,
+        findings=[],
+        initial_labels=["neutral"],
+        final_labels=["negative"],
+        task_type="price_test",
+        brief=brief,
+    )
+    context = build_consumer_report_context(summary, [], events)
+
+    assert summary.task_type == "price_test"
+    assert summary.acceptable_price_points == ["$9.99", "$14.99"]
+    assert summary.resisted_price_points == ["$14.99"]
+    assert context["task_type"] == "price_test"
+    assert context["price_context"] == "subscription monthly"
+    assert context["acceptable_price_points"] == ["$9.99", "$14.99"]

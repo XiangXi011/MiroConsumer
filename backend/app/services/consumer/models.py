@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, ClassVar, Dict, Iterable, List, Literal, Optional
+from typing import Any, ClassVar, Dict, Iterable, List, Literal, Mapping, Optional
 
 from pydantic import BaseModel, Field
 
@@ -8,6 +8,9 @@ from pydantic import BaseModel, Field
 class ConsumerTaskType(str, Enum):
     ConceptTest = "concept_test"
     CopyFeedback = "copy_feedback"
+    PackagingTest = "packaging_test"
+    ABTest = "ab_test"
+    PriceTest = "price_test"
 
 
 class GraphVisibility(str, Enum):
@@ -200,9 +203,94 @@ def _normalize_enable_lane_b(value: Any) -> bool:
 
 
 @dataclass
+class TestVariant:
+    """Structured A/B test variant with rich concept fields."""
+
+    variant_id: str
+    label: str
+    concept_assets: List[str] = field(default_factory=list)
+    copy_material: List[str] = field(default_factory=list)
+    claims: List[str] = field(default_factory=list)
+    packaging_assets: Optional[List[str]] = None
+    price_points: Optional[List[str]] = None
+
+    def to_summary(self) -> Dict[str, Any]:
+        result: Dict[str, Any] = {
+            "variant_id": self.variant_id,
+            "label": self.label,
+            "concept_assets": self.concept_assets,
+            "copy_material": self.copy_material,
+            "claims": self.claims,
+        }
+        if self.packaging_assets is not None:
+            result["packaging_assets"] = self.packaging_assets
+        if self.price_points is not None:
+            result["price_points"] = self.price_points
+        return result
+
+
+def _normalize_test_variants(value: Any, field_name: str = "test_variants") -> List[TestVariant]:
+    """Normalize test_variants from objects or legacy string list."""
+    if value is None:
+        return []
+
+    if isinstance(value, str):
+        # Single string -> single variant with auto-generated id
+        return [TestVariant(variant_id="v1", label=value)]
+
+    if isinstance(value, (list, tuple)):
+        variants: List[TestVariant] = []
+        for idx, item in enumerate(value):
+            if isinstance(item, TestVariant):
+                variants.append(item)
+            elif isinstance(item, str):
+                # Legacy string variant -> normalize to TestVariant
+                variants.append(TestVariant(variant_id=f"v{idx + 1}", label=item))
+            elif isinstance(item, Mapping):
+                # Dict-style variant from payload
+                vid = str(item.get("variant_id", f"v{idx + 1}")).strip()
+                label = str(item.get("label", "")).strip()
+                if not label:
+                    raise ValueError(f"{field_name} item missing required 'label'")
+                variants.append(
+                    TestVariant(
+                        variant_id=vid,
+                        label=label,
+                        concept_assets=_normalize_string_list(
+                            item.get("concept_assets"), "concept_assets"
+                        ),
+                        copy_material=_normalize_string_list(
+                            item.get("copy_material"), "copy_material"
+                        ),
+                        claims=_normalize_string_list(item.get("claims"), "claims"),
+                        packaging_assets=_normalize_string_list(
+                            item.get("packaging_assets"), "packaging_assets"
+                        ) or None,
+                        price_points=_normalize_string_list(
+                            item.get("price_points"), "price_points"
+                        ) or None,
+                    )
+                )
+            else:
+                raise ValueError(f"{field_name} items must be TestVariant, dict, or str")
+        return variants
+
+    raise ValueError(f"{field_name} must be a list of variant objects or strings")
+
+
+def _normalize_price_context(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        text = value.strip()
+        return text if text else None
+    return None
+
+
+@dataclass
 class ConsumerBusinessBrief:
     task_type: ConsumerTaskType
-    product_concept_assets: List[str]
+    product_concept_assets: List[str] = field(default_factory=list)
     copy_material: List[str] = field(default_factory=list)
     claims: List[str] = field(default_factory=list)
     target_audience: List[str] = field(default_factory=list)
@@ -212,9 +300,17 @@ class ConsumerBusinessBrief:
     graph_visibility: GraphVisibility = GraphVisibility.Initial
     research_mode: str = "manual_only"
     enable_lane_b: bool = False
+    packaging_assets: List[str] = field(default_factory=list)
+    variants: List[str] = field(default_factory=list)
+    price_points: List[str] = field(default_factory=list)
+    test_variants: List[TestVariant] = field(default_factory=list)
+    price_context: Optional[str] = None
     supported_task_types: ClassVar[set[ConsumerTaskType]] = {
         ConsumerTaskType.ConceptTest,
         ConsumerTaskType.CopyFeedback,
+        ConsumerTaskType.PackagingTest,
+        ConsumerTaskType.ABTest,
+        ConsumerTaskType.PriceTest,
     }
 
     def __post_init__(self) -> None:
@@ -225,8 +321,32 @@ class ConsumerBusinessBrief:
         self.product_concept_assets = _normalize_string_list(
             self.product_concept_assets, "product_concept_assets"
         )
-        if not self.product_concept_assets:
-            raise ValueError("Missing required field: product_concept_assets")
+        self.packaging_assets = _normalize_string_list(self.packaging_assets, "packaging_assets")
+        self.variants = _normalize_string_list(self.variants, "variants")
+        self.price_points = _normalize_string_list(self.price_points, "price_points")
+        self.test_variants = _normalize_test_variants(self.test_variants, "test_variants")
+        self.price_context = _normalize_price_context(self.price_context)
+
+        # Backward compatibility: normalize old-style string variants into test_variants
+        if self.variants and not self.test_variants:
+            self.test_variants = [
+                TestVariant(variant_id=f"v{idx + 1}", label=v) for idx, v in enumerate(self.variants)
+            ]
+
+        # Task-specific required field validation
+        if self.task_type == ConsumerTaskType.PackagingTest:
+            if not self.packaging_assets:
+                raise ValueError("Missing required field: packaging_assets")
+        elif self.task_type == ConsumerTaskType.ABTest:
+            if len(self.test_variants) < 2:
+                raise ValueError("ab_test requires at least 2 variants")
+        elif self.task_type == ConsumerTaskType.PriceTest:
+            if not self.price_points:
+                raise ValueError("Missing required field: price_points")
+        else:
+            # concept_test and copy_feedback require product_concept_assets
+            if not self.product_concept_assets:
+                raise ValueError("Missing required field: product_concept_assets")
 
         self.copy_material = _normalize_string_list(self.copy_material, "copy_material")
         self.claims = _normalize_string_list(self.claims, "claims")
@@ -253,4 +373,9 @@ class ConsumerBusinessBrief:
             "graph_visibility": self.graph_visibility.value,
             "research_mode": self.research_mode,
             "enable_lane_b": self.enable_lane_b,
+            "packaging_assets": self.packaging_assets,
+            "variants": self.variants,
+            "price_points": self.price_points,
+            "test_variants": [v.to_summary() for v in self.test_variants],
+            "price_context": self.price_context,
         }

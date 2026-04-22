@@ -191,6 +191,117 @@ def test_enable_lane_b_in_summary():
     assert summary["enable_lane_b"] is True
 
 
+def test_packaging_test_payload_builds_brief_correctly():
+    brief = ConsumerBriefAdapter.from_payload(
+        {
+            "task_type": "packaging_test",
+            "packaging_assets": ["box-front.png", "label-detail.png"],
+            "research_goal": "Evaluate shelf appeal",
+        }
+    )
+    assert brief.task_type == ConsumerTaskType.PackagingTest
+    assert brief.packaging_assets == ["box-front.png", "label-detail.png"]
+
+
+def test_ab_test_payload_builds_brief_correctly():
+    brief = ConsumerBriefAdapter.from_payload(
+        {
+            "task_type": "ab_test",
+            "variants": ["Headline A", "Headline B"],
+            "research_goal": "Compare messaging effectiveness",
+        }
+    )
+    assert brief.task_type == ConsumerTaskType.ABTest
+    assert brief.variants == ["Headline A", "Headline B"]
+
+
+def test_ab_test_payload_prefers_structured_test_variants():
+    brief = ConsumerBriefAdapter.from_payload(
+        {
+            "task_type": "ab_test",
+            "test_variants": [
+                {"variant_id": "control", "label": "Headline A", "copy_material": ["A copy"]},
+                {"variant_id": "treatment", "label": "Headline B", "copy_material": ["B copy"]},
+            ],
+            "research_goal": "Compare messaging effectiveness",
+        }
+    )
+    assert brief.task_type == ConsumerTaskType.ABTest
+    assert len(brief.test_variants) == 2
+    assert brief.test_variants[0].variant_id == "control"
+    assert brief.test_variants[1].label == "Headline B"
+
+
+def test_price_test_payload_builds_brief_correctly():
+    brief = ConsumerBriefAdapter.from_payload(
+        {
+            "task_type": "price_test",
+            "price_points": ["$9.99", "$12.99"],
+            "research_goal": "Test price sensitivity",
+        }
+    )
+    assert brief.task_type == ConsumerTaskType.PriceTest
+    assert brief.price_points == ["$9.99", "$12.99"]
+
+
+def test_price_test_payload_preserves_price_context():
+    brief = ConsumerBriefAdapter.from_payload(
+        {
+            "task_type": "price_test",
+            "price_points": ["$9.99", "$12.99"],
+            "price_context": "subscription monthly",
+            "research_goal": "Test price sensitivity",
+        }
+    )
+    assert brief.price_context == "subscription monthly"
+
+
+def test_packaging_test_missing_assets_raises():
+    with pytest.raises(ValueError, match="packaging_assets"):
+        ConsumerBriefAdapter.from_payload(
+            {
+                "task_type": "packaging_test",
+                "research_goal": "Evaluate shelf appeal",
+            }
+        )
+
+
+def test_ab_test_insufficient_variants_raises():
+    with pytest.raises(ValueError, match="at least 2 variants"):
+        ConsumerBriefAdapter.from_payload(
+            {
+                "task_type": "ab_test",
+                "variants": ["Only one"],
+                "research_goal": "Compare messaging",
+            }
+        )
+
+
+def test_price_test_missing_price_points_raises():
+    with pytest.raises(ValueError, match="price_points"):
+        ConsumerBriefAdapter.from_payload(
+            {
+                "task_type": "price_test",
+                "research_goal": "Test price sensitivity",
+            }
+        )
+
+
+def test_new_task_types_include_fields_in_summary():
+    brief = ConsumerBriefAdapter.from_payload(
+        {
+            "task_type": "ab_test",
+            "variants": ["A", "B", "C"],
+            "research_goal": "Compare",
+        }
+    )
+    summary = brief.to_summary()
+    assert summary["task_type"] == "ab_test"
+    assert summary["variants"] == ["A", "B", "C"]
+    assert summary["packaging_assets"] == []
+    assert summary["price_points"] == []
+
+
 def test_model_rejects_invalid_task_type_and_graph_visibility():
     with pytest.raises(ValueError, match="Unsupported task_type"):
         ConsumerBusinessBrief(
@@ -206,3 +317,111 @@ def test_model_rejects_invalid_task_type_and_graph_visibility():
             research_goal="Understand appeal",
             graph_visibility="Hidden",
         )
+
+
+def test_ab_test_payload_with_test_variants_objects():
+    brief = ConsumerBriefAdapter.from_payload(
+        {
+            "task_type": "ab_test",
+            "test_variants": [
+                {
+                    "variant_id": "v1",
+                    "label": "Headline A",
+                    "concept_assets": ["img-a.png"],
+                    "copy_material": ["Copy A"],
+                    "claims": ["Claim A"],
+                },
+                {
+                    "variant_id": "v2",
+                    "label": "Headline B",
+                    "concept_assets": ["img-b.png"],
+                    "copy_material": ["Copy B"],
+                    "claims": ["Claim B"],
+                },
+            ],
+            "research_goal": "Compare messaging effectiveness",
+        }
+    )
+    assert brief.task_type == ConsumerTaskType.ABTest
+    assert len(brief.test_variants) == 2
+    assert brief.test_variants[0].label == "Headline A"
+    assert brief.test_variants[0].variant_id == "v1"
+    assert brief.test_variants[1].label == "Headline B"
+    assert brief.test_variants[1].variant_id == "v2"
+
+
+def test_price_test_payload_with_price_context():
+    brief = ConsumerBriefAdapter.from_payload(
+        {
+            "task_type": "price_test",
+            "price_points": ["$9.99", "$12.99"],
+            "price_context": "Competitor prices range from $8 to $15",
+            "research_goal": "Test price sensitivity",
+        }
+    )
+    assert brief.task_type == ConsumerTaskType.PriceTest
+    assert brief.price_points == ["$9.99", "$12.99"]
+    assert brief.price_context == "Competitor prices range from $8 to $15"
+
+
+def test_legacy_variants_normalize_to_test_variants():
+    brief = ConsumerBriefAdapter.from_payload(
+        {
+            "task_type": "ab_test",
+            "variants": ["Legacy A", "Legacy B"],
+            "research_goal": "Compare messaging",
+        }
+    )
+    assert len(brief.test_variants) == 2
+    assert brief.test_variants[0].label == "Legacy A"
+    assert brief.test_variants[0].variant_id == "v1"
+    assert brief.test_variants[1].label == "Legacy B"
+    assert brief.test_variants[1].variant_id == "v2"
+
+
+def test_test_variants_takes_precedence_over_legacy_variants():
+    brief = ConsumerBriefAdapter.from_payload(
+        {
+            "task_type": "ab_test",
+            "test_variants": [
+                {"variant_id": "new1", "label": "New A", "concept_assets": [], "copy_material": [], "claims": []},
+                {"variant_id": "new2", "label": "New B", "concept_assets": [], "copy_material": [], "claims": []},
+            ],
+            "variants": ["Legacy A", "Legacy B"],
+            "research_goal": "Compare messaging",
+        }
+    )
+    assert len(brief.test_variants) == 2
+    assert brief.test_variants[0].label == "New A"
+    assert brief.test_variants[1].label == "New B"
+
+
+def test_price_context_in_summary():
+    brief = ConsumerBriefAdapter.from_payload(
+        {
+            "task_type": "price_test",
+            "price_points": ["$9.99"],
+            "price_context": "Competitor benchmark: $8-$12",
+            "research_goal": "Test price sensitivity",
+        }
+    )
+    summary = brief.to_summary()
+    assert summary["price_context"] == "Competitor benchmark: $8-$12"
+
+
+def test_test_variants_in_summary():
+    brief = ConsumerBriefAdapter.from_payload(
+        {
+            "task_type": "ab_test",
+            "test_variants": [
+                {"variant_id": "v1", "label": "Variant A", "concept_assets": [], "copy_material": [], "claims": []},
+                {"variant_id": "v2", "label": "Variant B", "concept_assets": [], "copy_material": [], "claims": []},
+            ],
+            "research_goal": "Compare messaging",
+        }
+    )
+    summary = brief.to_summary()
+    assert len(summary["test_variants"]) == 2
+    assert summary["test_variants"][0]["label"] == "Variant A"
+    assert summary["test_variants"][0]["variant_id"] == "v1"
+    assert summary["test_variants"][1]["variant_id"] == "v2"

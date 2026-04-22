@@ -210,9 +210,45 @@ Step 4 and Step 5 should surface the new task-aware outputs without changing rou
 
 ---
 
-## 7. Risks
+## 7. Implementation Outcome (2026-04-22)
+
+Phase 4B is now implemented on `codex/consumer-simulation-phase1`.
+
+Delivered changes:
+
+- backend brief/schema now supports:
+  - `packaging_assets`
+  - `test_variants`
+  - `price_points`
+  - `price_context`
+- old-style backend `variants: ["A", "B"]` payloads normalize into `test_variants`
+- graph builder now emits:
+  - `PackagingCue`
+  - `Variant`
+  - `PricePoint`
+- simulation runner and orchestrator now carry task-aware prompt focus for:
+  - `packaging_test`
+  - `ab_test`
+  - `price_test`
+- consumer summary / report context now expose:
+  - `task_type`
+  - packaging-specific fields
+  - A/B-specific fields
+  - price-specific fields
+- Home form now supports task-type-aware fields under the existing `consumer_test` entry
+- Step 4 and Step 5 now surface task-aware findings and follow-up prompts
+
+Verified results:
+
+- backend targeted regression: `115 passed`
+- backend full non-integration regression: `411 passed`
+- frontend targeted tests: `89 passed`
+- frontend build: success
+
+---
+
+## 8. Risks
 
 - overcomplicating the brief schema; keep the first version compact
 - trying to infer packaging visuals beyond text evidence; Phase 4B should stay descriptor-based
 - building a separate comparison engine for A/B; reuse the existing comparison/report structures instead
-

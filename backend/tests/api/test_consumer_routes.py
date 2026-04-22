@@ -950,6 +950,48 @@ def test_consumer_summary_route_exposes_phase2_fields(tmp_path, monkeypatch):
     assert payload["cascade_metrics"]["community_count"] >= 0
 
 
+def test_consumer_summary_route_exposes_task_aware_price_fields(tmp_path, monkeypatch):
+    uploads_dir = tmp_path / "uploads"
+    projects_dir = uploads_dir / "projects"
+    simulations_dir = _configure_simulation_storage(tmp_path, monkeypatch)
+    monkeypatch.setattr(graph_api.Config, "UPLOAD_FOLDER", str(uploads_dir))
+    monkeypatch.setattr(ProjectManager, "PROJECTS_DIR", str(projects_dir))
+
+    project = ProjectManager.create_project(name="Consumer Price Summary")
+    project.project_type = "consumer_test"
+    project.graph_id = f"consumer_{project.project_id}"
+    project.consumer_brief = {
+        "task_type": "price_test",
+        "product_concept_assets": ["Protein yogurt pouch"],
+        "copy_material": ["14g protein"],
+        "price_points": ["$9.99", "$14.99"],
+        "price_context": "subscription monthly",
+        "target_audience": ["busy professionals"],
+        "usage_scene": ["morning commute"],
+        "research_goal": "Find acceptable price range",
+    }
+    ProjectManager.save_project(project)
+
+    state = SimulationManager().create_simulation(
+        project_id=project.project_id,
+        graph_id=project.graph_id,
+        project_type="consumer_test",
+    )
+    _write_consumer_rounds_with_events(simulations_dir, state.simulation_id)
+
+    app = _create_test_app()
+    client = app.test_client()
+
+    response = client.get(f"/api/simulation/{state.simulation_id}/consumer-summary")
+
+    assert response.status_code == 200
+    payload = response.get_json()["data"]
+    assert payload["task_type"] == "price_test"
+    assert payload["acceptable_price_points"] == ["$9.99", "$14.99"]
+    assert payload["resisted_price_points"] == ["$14.99"]
+    assert payload["price_context"] == "subscription monthly"
+
+
 def test_generate_consumer_report_includes_voc_quotes(tmp_path, monkeypatch):
     uploads_dir = tmp_path / "uploads"
     projects_dir = uploads_dir / "projects"

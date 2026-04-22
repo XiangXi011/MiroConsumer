@@ -5,9 +5,11 @@ from .models import (
     GraphVisibility,
     _normalize_enable_lane_b,
     _normalize_graph_visibility,
+    _normalize_price_context,
     _normalize_research_mode,
     _normalize_string_list,
     _normalize_task_type,
+    _normalize_test_variants,
 )
 
 
@@ -25,8 +27,6 @@ class ConsumerBriefAdapter:
         product_concept_assets = _normalize_string_list(
             payload.get("product_concept_assets"), "product_concept_assets"
         )
-        if not product_concept_assets:
-            raise ValueError("Missing required field: product_concept_assets")
 
         research_goal = payload.get("research_goal")
         if not isinstance(research_goal, str) or not research_goal.strip():
@@ -39,6 +39,17 @@ class ConsumerBriefAdapter:
             claims = list(copy_material)
         else:
             claims = _normalize_string_list(claims_value, "claims")
+
+        # Backward compatibility: accept old-style 'variants' list of strings
+        # and normalize into test_variants. Prefer 'test_variants' when present.
+        test_variants_value = payload.get("test_variants")
+        variants_value = payload.get("variants")
+        if test_variants_value is not None:
+            test_variants = _normalize_test_variants(test_variants_value, "test_variants")
+        elif variants_value is not None:
+            test_variants = _normalize_test_variants(variants_value, "variants")
+        else:
+            test_variants = []
 
         return ConsumerBusinessBrief(
             task_type=task_type,
@@ -54,4 +65,9 @@ class ConsumerBriefAdapter:
             graph_visibility=_normalize_graph_visibility(payload.get("graph_visibility")),
             research_mode=_normalize_research_mode(payload.get("research_mode")),
             enable_lane_b=_normalize_enable_lane_b(payload.get("enable_lane_b")),
+            packaging_assets=_normalize_string_list(payload.get("packaging_assets"), "packaging_assets"),
+            variants=_normalize_string_list(variants_value, "variants"),
+            price_points=_normalize_string_list(payload.get("price_points"), "price_points"),
+            test_variants=test_variants,
+            price_context=_normalize_price_context(payload.get("price_context")),
         )

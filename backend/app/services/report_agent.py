@@ -19,6 +19,7 @@ from datetime import datetime
 from enum import Enum
 
 from ..config import Config
+from ..models.project import ProjectManager
 from ..utils.llm_client import LLMClient
 from ..utils.logger import get_logger
 from ..utils.locale import get_language_instruction, t
@@ -1927,6 +1928,7 @@ class ReportAgent:
                 ]
                 loaded_from_project = True
 
+        consumer_config: Dict[str, Any] = {}
         if not loaded_from_project:
             consumer_config_path = os.path.join(
                 Config.UPLOAD_FOLDER, "simulations", self.simulation_id, "consumer_config.json"
@@ -1937,11 +1939,35 @@ class ReportAgent:
                 research_findings = consumer_config.get("research_findings", [])
                 retrieval_traces = consumer_config.get("retrieval_traces", [])
                 research_snapshot = consumer_config.get("research_snapshot", {})
+        else:
+            # Even when loaded from project, try to read consumer_config for task_type
+            consumer_config_path = os.path.join(
+                Config.UPLOAD_FOLDER, "simulations", self.simulation_id, "consumer_config.json"
+            )
+            if os.path.exists(consumer_config_path):
+                with open(consumer_config_path, "r", encoding="utf-8") as f:
+                    consumer_config = json.load(f)
+
+        # Extract task_type from consumer brief when available
+        task_type: Optional[str] = None
+        brief = None
+        consumer_brief_summary = consumer_config.get("consumer_brief", {})
+        if isinstance(consumer_brief_summary, dict) and consumer_brief_summary.get("task_type"):
+            task_type = consumer_brief_summary.get("task_type")
+            from ..services.consumer.brief_adapter import ConsumerBriefAdapter
+            brief = ConsumerBriefAdapter.from_payload(consumer_brief_summary)
+        elif self.project_id:
+            project = ProjectManager.get_project(self.project_id)
+            if project and getattr(project, "consumer_brief", None):
+                from ..services.consumer.brief_adapter import ConsumerBriefAdapter
+                brief = ConsumerBriefAdapter.from_payload(project.consumer_brief)
+                task_type = brief.task_type.value
 
         # Include research snapshot and findings in report context
         context["research_snapshot"] = research_snapshot
         context["research_findings"] = research_findings
         context["retrieval_traces"] = retrieval_traces
+        context["task_type"] = task_type or "concept_test"
 
         # Merge Phase 2 fields when events exist
         if all_events:
@@ -1961,6 +1987,8 @@ class ReportAgent:
                 findings=research_findings,
                 initial_labels=initial_labels,
                 final_labels=final_labels,
+                task_type=task_type,
+                brief=brief,
             )
             phase2_context = build_consumer_report_context(
                 summary=phase2_summary,
@@ -1978,6 +2006,18 @@ class ReportAgent:
             context["source_catalog"] = phase2_context.get("source_catalog")
             context["enriched_findings"] = phase2_context.get("enriched_findings")
             context["enriched_traces"] = phase2_context.get("enriched_traces")
+
+            # Inject task-aware fields from Phase 2 summary into context
+            context["top_packaging_hooks"] = phase2_summary.top_packaging_hooks or context.get("top_packaging_hooks", [])
+            context["top_trust_objections"] = phase2_summary.top_trust_objections or context.get("top_trust_objections", [])
+            context["top_confusion_triggers"] = phase2_summary.top_confusion_triggers or context.get("top_confusion_triggers", [])
+            context["winning_variant"] = phase2_summary.winning_variant or context.get("winning_variant", "")
+            context["top_variant_deltas"] = phase2_summary.top_variant_deltas or context.get("top_variant_deltas", [])
+            context["top_persona_divergences"] = phase2_summary.top_persona_divergences or context.get("top_persona_divergences", [])
+            context["acceptable_price_points"] = phase2_summary.acceptable_price_points or context.get("acceptable_price_points", [])
+            context["resisted_price_points"] = phase2_summary.resisted_price_points or context.get("resisted_price_points", [])
+            context["top_price_objections"] = phase2_summary.top_price_objections or context.get("top_price_objections", [])
+            context["price_context"] = phase2_summary.price_context or context.get("price_context", "")
         elif loaded_from_project and persisted_snapshot is not None:
             # Enrich findings/traces with snapshot even when there are no propagation events
             from ..services.consumer.report_context import enrich_report_context_with_snapshot
@@ -2049,26 +2089,53 @@ class ReportAgent:
 
     def _render_consumer_section(self, section_title: str, context: Dict[str, Any]) -> str:
         summary = context["summary"]
+        task_type = str(context.get("task_type", "")).strip().lower()
+
         if section_title == "测试概览":
-            return (
-                f"- 事件样本数：{context['events_count']}\n"
-                f"- 初始接受度：{self._format_acceptance(summary['initial_acceptance'])}\n"
-                f"- 传播后接受度：{self._format_acceptance(summary['post_propagation_acceptance'])}\n"
-                f"- 态度转向率：{summary['attitude_shift_rate']:.0%}"
-            )
+            lines = [
+                f"- 事件样本数：{context['events_count']}",
+                f"- 初始接受度：{self._format_acceptance(summary['initial_acceptance'])}",
+                f"- 传播后接受度：{self._format_acceptance(summary['post_propagation_acceptance'])}",
+                f"- 态度转向率：{summary['attitude_shift_rate']:.0%}",
+            ]
+            if task_type == "packaging_test" and context.get("top_packaging_hooks"):
+                lines.append(f"- 包装吸引点：{self._format_points(context['top_packaging_hooks'])}")
+            if task_type == "ab_test" and context.get("winning_variant"):
+                lines.append(f"- 占优 variant：{context['winning_variant']}")
+            if task_type == "price_test" and context.get("price_context"):
+                lines.append(f"- 价格背景：{context['price_context']}")
+            return "\n".join(lines)
 
         if section_title == "初始反应":
-            return (
-                f"- 高共鸣点：{self._format_points(context['top_resonance_points'])}\n"
-                f"- 代表性正向原声：\n{self._format_quotes(context['representative_voc_quotes']['resonance'])}"
-            )
+            lines = [
+                f"- 高共鸣点：{self._format_points(context['top_resonance_points'])}",
+                f"- 代表性正向原声：\n{self._format_quotes(context['representative_voc_quotes']['resonance'])}",
+            ]
+            if task_type == "packaging_test" and context.get("top_packaging_hooks"):
+                lines.append(f"- 包装第一眼吸引：{self._format_points(context['top_packaging_hooks'])}")
+            if task_type == "ab_test" and context.get("top_variant_deltas"):
+                lines.append("- Variant 差异感知：")
+                for delta in context["top_variant_deltas"][:3]:
+                    d_type = delta.get("type", "")
+                    d_quote = delta.get("quote", "")
+                    lines.append(f"  - [{d_type}] {d_quote}")
+            if task_type == "price_test" and context.get("acceptable_price_points"):
+                lines.append(f"- 可接受价格：{self._format_points(context['acceptable_price_points'])}")
+            return "\n".join(lines)
 
         if section_title == "传播演化":
-            return (
-                f"- 传播后接受度：{self._format_acceptance(summary['post_propagation_acceptance'])}\n"
-                f"- 态度转向率：{summary['attitude_shift_rate']:.0%}\n"
-                f"- 扩散中的高频讨论点：{self._format_points(context['top_resonance_points'])}"
-            )
+            lines = [
+                f"- 传播后接受度：{self._format_acceptance(summary['post_propagation_acceptance'])}",
+                f"- 态度转向率：{summary['attitude_shift_rate']:.0%}",
+                f"- 扩散中的高频讨论点：{self._format_points(context['top_resonance_points'])}",
+            ]
+            if task_type == "packaging_test" and context.get("top_trust_objections"):
+                lines.append(f"- 信任疑虑：{self._format_points(context['top_trust_objections'])}")
+            if task_type == "ab_test" and context.get("top_persona_divergences"):
+                lines.append(f"- 人群差异：{self._format_points(context['top_persona_divergences'])}")
+            if task_type == "price_test" and context.get("resisted_price_points"):
+                lines.append(f"- 抗拒价格：{self._format_points(context['resisted_price_points'])}")
+            return "\n".join(lines)
 
         if section_title == "风险与误读":
             lines = [
@@ -2077,6 +2144,10 @@ class ReportAgent:
                 f"- 风险原声：\n{self._format_quotes(context['representative_voc_quotes']['risk'])}",
                 f"- 误读/疑问原声：\n{self._format_quotes(context['representative_voc_quotes']['misread'])}",
             ]
+            if task_type == "packaging_test" and context.get("top_confusion_triggers"):
+                lines.append(f"- 包装混淆点：{self._format_points(context['top_confusion_triggers'])}")
+            if task_type == "price_test" and context.get("top_price_objections"):
+                lines.append(f"- 价格异议：{self._format_points(context['top_price_objections'])}")
             if context.get("top_risk_findings"):
                 lines.append("- 因果触发发现：")
                 for finding in context["top_risk_findings"]:
@@ -2088,11 +2159,16 @@ class ReportAgent:
             return "\n".join(lines)
 
         if section_title == "代表性消费者原声":
-            return (
-                f"**正向原声**\n{self._format_quotes(context['representative_voc_quotes']['resonance'])}\n\n"
-                f"**风险原声**\n{self._format_quotes(context['representative_voc_quotes']['risk'])}\n\n"
-                f"**误读/疑问原声**\n{self._format_quotes(context['representative_voc_quotes']['misread'])}"
-            )
+            lines = [
+                f"**正向原声**\n{self._format_quotes(context['representative_voc_quotes']['resonance'])}",
+                f"**风险原声**\n{self._format_quotes(context['representative_voc_quotes']['risk'])}",
+                f"**误读/疑问原声**\n{self._format_quotes(context['representative_voc_quotes']['misread'])}",
+            ]
+            if task_type == "packaging_test" and context.get("top_packaging_hooks"):
+                lines.append(f"**包装相关原声**\n{self._format_task_quotes(context['top_packaging_hooks'])}")
+            if task_type == "price_test" and context.get("top_price_objections"):
+                lines.append(f"**价格相关原声**\n{self._format_task_quotes(context['top_price_objections'])}")
+            return "\n\n".join(lines)
 
         if section_title == "行动建议":
             resonance_point = self._first_point(context["top_resonance_points"], "现有核心卖点")
@@ -2103,6 +2179,19 @@ class ReportAgent:
                 f"- 提前澄清风险：针对“{risk_point}”准备更直接的解释与证据。",
                 f"- 修正文案误读：对“{misread_point}”补充更具体、更少歧义的表述。",
             ]
+            if task_type == "packaging_test":
+                trust = self._first_point(context.get("top_trust_objections", []), "信任疑虑")
+                confusion = self._first_point(context.get("top_confusion_triggers", []), "混淆点")
+                lines.append(f"- 优化包装信任感：针对“{trust}”增加背书或认证信息。")
+                lines.append(f"- 消除包装混淆：对“{confusion}”简化设计或增加说明。")
+            if task_type == "ab_test":
+                variant = context.get("winning_variant", "") or "占优 variant"
+                lines.append(f"- 推广优胜 variant：重点投放“{variant}”并分析其优势要素。")
+            if task_type == "price_test":
+                acceptable = self._first_point(context.get("acceptable_price_points", []), "可接受价格带")
+                resisted = self._first_point(context.get("resisted_price_points", []), "抗拒价格点")
+                lines.append(f"- 锚定合理价格：以“{acceptable}”为传播锚点强化价值感知。")
+                lines.append(f"- 规避价格雷区：针对“{resisted}”提前准备价值解释或促销话术。")
             if context.get("top_risk_findings"):
                 lines.append("- 针对风险发现的优先行动：")
                 for finding in context["top_risk_findings"][:3]:
@@ -2112,6 +2201,14 @@ class ReportAgent:
             return "\n".join(lines)
 
         return ""
+
+    def _format_task_quotes(self, items: List[str]) -> str:
+        if not items:
+            return "- 暂无"
+        lines = []
+        for item in items:
+            lines.append(f'- "{item}"')
+        return "\n".join(lines)
 
     def _format_acceptance(self, acceptance: Dict[str, float]) -> str:
         return (

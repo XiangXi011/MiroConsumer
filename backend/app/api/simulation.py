@@ -16,6 +16,7 @@ from ..services.simulation_runner import SimulationRunner, RunnerStatus
 from ..services.consumer.persona_pack import load_default_persona_pack
 from ..services.consumer.report_context import ConsumerReportContextBuilder, build_consumer_report_context
 from ..services.consumer.scoring import build_consumer_summary
+from ..services.consumer.brief_adapter import ConsumerBriefAdapter
 from ..services.consumer.intervention_manager import (
     ConsumerInterventionManager,
     InterventionType,
@@ -1223,12 +1224,16 @@ def get_consumer_summary(simulation_id: str):
 
         # Load research findings from consumer_config
         research_findings = []
+        brief = None
         consumer_config_path = os.path.join(Config.UPLOAD_FOLDER, 'simulations', simulation_id, 'consumer_config.json')
         if os.path.exists(consumer_config_path):
             import json
             with open(consumer_config_path, "r", encoding="utf-8") as f:
                 consumer_config = json.load(f)
             research_findings = consumer_config.get("research_findings", [])
+            brief_payload = consumer_config.get("consumer_brief") or {}
+            if brief_payload:
+                brief = ConsumerBriefAdapter.from_payload(brief_payload)
 
         # Phase 4A: load project research snapshot for traces/chunks/sources if available
         traces = []
@@ -1239,6 +1244,8 @@ def get_consumer_summary(simulation_id: str):
             from app.services.consumer.project_research_persistence import load_persisted_snapshot
             from app.services.consumer.models import ResearchSnapshot
             snapshot = load_persisted_snapshot(project.project_id)
+            if brief is None and getattr(project, "consumer_brief", None):
+                brief = ConsumerBriefAdapter.from_payload(project.consumer_brief)
             if snapshot:
                 traces = snapshot.retrieval_traces or []
                 chunks = snapshot.chunks or []
@@ -1263,6 +1270,8 @@ def get_consumer_summary(simulation_id: str):
                 traces=traces,
                 chunks=chunks,
                 sources=sources,
+                task_type=(brief.task_type.value if brief is not None else None),
+                brief=brief,
             )
             phase2_context = build_consumer_report_context(
                 summary=phase2_summary,
@@ -1281,6 +1290,20 @@ def get_consumer_summary(simulation_id: str):
             context["event_led_reversals"] = phase2_context["event_led_reversals"]
             context["persona_group_signals"] = phase2_context["persona_group_signals"]
             context["cascade_metrics"] = phase2_context.get("cascade_metrics", {})
+            context["task_type"] = phase2_context.get("task_type", "concept_test")
+            for key, default in (
+                ("top_packaging_hooks", []),
+                ("top_trust_objections", []),
+                ("top_confusion_triggers", []),
+                ("winning_variant", ""),
+                ("top_variant_deltas", []),
+                ("top_persona_divergences", []),
+                ("acceptable_price_points", []),
+                ("resisted_price_points", []),
+                ("top_price_objections", []),
+                ("price_context", ""),
+            ):
+                context[key] = phase2_context.get(key, default)
             # Phase 4A confidence fields (consumer_test only)
             if phase2_summary.report_confidence is not None:
                 context["report_confidence"] = phase2_summary.report_confidence

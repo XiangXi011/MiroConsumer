@@ -329,6 +329,58 @@ Phase 4C 在 Phase 4A 的可信度基线上，补齐了效率、兼容性和工�
 
 - `consumer_test` Phase 1、Phase 2、Phase 3、Phase 4A 与 Phase 4C 均已完成并通过当前正式验收。
 
+### 7.7 Phase 4B 已完成（测试类型扩展）
+
+Phase 4B 在既有 `consumer_test` 主链路上扩展了 3 类新的消费者测试任务，使系统从“概念/文案传播测试”升级为更完整的消费者测试工作台。
+
+- **新增任务类型**
+  - `packaging_test`
+  - `ab_test`
+  - `price_test`
+
+- **Brief / Schema 扩展**
+  - `ConsumerTaskType` 与 `ConsumerBusinessBrief` 已支持：
+    - `packaging_assets`
+    - `test_variants`
+    - `price_points`
+    - `price_context`
+  - 旧的 `concept_test` / `copy_feedback` 保持向后兼容
+  - 旧式 `variants: ["A", "B"]` 输入会自动规范化到 `test_variants`
+
+- **图谱与仿真扩展**
+  - 图谱层新增 `PackagingCue`、`Variant`、`PricePoint` 节点支持
+  - `simulation_runner` 与 `orchestrator` 已支持 task-aware prompt focus：
+    - 包装测试强调包装线索、货架吸引力与信任感
+    - A/B 测试强调变体比较
+    - 价格测试强调价格感知、价值权衡与购买意向
+
+- **报告与交互扩展**
+  - `consumer-summary` / `report_context` 已暴露 `task_type`
+  - `packaging_test` 输出：
+    - `top_packaging_hooks`
+    - `top_trust_objections`
+    - `top_confusion_triggers`
+  - `ab_test` 输出：
+    - `winning_variant`
+    - `top_variant_deltas`
+    - `top_persona_divergences`
+  - `price_test` 输出：
+    - `acceptable_price_points`
+    - `resisted_price_points`
+    - `top_price_objections`
+    - `price_context`
+  - Step 4 / Step 5 已可基于这些字段展示任务化结果与推荐追问
+
+- **Phase 4B 回归结果（2026-04-22）：**
+  - 后端定向回归：`115 passed`
+  - 后端完整非集成回归：`411 passed`
+  - 前端定向回归：`89 passed`
+  - 前端 build：成功
+
+结论：
+
+- `consumer_test` Phase 1、Phase 2、Phase 3、Phase 4A、Phase 4B 与 Phase 4C 均已完成并通过当前正式验收。
+
 ### 7.5 当前已知限制
 
 - `auto_enrich` 已升级为双源 research 底座的一部分：当前包含 `Lane B` 外部检索 provider 与 deterministic fallback；若需更强的真实全网预研能力，后续仍建议替换为更稳定的外部 provider
@@ -348,7 +400,8 @@ Phase 4C 在 Phase 4A 的可信度基线上，补齐了效率、兼容性和工�
 
 - 大规模 prepare 的耗时与模型成本仍偏高
 - `json_object` 兼容性在不同模型或代理配置下仍可能波动
-- `pendingUpload.js` 动静态导入混用和前端 chunk size warning 仍存在，但不是本轮阻断问题
+- `packaging_test` 当前仍是基于文本/描述符的包装测试，不包含真实视觉理解
+- `price_test` 当前仍是价格感知与阈值测试，不是销量预测或外部定价数据建模
 
 ## 9. 后续阶段与终局愿景
 

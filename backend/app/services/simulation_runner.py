@@ -547,12 +547,16 @@ class SimulationRunner:
             state.rounds = []
 
             research_findings: List[ResearchFinding] = []
+            task_type: Optional[str] = None
             consumer_config_path = os.path.join(cls.RUN_STATE_DIR, simulation_id, "consumer_config.json")
             if os.path.exists(consumer_config_path):
                 with open(consumer_config_path, "r", encoding="utf-8") as f:
                     consumer_config = json.load(f)
                 for finding_data in consumer_config.get("research_findings", []):
                     research_findings.append(ResearchFinding(**finding_data))
+                consumer_brief = consumer_config.get("consumer_brief") or {}
+                if isinstance(consumer_brief, dict):
+                    task_type = consumer_brief.get("task_type")
 
             previous_attitudes: Dict[str, str] = {}
 
@@ -577,6 +581,7 @@ class SimulationRunner:
                         agent_id=agent_id,
                         agent_name=agent_traits["label"],
                         research_findings=research_findings,
+                        task_type=task_type,
                     )
 
                     previous_attitude = previous_attitudes.get(agent_id)
@@ -705,12 +710,16 @@ class SimulationRunner:
             personas = load_default_persona_pack()
 
             research_findings: List[ResearchFinding] = []
+            task_type: Optional[str] = None
             consumer_config_path = os.path.join(cls.RUN_STATE_DIR, simulation_id, "consumer_config.json")
             if os.path.exists(consumer_config_path):
                 with open(consumer_config_path, "r", encoding="utf-8") as f:
                     consumer_config = json.load(f)
                 for finding_data in consumer_config.get("research_findings", []):
                     research_findings.append(ResearchFinding(**finding_data))
+                consumer_brief = consumer_config.get("consumer_brief") or {}
+                if isinstance(consumer_brief, dict):
+                    task_type = consumer_brief.get("task_type")
 
             previous_attitudes: Dict[str, str] = {}
 
@@ -765,6 +774,7 @@ class SimulationRunner:
                         agent_id=agent_id,
                         agent_name=agent_traits["label"],
                         research_findings=research_findings,
+                        task_type=task_type,
                     )
 
                     # Inject active interventions into the snapshot prompt

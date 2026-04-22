@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Mapping, Optional
 
-from .models import ConsumerBusinessBrief, GraphVisibility, ResearchFinding
+from .models import ConsumerBusinessBrief, ConsumerTaskType, GraphVisibility, ResearchFinding
 from .persona_pack import load_default_persona_pack, map_persona_to_agent_traits
 
 
@@ -111,6 +111,50 @@ class ConsumerGraphBuilder:
             extra_attributes={"source": "consumer_brief", "round0_visible": True},
         )
 
+        if brief.task_type == ConsumerTaskType.PackagingTest:
+            self._add_items(
+                nodes=nodes,
+                edges=edges,
+                node_index=node_index,
+                root_node_id=brief_node_id,
+                items=brief.packaging_assets,
+                label="PackagingCue",
+                edge_type="HAS_PACKAGING_CUE",
+                summary_prefix="Packaging asset shown in round 0",
+                visibility=GraphVisibility.Initial,
+                created_at=created_at,
+                extra_attributes={"source": "consumer_brief", "round0_visible": True},
+            )
+        elif brief.task_type == ConsumerTaskType.ABTest:
+            variant_labels = [v.label for v in brief.test_variants]
+            self._add_items(
+                nodes=nodes,
+                edges=edges,
+                node_index=node_index,
+                root_node_id=brief_node_id,
+                items=variant_labels,
+                label="Variant",
+                edge_type="HAS_VARIANT",
+                summary_prefix="A/B variant shown in round 0",
+                visibility=GraphVisibility.Initial,
+                created_at=created_at,
+                extra_attributes={"source": "consumer_brief", "round0_visible": True},
+            )
+        elif brief.task_type == ConsumerTaskType.PriceTest:
+            self._add_items(
+                nodes=nodes,
+                edges=edges,
+                node_index=node_index,
+                root_node_id=brief_node_id,
+                items=brief.price_points,
+                label="PricePoint",
+                edge_type="HAS_PRICE_POINT",
+                summary_prefix="Price point shown in round 0",
+                visibility=GraphVisibility.Initial,
+                created_at=created_at,
+                extra_attributes={"source": "consumer_brief", "round0_visible": True},
+            )
+
         self._add_persona_segments(
             nodes=nodes,
             edges=edges,
@@ -209,6 +253,12 @@ class ConsumerGraphBuilder:
     ) -> None:
         seen_topics = set()
         seed_texts = [*brief.copy_material, *brief.claims]
+        if brief.task_type == ConsumerTaskType.PackagingTest:
+            seed_texts.extend(brief.packaging_assets)
+        elif brief.task_type == ConsumerTaskType.ABTest:
+            seed_texts.extend(v.label for v in brief.test_variants)
+        elif brief.task_type == ConsumerTaskType.PriceTest:
+            seed_texts.extend(brief.price_points)
         for text in seed_texts:
             cleaned = text.strip()
             if not cleaned:

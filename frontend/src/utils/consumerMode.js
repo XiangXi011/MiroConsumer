@@ -37,6 +37,28 @@ export function isConsumerProject(projectLike) {
   return projectLike.project_type === 'consumer_test' || projectLike.projectType === 'consumer_test'
 }
 
+export function getConsumerTaskType(projectLike) {
+  if (!projectLike || typeof projectLike !== 'object') {
+    return 'concept_test'
+  }
+  if (projectLike.report_context?.task_type) {
+    return projectLike.report_context.task_type
+  }
+  const brief = projectLike.consumer_brief || projectLike.consumerBrief || {}
+  return brief.task_type || 'concept_test'
+}
+
+export function getConsumerTaskTypeLabel(taskType, t = null) {
+  const key = `consumer.taskTypes.${taskType}`
+  const fallbacks = {
+    concept_test: 'Concept Test',
+    packaging_test: 'Packaging Test',
+    ab_test: 'A/B Test',
+    price_test: 'Price Test',
+  }
+  return translate(t, key, fallbacks[taskType] || taskType)
+}
+
 export function buildConsumerMetricCards(reportContext = {}, t = null) {
   const summary = reportContext.summary || {}
 
@@ -598,35 +620,91 @@ export function formatComparisonConfidence(comparisonConfidence = {}) {
   }
 }
 
+export function buildTaskAwareConsumerQuickPrompts(reportContext = {}, t = null) {
+  const prompts = []
+  const taskType = reportContext.task_type || 'concept_test'
+
+  if (taskType === 'packaging_test') {
+    const hooks = reportContext.top_packaging_hooks?.[0]
+    const trust = reportContext.top_trust_objections?.[0]
+    const confusion = reportContext.top_confusion_triggers?.[0]
+    if (hooks) {
+      prompts.push(translate(t, 'consumer.quickPrompts.packagingHook', `Why did "${hooks}" become a top packaging hook?`, { point: hooks }))
+    }
+    if (trust) {
+      prompts.push(translate(t, 'consumer.quickPrompts.packagingTrust', `Why did "${trust}" trigger a trust/credibility objection?`, { point: trust }))
+    }
+    if (confusion) {
+      prompts.push(translate(t, 'consumer.quickPrompts.packagingConfusion', `How did "${confusion}" cause confusion about the packaging?`, { point: confusion }))
+    }
+  } else if (taskType === 'ab_test') {
+    const variantDelta = reportContext.top_variant_deltas?.[0]
+    const personaDivergence = reportContext.top_persona_divergences?.[0]
+    const winningVariant = reportContext.winning_variant
+    if (winningVariant) {
+      prompts.push(translate(t, 'consumer.quickPrompts.abWinningVariant', `Why did variant "${winningVariant}" outperform the others?`, { variant: winningVariant }))
+    }
+    if (variantDelta) {
+      prompts.push(translate(t, 'consumer.quickPrompts.abVariantDelta', `What explains the resonance/risk delta between "${variantDelta.left}" and "${variantDelta.right}"?`, { left: variantDelta.left, right: variantDelta.right }))
+    }
+    if (personaDivergence) {
+      prompts.push(translate(t, 'consumer.quickPrompts.abPersonaDivergence', `Why did personas diverge between "${personaDivergence.variant_a}" and "${personaDivergence.variant_b}"?`, { variantA: personaDivergence.variant_a, variantB: personaDivergence.variant_b }))
+    }
+  } else if (taskType === 'price_test') {
+    const acceptablePrice = reportContext.acceptable_price_points?.[0]
+    const resistedPrice = reportContext.resisted_price_points?.[0]
+    const objection = reportContext.top_price_objections?.[0]
+    if (acceptablePrice) {
+      prompts.push(translate(t, 'consumer.quickPrompts.priceAcceptable', `Why is "${acceptablePrice}" perceived as an acceptable price point?`, { point: acceptablePrice }))
+    }
+    if (resistedPrice) {
+      prompts.push(translate(t, 'consumer.quickPrompts.priceResisted', `What objections does "${resistedPrice}" trigger?`, { point: resistedPrice }))
+    }
+    if (objection) {
+      prompts.push(translate(t, 'consumer.quickPrompts.priceObjection', `How does "${objection}" affect perceived value for money?`, { point: objection }))
+    }
+  }
+
+  return prompts
+}
+
 export function buildConsumerQuickPrompts(reportContext = {}, t = null) {
   const prompts = []
+  const taskType = reportContext.task_type || 'concept_test'
   const resonance = reportContext.top_resonance_points?.[0]
   const risk = reportContext.top_risk_points?.[0]
   const misread = reportContext.top_misreads?.[0]
 
-  if (resonance) {
-    prompts.push(translate(
-      t,
-      'consumer.quickPrompts.resonance',
-      `Why did "${resonance}" become a top resonance point?`,
-      { point: resonance },
-    ))
-  }
-  if (risk) {
-    prompts.push(translate(
-      t,
-      'consumer.quickPrompts.risk',
-      `Why did "${risk}" get amplified during propagation?`,
-      { point: risk },
-    ))
-  }
-  if (misread) {
-    prompts.push(translate(
-      t,
-      'consumer.quickPrompts.misread',
-      `How did "${misread}" turn into a misread?`,
-      { point: misread },
-    ))
+  // Task-aware prompts first
+  const taskPrompts = buildTaskAwareConsumerQuickPrompts(reportContext, t)
+  prompts.push(...taskPrompts)
+
+  // Shared prompts for all task types (except when task-specific covers the same ground)
+  if (taskType !== 'packaging_test') {
+    if (resonance) {
+      prompts.push(translate(
+        t,
+        'consumer.quickPrompts.resonance',
+        `Why did "${resonance}" become a top resonance point?`,
+        { point: resonance },
+      ))
+    }
+    if (risk) {
+      prompts.push(translate(
+        t,
+        'consumer.quickPrompts.risk',
+        `Why did "${risk}" get amplified during propagation?`,
+        { point: risk },
+      ))
+    }
+    if (misread) {
+      prompts.push(translate(
+        t,
+        'consumer.quickPrompts.misread',
+        `How did "${misread}" turn into a misread?`,
+        { point: misread },
+      ))
+    }
   }
 
   const riskFindings = reportContext.top_risk_findings || []

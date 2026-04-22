@@ -15,7 +15,7 @@ from ..models.project import ProjectManager
 from ..utils.locale import t
 from ..utils.logger import get_logger
 from .consumer.brief_adapter import ConsumerBriefAdapter
-from .consumer.models import ConsumerBusinessBrief
+from .consumer.models import ConsumerBusinessBrief, ConsumerTaskType
 from .consumer.persona_pack import load_default_persona_pack, map_persona_to_agent_traits
 from .consumer.lane_b_provider import build_lane_b_provider
 from .consumer.project_research_persistence import persist_findings, persist_snapshot
@@ -719,12 +719,23 @@ class SimulationManager:
         return payload
 
     def _build_consumer_brief_summary(self, brief: ConsumerBusinessBrief) -> str:
-        concepts = ", ".join(brief.product_concept_assets[:2])
         audience = ", ".join(brief.target_audience[:2]) or "general audience"
-        return (
-            f"{brief.task_type.value}: {brief.research_goal} | "
-            f"Concepts: {concepts} | Audience: {audience}"
-        )
+        parts: List[str] = [f"{brief.task_type.value}: {brief.research_goal}", f"Audience: {audience}"]
+
+        if brief.task_type == ConsumerTaskType.PackagingTest:
+            assets = ", ".join(brief.packaging_assets[:3]) or "N/A"
+            parts.insert(1, f"Packaging: {assets}")
+        elif brief.task_type == ConsumerTaskType.ABTest:
+            labels = ", ".join(v.label for v in brief.test_variants[:3]) or "N/A"
+            parts.insert(1, f"Variants: {labels}")
+        elif brief.task_type == ConsumerTaskType.PriceTest:
+            prices = ", ".join(brief.price_points[:3]) or "N/A"
+            parts.insert(1, f"Prices: {prices}")
+        else:
+            concepts = ", ".join(brief.product_concept_assets[:2]) or "N/A"
+            parts.insert(1, f"Concepts: {concepts}")
+
+        return " | ".join(parts)
 
     def _build_consumer_reddit_profile(
         self,

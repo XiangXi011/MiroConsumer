@@ -242,6 +242,55 @@ def default_auto_research_provider(brief: ConsumerBusinessBrief) -> List[Researc
             )
         )
 
+    # Derive findings from task-specific fields
+    for asset in brief.packaging_assets:
+        text = asset.strip()
+        if not text:
+            continue
+        findings.append(
+            ResearchFinding(
+                finding_id=_deterministic_finding_id(text, prefix="ae_pkg"),
+                finding_type="category_context",
+                summary=f"Packaging asset: {text}",
+                evidence_snippets=[text],
+                source_label="auto_enrich",
+                visibility=GraphVisibility.Initial,
+                confidence=0.7,
+            )
+        )
+
+    for variant in brief.test_variants:
+        text = variant.label.strip()
+        if not text:
+            continue
+        findings.append(
+            ResearchFinding(
+                finding_id=_deterministic_finding_id(text, prefix="ae_var"),
+                finding_type="category_context",
+                summary=f"Variant: {text}",
+                evidence_snippets=[text],
+                source_label="auto_enrich",
+                visibility=GraphVisibility.Initial,
+                confidence=0.7,
+            )
+        )
+
+    for price in brief.price_points:
+        text = price.strip()
+        if not text:
+            continue
+        findings.append(
+            ResearchFinding(
+                finding_id=_deterministic_finding_id(text, prefix="ae_price"),
+                finding_type="category_context",
+                summary=f"Price point: {text}",
+                evidence_snippets=[text],
+                source_label="auto_enrich",
+                visibility=GraphVisibility.Initial,
+                confidence=0.7,
+            )
+        )
+
     return findings
 
 

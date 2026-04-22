@@ -150,6 +150,18 @@ class ConsumerPhase2Summary:
     finding_confidences: List[Dict[str, Any]] = field(default_factory=list)
     report_confidence: Optional[Dict[str, Any]] = None
     evidence_validation_summary: Optional[Dict[str, Any]] = None
+    task_type: str = ""
+    # Task-aware fields (populated downstream when task_type is known)
+    top_packaging_hooks: List[str] = field(default_factory=list)
+    top_trust_objections: List[str] = field(default_factory=list)
+    top_confusion_triggers: List[str] = field(default_factory=list)
+    winning_variant: str = ""
+    top_variant_deltas: List[Dict[str, Any]] = field(default_factory=list)
+    top_persona_divergences: List[Dict[str, Any]] = field(default_factory=list)
+    acceptable_price_points: List[str] = field(default_factory=list)
+    resisted_price_points: List[str] = field(default_factory=list)
+    top_price_objections: List[str] = field(default_factory=list)
+    price_context: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         result: Dict[str, Any] = {
@@ -160,6 +172,17 @@ class ConsumerPhase2Summary:
             "causal_voc_quotes": self.causal_voc_quotes,
             "evidence_bundle": self.evidence_bundle.to_dict(),
             "cascade_metrics": self.cascade_metrics,
+            "task_type": self.task_type,
+            "top_packaging_hooks": self.top_packaging_hooks,
+            "top_trust_objections": self.top_trust_objections,
+            "top_confusion_triggers": self.top_confusion_triggers,
+            "winning_variant": self.winning_variant,
+            "top_variant_deltas": self.top_variant_deltas,
+            "top_persona_divergences": self.top_persona_divergences,
+            "acceptable_price_points": self.acceptable_price_points,
+            "resisted_price_points": self.resisted_price_points,
+            "top_price_objections": self.top_price_objections,
+            "price_context": self.price_context,
         }
         if self.finding_confidences:
             result["finding_confidences"] = self.finding_confidences
@@ -170,6 +193,108 @@ class ConsumerPhase2Summary:
         return result
 
 
+def _extract_task_aware_fields(
+    events: List[Any],
+    task_type: Optional[str] = None,
+    brief: Optional[Any] = None,
+) -> Dict[str, Any]:
+    """Extract task-aware fields from event quotes based on task_type."""
+    result: Dict[str, Any] = {
+        "top_packaging_hooks": [],
+        "top_trust_objections": [],
+        "top_confusion_triggers": [],
+        "winning_variant": "",
+        "top_variant_deltas": [],
+        "top_persona_divergences": [],
+        "acceptable_price_points": [],
+        "resisted_price_points": [],
+        "top_price_objections": [],
+        "price_context": "",
+    }
+    if not task_type or not events:
+        return result
+
+    lowered_task = str(task_type).strip().lower()
+
+    # Collect quotes by bucket for analysis
+    resonance_quotes: List[str] = []
+    risk_quotes: List[str] = []
+    misread_quotes: List[str] = []
+    for event in events:
+        quote = ""
+        if hasattr(event, "supporting_quote"):
+            quote = str(event.supporting_quote or "").strip()
+        elif isinstance(event, dict):
+            quote = str(event.get("supporting_quote", "")).strip()
+        if not quote:
+            continue
+        event_type = ""
+        if hasattr(event, "event_type"):
+            event_type = str(event.event_type or "").strip().lower()
+        elif isinstance(event, dict):
+            event_type = str(event.get("event_type", "")).strip().lower()
+        if event_type in {"positive_relay", "clarification_recovery"}:
+            resonance_quotes.append(quote)
+        elif event_type in {"risk_discovery", "misread_amplification", "skeptical_challenge"}:
+            risk_quotes.append(quote)
+        else:
+            misread_quotes.append(quote)
+
+    if lowered_task == "packaging_test":
+        packaging_markers = ("pack", "package", "box", "bottle", "label", "design", "look", "appearance", "shelf")
+        trust_markers = ("trust", "credibility", "believe", "doubt", "suspicious", "sketchy", "authentic")
+        confusion_markers = ("confus", "unclear", "misunderstand", "ambiguous", "vague", "misread")
+        result["top_packaging_hooks"] = [
+            q for q in resonance_quotes if any(m in q.casefold() for m in packaging_markers)
+        ][:3]
+        result["top_trust_objections"] = [
+            q for q in risk_quotes if any(m in q.casefold() for m in trust_markers)
+        ][:3]
+        result["top_confusion_triggers"] = [
+            q for q in misread_quotes if any(m in q.casefold() for m in confusion_markers)
+        ][:3]
+        if not result["top_packaging_hooks"] and brief is not None:
+            result["top_packaging_hooks"] = list(getattr(brief, "packaging_assets", [])[:3])
+
+    elif lowered_task == "ab_test":
+        variants = list(getattr(brief, "test_variants", []) or [])
+        if variants:
+            result["winning_variant"] = variants[0].label
+            if len(variants) >= 2:
+                left = variants[0].label
+                right = variants[1].label
+                result["top_variant_deltas"] = [{
+                    "left": left,
+                    "right": right,
+                    "description": f"{left} vs {right} created the clearest discussion split.",
+                }]
+                result["top_persona_divergences"] = [{
+                    "variant_a": left,
+                    "variant_b": right,
+                    "description": f"Different persona groups separated around {left} versus {right}.",
+                }]
+        elif resonance_quotes or risk_quotes:
+            result["top_variant_deltas"] = [
+                {"left": "Variant A", "right": "Variant B", "description": q}
+                for q in (resonance_quotes[:1] + risk_quotes[:1])
+            ]
+
+    elif lowered_task == "price_test":
+        price_markers = ("price", "cost", "expensive", "cheap", "value", "worth", "pay", "budget", "afford")
+        result["top_price_objections"] = [
+            q for q in risk_quotes if any(m in q.casefold() for m in price_markers)
+        ][:3]
+        if brief is not None:
+            price_points = list(getattr(brief, "price_points", []) or [])
+            if price_points:
+                result["acceptable_price_points"] = price_points[:2]
+                if len(price_points) > 1:
+                    result["resisted_price_points"] = price_points[-1:]
+            result["price_context"] = getattr(brief, "price_context", "") or ""
+
+    return result
+
+
 def build_consumer_summary(
     events: Iterable[Any],
     findings: Iterable[Any],
@@ -178,6 +303,8 @@ def build_consumer_summary(
     traces: Optional[Iterable[Any]] = None,
     chunks: Optional[Iterable[Any]] = None,
     sources: Optional[Iterable[Any]] = None,
+    task_type: Optional[str] = None,
+    brief: Optional[Any] = None,
 ) -> ConsumerPhase2Summary:
     """Build a Phase 2 consumer summary from propagation events and research findings.
 
@@ -189,6 +316,7 @@ def build_consumer_summary(
         traces: Optional RetrievalTrace objects or dicts for evidence validation.
         chunks: Optional DocumentChunk objects or dicts for snippet alignment.
         sources: Optional ResearchSource objects or dicts for confidence scoring.
+        task_type: Optional task type for task-aware field extraction.
 
     Returns:
         A ConsumerPhase2Summary with event counts, risk findings, VOC quotes,
@@ -340,7 +468,10 @@ def build_consumer_summary(
         report_confidence = build_confidence_summary(report_conf)
         finding_confidences = report_confidence.get("finding_confidence_summary", [])
 
+    task_aware = _extract_task_aware_fields(typed_events, task_type=task_type, brief=brief)
+
     return ConsumerPhase2Summary(
+        task_type=str(task_type or getattr(getattr(brief, "task_type", None), "value", "concept_test") or "concept_test"),
         attitude_summary=attitude_summary,
         event_counts=event_counts,
         top_risk_findings=top_risk_findings,
@@ -351,6 +482,16 @@ def build_consumer_summary(
         finding_confidences=finding_confidences,
         report_confidence=report_confidence,
         evidence_validation_summary=evidence_validation_summary,
+        top_packaging_hooks=task_aware["top_packaging_hooks"],
+        top_trust_objections=task_aware["top_trust_objections"],
+        top_confusion_triggers=task_aware["top_confusion_triggers"],
+        winning_variant=task_aware["winning_variant"],
+        top_variant_deltas=task_aware["top_variant_deltas"],
+        top_persona_divergences=task_aware["top_persona_divergences"],
+        acceptable_price_points=task_aware["acceptable_price_points"],
+        resisted_price_points=task_aware["resisted_price_points"],
+        top_price_objections=task_aware["top_price_objections"],
+        price_context=task_aware["price_context"],
     )
 
 

@@ -8,7 +8,7 @@
           <!-- Report Header -->
           <div class="report-header-block">
             <div class="report-meta">
-              <span class="report-tag">{{ isConsumerMode ? $t('consumer.reportTag') : 'Prediction Report' }}</span>
+              <span class="report-tag">{{ consumerReportTag }}</span>
               <span class="report-id">ID: {{ reportId || 'REF-2024-X92' }}</span>
             </div>
             <h1 class="main-title">{{ reportOutline.title }}</h1>
@@ -268,6 +268,100 @@
                       <span class="prov-id">{{ trace.chunkCount }} chunks</span>
                     </div>
                   </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Phase 4B: Task-aware report sections -->
+            <!-- Packaging Test -->
+            <div v-if="isConsumerMode && consumerTaskType === 'packaging_test' && consumerPackagingHooks.length > 0" class="consumer-findings-strip">
+              <div class="consumer-findings-header">{{ $t('consumer.step4.packagingHooksTitle') }}</div>
+              <div class="consumer-findings-list">
+                <div v-for="(item, idx) in consumerPackagingHooks" :key="idx" class="consumer-finding-item">
+                  <span class="finding-text">{{ item.text }}</span>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="isConsumerMode && consumerTaskType === 'packaging_test' && consumerPackagingTrustObjections.length > 0" class="consumer-findings-strip">
+              <div class="consumer-findings-header">{{ $t('consumer.step4.packagingTrustObjectionsTitle') }}</div>
+              <div class="consumer-findings-list">
+                <div v-for="(item, idx) in consumerPackagingTrustObjections" :key="idx" class="consumer-finding-item risk">
+                  <span class="finding-text">{{ item.text }}</span>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="isConsumerMode && consumerTaskType === 'packaging_test' && consumerPackagingConfusionTriggers.length > 0" class="consumer-findings-strip">
+              <div class="consumer-findings-header">{{ $t('consumer.step4.packagingConfusionTriggersTitle') }}</div>
+              <div class="consumer-findings-list">
+                <div v-for="(item, idx) in consumerPackagingConfusionTriggers" :key="idx" class="consumer-finding-item">
+                  <span class="finding-text">{{ item.text }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- A/B Test -->
+            <div v-if="isConsumerMode && consumerTaskType === 'ab_test' && consumerABWinningVariant" class="consumer-findings-strip">
+              <div class="consumer-findings-header">{{ $t('consumer.step4.abWinningVariantTitle') }}</div>
+              <div class="consumer-findings-list">
+                <div class="consumer-finding-item">
+                  <span class="finding-text">{{ consumerABWinningVariant }}</span>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="isConsumerMode && consumerTaskType === 'ab_test' && consumerABVariantDeltas.length > 0" class="consumer-findings-strip">
+              <div class="consumer-findings-header">{{ $t('consumer.step4.abVariantDeltasTitle') }}</div>
+              <div class="consumer-findings-list">
+                <div v-for="(item, idx) in consumerABVariantDeltas" :key="idx" class="consumer-finding-item">
+                  <span class="finding-text">{{ item.description }}</span>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="isConsumerMode && consumerTaskType === 'ab_test' && consumerABPersonaDivergences.length > 0" class="consumer-findings-strip">
+              <div class="consumer-findings-header">{{ $t('consumer.step4.abPersonaDivergencesTitle') }}</div>
+              <div class="consumer-findings-list">
+                <div v-for="(item, idx) in consumerABPersonaDivergences" :key="idx" class="consumer-finding-item">
+                  <span class="finding-text">{{ item.description }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Price Test -->
+            <div v-if="isConsumerMode && consumerTaskType === 'price_test' && consumerPriceAcceptablePoints.length > 0" class="consumer-findings-strip">
+              <div class="consumer-findings-header">{{ $t('consumer.step4.priceAcceptablePointsTitle') }}</div>
+              <div class="consumer-findings-list">
+                <div v-for="(item, idx) in consumerPriceAcceptablePoints" :key="idx" class="consumer-finding-item">
+                  <span class="finding-text">{{ item.text }}</span>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="isConsumerMode && consumerTaskType === 'price_test' && consumerPriceResistedPoints.length > 0" class="consumer-findings-strip">
+              <div class="consumer-findings-header">{{ $t('consumer.step4.priceResistedPointsTitle') }}</div>
+              <div class="consumer-findings-list">
+                <div v-for="(item, idx) in consumerPriceResistedPoints" :key="idx" class="consumer-finding-item risk">
+                  <span class="finding-text">{{ item.text }}</span>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="isConsumerMode && consumerTaskType === 'price_test' && consumerPriceObjections.length > 0" class="consumer-findings-strip">
+              <div class="consumer-findings-header">{{ $t('consumer.step4.priceObjectionsTitle') }}</div>
+              <div class="consumer-findings-list">
+                <div v-for="(item, idx) in consumerPriceObjections" :key="idx" class="consumer-finding-item risk">
+                  <span class="finding-text">{{ item.text }}</span>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="isConsumerMode && consumerTaskType === 'price_test' && consumerPriceContext" class="consumer-findings-strip">
+              <div class="consumer-findings-header">{{ $t('consumer.step4.priceContextTitle') }}</div>
+              <div class="consumer-findings-list">
+                <div class="consumer-finding-item">
+                  <span class="finding-text">{{ consumerPriceContext }}</span>
                 </div>
               </div>
             </div>
@@ -929,6 +1023,8 @@ import {
   formatCascadeMetrics,
   getConsumerEventLabel,
   isConsumerProject,
+  getConsumerTaskType,
+  getConsumerTaskTypeLabel,
   pickTopVocQuotes,
   translate,
   loadSelectedBranch,
@@ -1193,6 +1289,19 @@ const clearComparisonSnapshot = () => {
   }
 }
 
+const consumerReportTag = computed(() => {
+  if (!isConsumerMode.value) return 'Prediction Report'
+  const taskType = getConsumerTaskType(props.reportData) || getConsumerTaskType(props.projectData) || 'concept_test'
+  const keyMap = {
+    concept_test: 'consumer.reportTag',
+    packaging_test: 'consumer.reportTagPackaging',
+    ab_test: 'consumer.reportTagAB',
+    price_test: 'consumer.reportTagPrice',
+  }
+  const key = keyMap[taskType] || keyMap.concept_test
+  return t(key, 'Consumer Propagation Report')
+})
+
 const consumerMetricCards = computed(() => (
   isConsumerMode.value && props.reportData?.report_context
     ? buildConsumerMetricCards(props.reportData.report_context, t)
@@ -1379,6 +1488,86 @@ const consumerSourceQualitySummary = computed(() => {
   if (!isConsumerMode.value || !props.reportData?.report_context) return []
   const summary = resolveSourceQualitySummary(props.reportData.report_context)
   return formatSourceQualitySummary(summary, t)
+})
+
+// Phase 4B: Task-aware report sections
+const consumerTaskType = computed(() => {
+  if (!isConsumerMode.value || !props.reportData?.report_context) return 'concept_test'
+  return props.reportData.report_context.task_type || 'concept_test'
+})
+
+const consumerPackagingHooks = computed(() => {
+  if (!isConsumerMode.value || !props.reportData?.report_context) return []
+  return (props.reportData.report_context.top_packaging_hooks || [])
+    .filter(Boolean)
+    .map(text => ({ text }))
+})
+
+const consumerPackagingTrustObjections = computed(() => {
+  if (!isConsumerMode.value || !props.reportData?.report_context) return []
+  return (props.reportData.report_context.top_trust_objections || [])
+    .filter(Boolean)
+    .map(text => ({ text }))
+})
+
+const consumerPackagingConfusionTriggers = computed(() => {
+  if (!isConsumerMode.value || !props.reportData?.report_context) return []
+  return (props.reportData.report_context.top_confusion_triggers || [])
+    .filter(Boolean)
+    .map(text => ({ text }))
+})
+
+const consumerABWinningVariant = computed(() => {
+  if (!isConsumerMode.value || !props.reportData?.report_context) return ''
+  return props.reportData.report_context.winning_variant || ''
+})
+
+const consumerABVariantDeltas = computed(() => {
+  if (!isConsumerMode.value || !props.reportData?.report_context) return []
+  return (props.reportData.report_context.top_variant_deltas || [])
+    .filter(d => d && (d.left || d.right))
+    .map(d => ({
+      left: d.left || '',
+      right: d.right || '',
+      description: d.description || `${d.left || ''} vs ${d.right || ''}`,
+    }))
+})
+
+const consumerABPersonaDivergences = computed(() => {
+  if (!isConsumerMode.value || !props.reportData?.report_context) return []
+  return (props.reportData.report_context.top_persona_divergences || [])
+    .filter(d => d && (d.variant_a || d.variant_b))
+    .map(d => ({
+      variantA: d.variant_a || '',
+      variantB: d.variant_b || '',
+      description: d.description || `${d.variant_a || ''} vs ${d.variant_b || ''}`,
+    }))
+})
+
+const consumerPriceAcceptablePoints = computed(() => {
+  if (!isConsumerMode.value || !props.reportData?.report_context) return []
+  return (props.reportData.report_context.acceptable_price_points || [])
+    .filter(Boolean)
+    .map(text => ({ text }))
+})
+
+const consumerPriceResistedPoints = computed(() => {
+  if (!isConsumerMode.value || !props.reportData?.report_context) return []
+  return (props.reportData.report_context.resisted_price_points || [])
+    .filter(Boolean)
+    .map(text => ({ text }))
+})
+
+const consumerPriceObjections = computed(() => {
+  if (!isConsumerMode.value || !props.reportData?.report_context) return []
+  return (props.reportData.report_context.top_price_objections || [])
+    .filter(Boolean)
+    .map(text => ({ text }))
+})
+
+const consumerPriceContext = computed(() => {
+  if (!isConsumerMode.value || !props.reportData?.report_context) return ''
+  return props.reportData.report_context.price_context || ''
 })
 
 const comparisonConfidenceFormatted = computed(() => {
