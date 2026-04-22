@@ -221,16 +221,27 @@ Phase 2 在 Phase 1 基线上增加了以下能力：
   - API：`auto_enrich` graph build 产出 findings 通过；consumer-summary 返回 Phase 2 字段通过
   - 向下兼容：不传 `research_mode` 时默认 `manual_only`，不影响 Phase 1 行为
 
+- `consumer_test` Phase 3 模块验收：
+  - Phase 3A：双源 Tiered RAG 研究底座已落地，`Lane A` 支持上传资料与 URL 入库，`Lane B` 支持 public-web supplement，并保留 `source_catalog / enriched_findings / enriched_traces / retrieval trace`
+  - Phase 3B：研究员干预与 branch rerun 已落地，支持 `clarification_injection / revised_claim_injection / evidence_reveal / fork from round N / branch resume / branch comparison`
+  - Phase 3C：社会化沙盘升级已落地，支持 `community topology / bridge-amplifier-skeptic-lurker roles / cascade_metrics / social sandbox prompts`
+  - Phase 3D：研究资产化与对比工作台已落地，支持 `research pack export / run_vs_run / branch_vs_base / project_vs_project / saved comparisons`
+  - 后端总回归：`backend/.venv/Scripts/python.exe -m pytest tests -q --ignore=tests/integration`，结果：`270 passed`
+  - 前端总回归：`node --test frontend/tests/consumerMode.test.js frontend/tests/consumerBrief.test.js frontend/tests/pendingUpload.test.js`，结果：`61 passed`
+  - 前端构建：`npm run build` 成功
+  - 向下兼容：`project_type=default` 回归仍为绿灯，未被 Phase 3 改动破坏
+
 结论：
 
-- `consumer_test` Phase 1 与 Phase 2 均已完成并通过正式验收。
+- `consumer_test` Phase 1、Phase 2 与 Phase 3 均已完成并通过当前正式验收。
 
 ### 7.4 当前已知限制
 
-- `auto_enrich` 当前为基于 brief 内容的确定性 repo-owned 合成（`default_auto_research_provider`），并非外部真实全网预研；后续如需真实数据可替换 provider 钩子
+- `auto_enrich` 已升级为双源 research 底座的一部分：当前包含 `Lane B` 外部检索 provider 与 deterministic fallback；若需更强的真实全网预研能力，后续仍建议替换为更稳定的外部 provider
 - Kimi For Coding 响应较慢，单个 profile 约 `3-5` 分钟，`4` 个 profile 的完整 prepare 约 `21` 分钟
 - `response_format=json_object` 的兼容性仍不稳定，当前已通过 proxy 做兼容缓解
 - 小规模 profile（如 `4` 个）可稳定运行；更大规模场景建议切换更快的模型
+- `project_vs_project` 对比当前优先基于项目 research artifacts 与发现差异；若项目没有完整 run-level 结果，其接受度字段会保守显示
 - `pendingUpload.js` 动静态导入混用 warning 仍存在，非阻断
 - 前端 chunk size warning 仍存在，非阻断
 
@@ -250,10 +261,14 @@ Phase 2 在 Phase 1 基线上增加了以下能力：
 
 ## 9. 后续阶段与终局愿景
 
-### Phase 3（后续方向）
+### Phase 4（后续方向）
 
-- 完整 OASIS 消费者社会化演化沙盘
-- Tiered RAG
-- 研究员实时干预
-- DingTalk / 外部焦点小组接口
+- 将 `Lane B` research provider 从当前 grounded implementation 继续升级为更强的真实外部 research / RAG 能力
+- 继续优化 prepare 性能、profile 生成并发和更大样本规模下的稳定性
+- 将对比工作台从单次 comparison 扩展为 benchmark / category memory / recurring insight library
+- 强化项目级与跨项目研究资产复用，但继续保持显式 lineage，避免隐式知识泄漏
 - 从工具型能力升级为咨询型与资产型平台
+
+### 明确不纳入当前路线
+
+- DingTalk / 外部焦点小组接口

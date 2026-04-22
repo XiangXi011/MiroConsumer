@@ -287,3 +287,34 @@ Treat Phase 3 as a staged program, not a single sprint:
 - only then productize reuse and comparison
 
 This keeps MiroConsumer aligned with its core promise: consumer testing that is not only simulated, but grounded, steerable, and explainable.
+
+## 14. Implementation Status (2026-04-22)
+
+Phase 3 is now implemented on `codex/consumer-simulation-phase1`.
+
+### 14.1 Delivered Scope
+
+- **Phase 3A:** project-scoped research workspace, lane-aware ingestion, URL ingestion, public-web supplement, persisted findings/snapshots, citation-ready findings and traces in Step 4/5
+- **Phase 3B:** branch creation, intervention logging, runnable branch simulations, branch status, branch comparison, branch-aware prompts
+- **Phase 3C:** social topology roles and communities, topology-aware propagation targets, cascade metrics, sandbox metrics in Step 3/4, sandbox-aware prompts in Step 5
+- **Phase 3D:** reusable research pack export, persisted comparison snapshots, `run_vs_run` / `branch_vs_base` / `project_vs_project` comparisons, Step 4 comparison workspace, Step 5 comparison-aware follow-ups
+
+### 14.2 Verification Snapshot
+
+- Backend regression:
+  - `backend/.venv/Scripts/python.exe -m pytest tests -q --ignore=tests/integration`
+  - Result: `270 passed`
+- Frontend targeted regression:
+  - `node --test frontend/tests/consumerMode.test.js frontend/tests/consumerBrief.test.js frontend/tests/pendingUpload.test.js`
+  - Result: `61 passed`
+- Frontend build:
+  - `npm run build`
+  - Result: success
+
+### 14.3 Residual Non-Blocking Limits
+
+- `Lane B` already supports a grounded provider path plus deterministic fallback, but stronger real-world provider quality is still a future upgrade path.
+- `project_vs_project` comparison currently prioritizes research artifacts and signal divergence; if a project lacks run-level outputs, acceptance fields remain conservative.
+- Existing non-blocking frontend warnings remain:
+  - `pendingUpload.js` mixed dynamic/static import warning
+  - chunk size warning

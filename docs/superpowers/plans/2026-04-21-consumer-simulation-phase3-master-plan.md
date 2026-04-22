@@ -8,6 +8,8 @@
 
 **Tech Stack:** Flask, existing MiroFish simulation/report stack, Pydantic models, repo-local file persistence, pytest, Vue 3 + Vite, Axios, locale JSON
 
+**Status (2026-04-22):** Completed. Phase 3A through Phase 3D are implemented on `codex/consumer-simulation-phase1` and have passed the current acceptance baseline (`270 passed` backend, `61 passed` targeted frontend, `npm run build` successful).
+
 ---
 
 ## Constraints And Working Rules
@@ -55,22 +57,22 @@
 - Modify: `locales/zh.json`
 - Modify: `locales/en.json`
 
-- [ ] Write failing backend tests for source registration, chunk extraction, retrieval ranking, and finding distillation.
-- [ ] Implement project-scoped research workspace storage under `backend/uploads/projects/<project_id>/research/`.
-- [ ] Replace deterministic-only `auto_enrich` output with dual-lane findings resolution:
+- [x] Write failing backend tests for source registration, chunk extraction, retrieval ranking, and finding distillation.
+- [x] Implement project-scoped research workspace storage under `backend/uploads/projects/<project_id>/research/`.
+- [x] Replace deterministic-only `auto_enrich` output with dual-lane findings resolution:
   - lane A = uploaded/user-provided materials
   - lane B = public-web supplemental search
-- [ ] Preserve provenance on every distilled finding:
+- [x] Preserve provenance on every distilled finding:
   - `source_id`
   - `snippet_id`
   - `retrieval_trace_id`
   - `visibility`
-- [ ] Expose research mode and source summary in Step 2 and citation-ready findings in Step 4.
-- [ ] Run verification:
+- [x] Expose research mode and source summary in Step 2 and citation-ready findings in Step 4.
+- [x] Run verification:
   - `Set-Location backend; .\.venv\Scripts\python.exe -m pytest tests -q --ignore=tests/integration`
   - `node --test frontend/tests/consumerMode.test.js frontend/tests/consumerBrief.test.js frontend/tests/pendingUpload.test.js`
   - `Set-Location frontend; npm run build`
-- [ ] Commit with a Phase 3A-specific message.
+- [x] Commit with a Phase 3A-specific message.
 
 ## Task Group 2: Phase 3B Intervention And Branching
 
@@ -91,25 +93,25 @@
 - Modify: `locales/zh.json`
 - Modify: `locales/en.json`
 
-- [ ] Write failing tests for branch creation, intervention logging, and branch-vs-base comparison fields.
-- [ ] Introduce intervention contracts:
+- [x] Write failing tests for branch creation, intervention logging, and branch-vs-base comparison fields.
+- [x] Introduce intervention contracts:
   - clarification injection
   - revised claim injection
   - evidence reveal
   - branch fork from round N
-- [ ] Persist branch state under `backend/uploads/simulations/<simulation_id>/branches/<branch_id>/`.
-- [ ] Add API routes for:
+- [x] Persist branch state under `backend/uploads/simulations/<simulation_id>/branches/<branch_id>/`.
+- [x] Add API routes for:
   - creating a branch
   - listing interventions
   - resuming a branch
   - fetching branch comparison context
-- [ ] Surface intervention controls in Step 3 and branch diffs in Step 4.
-- [ ] Add Step 5 follow-up prompts that reference the selected branch.
-- [ ] Run verification:
+- [x] Surface intervention controls in Step 3 and branch diffs in Step 4.
+- [x] Add Step 5 follow-up prompts that reference the selected branch.
+- [x] Run verification:
   - backend tests including new intervention routes
   - targeted frontend tests for branch/intervention helpers
   - `npm run build`
-- [ ] Commit with a Phase 3B-specific message.
+- [x] Commit with a Phase 3B-specific message.
 
 ## Task Group 3: Phase 3C Social Sandbox Upgrade
 
@@ -130,25 +132,25 @@
 - Modify: `locales/zh.json`
 - Modify: `locales/en.json`
 
-- [ ] Write failing tests for multi-community topology, seeded narrative spread, and cascade metric computation.
-- [ ] Expand persona pack and run-time cohort logic to support:
+- [x] Write failing tests for multi-community topology, seeded narrative spread, and cascade metric computation.
+- [x] Expand persona pack and run-time cohort logic to support:
   - communities
   - amplifiers
   - skeptics
   - bridge nodes
   - low-visibility lurkers
-- [ ] Add community-aware propagation paths and measurable cascade metrics.
-- [ ] Update scoring and report context to explain:
+- [x] Add community-aware propagation paths and measurable cascade metrics.
+- [x] Update scoring and report context to explain:
   - cross-community spread
   - blockage
   - reversal
   - narrative takeover
-- [ ] Extend Step 3 and Step 4 to surface sandbox metrics without breaking the current flow.
-- [ ] Run verification:
+- [x] Extend Step 3 and Step 4 to surface sandbox metrics without breaking the current flow.
+- [x] Run verification:
   - backend tests for topology and cascade metrics
   - targeted frontend tests
   - `npm run build`
-- [ ] Commit with a Phase 3C-specific message.
+- [x] Commit with a Phase 3C-specific message.
 
 ## Task Group 4: Phase 3D Research Assets And Comparison
 
@@ -167,29 +169,29 @@
 - Modify: `locales/zh.json`
 - Modify: `locales/en.json`
 
-- [ ] Write failing tests for exporting reusable research packs and comparing two runs or branches.
-- [ ] Implement repo-local asset storage under `backend/uploads/research_assets/`.
-- [ ] Add comparison workflows that can compare:
+- [x] Write failing tests for exporting reusable research packs and comparing two runs or branches.
+- [x] Implement repo-local asset storage under `backend/uploads/research_assets/`.
+- [x] Add comparison workflows that can compare:
   - run vs run
   - branch vs base
   - project vs project
-- [ ] Render stable comparison outputs:
+- [x] Render stable comparison outputs:
   - resonance overlap
   - recurring risk signals
   - evidence-backed divergences
-- [ ] Add report-side access to saved packs and comparisons.
-- [ ] Run verification:
+- [x] Add report-side access to saved packs and comparisons.
+- [x] Run verification:
   - backend comparison and asset tests
   - targeted frontend tests
   - `npm run build`
-- [ ] Commit with a Phase 3D-specific message.
+- [x] Commit with a Phase 3D-specific message.
 
 ## Global Acceptance Gate
 
-- [ ] Phase 3A through Phase 3D all land as separate reviewable diffs.
-- [ ] Each subproject preserves default-mode compatibility.
-- [ ] Each subproject updates its own docs and handoff notes before the next one starts.
-- [ ] The final branch can demonstrate:
+- [x] Phase 3A through Phase 3D all land as separate reviewable diffs.
+- [x] Each subproject preserves default-mode compatibility.
+- [x] Each subproject updates its own docs and handoff notes before the next one starts.
+- [x] The final branch can demonstrate:
   - source-grounded findings
   - branchable interventions
   - richer social sandbox behavior

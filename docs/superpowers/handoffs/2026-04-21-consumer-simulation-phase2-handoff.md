@@ -1,3 +1,5 @@
+> Note (2026-04-22): This branch has progressed beyond Phase 2. For the latest status and takeover guidance, see `docs/superpowers/handoffs/2026-04-22-consumer-simulation-phase3-handoff.md`.
+
 # Consumer Simulation Phase 2 交接文档
 
 ## 1. 交接目标
