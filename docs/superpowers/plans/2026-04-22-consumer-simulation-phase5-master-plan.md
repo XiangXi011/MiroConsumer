@@ -2,189 +2,204 @@
 
 ## 1. Objective
 
-Execute the next upgrade wave for MiroConsumer after Phase 4, with emphasis on:
+Execute the next closure wave for MiroConsumer after Phase 4.
 
-- stronger result trust and validation
-- richer multimodal packaging and creative testing
-- better runtime scalability and cost control
-- deeper research memory and reusable operating assets
+Phase 5 focuses on six priorities:
+
+1. product identity cleanup
+2. thin API route layer
+3. repository abstraction for file persistence
+4. configurable persona packs
+5. evidence validation as gatekeeping
+6. `consumer_test` bounded-context extraction
 
 ## 2. Execution Model
 
-- Codex owns planning, task decomposition, review, and acceptance
-- Claude Code owns implementation work
-- Work is delivered subproject by subproject, with batch-level checkpoints
-- Each subproject must preserve backward compatibility with existing `consumer_test` flows
+- Codex owns planning, decomposition, acceptance, and regression review
+- Claude Code owns implementation batches
+- work is delivered in small, independently reviewable slices
+- backward compatibility for existing `consumer_test` flows must be preserved unless a deliberate migration path is documented
 
 ## 3. Delivery Order
 
-1. `Phase 5A` Trust and Validation Layer
-2. `Phase 5B` Multimodal Packaging and Creative Stimulus
-3. `Phase 5C` Scaled Runtime and Model Orchestration
-4. `Phase 5D` Research Memory and Operating System
+1. `Phase 5A` Product Identity Cleanup
+2. `Phase 5B` Application Services and Repository Backbone
+3. `Phase 5C` Persona Pack Configurability and Evidence Gatekeeping
+4. `Phase 5D` Consumer Bounded Context Extraction
 
 ## 4. Phase 5A Plan
 
-### Batch 1: Validation Model and Data Contracts
+### Batch 1: Brand Surface Audit and Rename Map
 
-- define replay and backtest entities for historical validation
-- standardize validation scores, replay confidence, and evidence coverage fields
-- extend report and comparison contracts to include validation metadata
-
-Acceptance:
-
-- new validation fields are persisted and available through existing APIs
-- default flows do not break when validation data is absent
-
-### Batch 2: Historical Backtesting and Calibration
-
-- support replay against stored benchmark or historical case artifacts
-- compute alignment, drift, and confidence-adjustment signals
-- surface calibration summaries in consumer summary and report context
+- inventory remaining `MiroFish` references that should become `MiroConsumer`
+- separate legacy-backbone references from consumer-facing product references
+- define the safe rename map for package names, log labels, homepage branding, GitHub links, README, screenshots, docker/service naming
 
 Acceptance:
 
-- at least one benchmark replay path produces structured calibration output
-- report and comparison views can read calibration results
+- rename scope is explicit and does not accidentally erase legacy-backbone references that remain technically useful
+- product-facing references are mapped to `MiroConsumer`
 
-### Batch 3: Source Governance Upgrade
+### Batch 2: Product Identity Sweep
 
-- strengthen provider-level scoring, freshness, and reliability tracking
-- add source conflict and low-quality evidence flags
-- improve traceability from confidence score back to source quality inputs
+- update root package naming where appropriate
+- align homepage brand, logs, GitHub repository links, README references, image captions, docker/service names
+- make repo presentation look like an independent product
 
 Acceptance:
 
-- low-quality sources visibly affect confidence summaries
-- evidence and source governance remain traceable in artifacts
+- default product surfaces consistently show `MiroConsumer`
+- GitHub links point to the active repository
+- docker/readme/docs naming is aligned
 
 ## 5. Phase 5B Plan
 
-### Batch 1: Visual Asset Ingest
+### Batch 1: Application Service Skeleton
 
-- accept packaging images or simple creative visual assets
-- persist assets in project research workspace with explicit lineage
-- register multimodal source metadata
-
-Acceptance:
-
-- packaging assets are storable and retrievable in a project context
-- non-visual projects remain unaffected
-
-### Batch 2: Visual Descriptor Extraction
-
-- derive structured descriptors from packaging and creative assets
-- connect extracted descriptors into existing graph-building logic
-- support visibility, provenance, and evidence references for visual findings
+- introduce:
+  - `graph_app_service`
+  - `simulation_app_service`
+  - `report_app_service`
+  - `branch_app_service`
+  - `benchmark_app_service`
+- move route-level orchestration logic behind service boundaries
 
 Acceptance:
 
-- `packaging_test` can consume image-derived descriptors
-- graph and report layers can reference visual-derived findings
+- routes can be described as parse, validate, call service, return response
+- application logic becomes independently testable without full route invocation
 
-### Batch 3: Multimodal Reporting and Comparison
+### Batch 2: Repository Interfaces
 
-- show how visual cues influenced perception, trust, and propagation
-- support comparison between text-only and multimodal packaging variants
-- expose representative visual evidence in report and interaction
+- define:
+  - `ProjectRepository`
+  - `SimulationRepository`
+  - `BranchRepository`
+  - `ReportRepository`
+  - `BenchmarkRepository`
+- provide filesystem-backed implementations first
+- remove direct filesystem knowledge from higher-level services where feasible
 
 Acceptance:
 
-- packaging reports contain visual-specific interpretation sections
-- A/B packaging comparison can include visual-driven differences
+- services depend on repository interfaces rather than raw file layout details
+- filesystem behavior remains backward compatible
+
+### Batch 3: Route Thinning and Regression Pass
+
+- refactor route modules to delegate to application services
+- reduce duplicated parse/response behavior
+- preserve existing external API shape where possible
+
+Acceptance:
+
+- route files become thinner and easier to scan
+- existing API behavior remains stable for current frontend flows
 
 ## 6. Phase 5C Plan
 
-### Batch 1: Prepare-Time Performance
+### Batch 1: Persona Pack Asset Model
 
-- improve profile generation concurrency
-- add caching for repeated profile or artifact generation
-- reduce redundant recomputation during repeated runs
-
-Acceptance:
-
-- prepare path shows measurable runtime improvement in repeated or larger runs
-- failed retries do not corrupt existing artifacts
-
-### Batch 2: Runtime Routing and Reuse
-
-- add explicit routing between faster and deeper model paths
-- optimize branch reruns with partial reuse
-- reduce rerun cost when only limited inputs change
+- design persona pack registry and selection model
+- support pack classes:
+  - generic
+  - industry
+  - category
+  - geography
+  - custom uploaded
+- keep current default behavior as a compatibility fallback
 
 Acceptance:
 
-- branch reruns complete with less redundant work
-- model-routing decisions remain explicit and testable
+- pack type can be selected explicitly
+- default pack still works without migration pain
 
-### Batch 3: Stability and Recovery
+### Batch 2: Persona Pack Loading and Upload Flow
 
-- improve retry, timeout, and recovery behavior
-- add clearer queue and execution-state visibility
-- strengthen long-running task resilience
+- implement pack discovery, loading, and validation
+- support user-provided custom pack upload
+- expose pack metadata through the consumer workflow
 
 Acceptance:
 
-- common runtime failures become resumable or more diagnosable
-- status artifacts remain consistent after retries or partial failures
+- at least one non-default built-in pack and one custom pack path work end to end
+- invalid pack uploads fail clearly
+
+### Batch 3: Evidence Gatekeeping Policy
+
+- introduce minimum evidence-count thresholds for findings
+- define source-tier minimums for selected conclusion classes
+- block unsupported conclusions from executive summary
+- down-weight or fail weak evidence inside comparison and benchmark replay
+
+Acceptance:
+
+- summary generation respects hard evidence gates
+- weak support is no longer merely annotated when policy requires blocking
 
 ## 7. Phase 5D Plan
 
-### Batch 1: Category Memory Foundation
+### Batch 1: Consumer API and Contract Boundary
 
-- create category-level benchmark and recurring insight containers
-- define explicit lineage from project findings into reusable category assets
-- support opt-in project contribution to category memory
-
-Acceptance:
-
-- category memory artifacts can be generated without breaking existing project exports
-- lineage from project to category asset is explicit
-
-### Batch 2: Reusable Templates and Baselines
-
-- support scenario presets, reusable prompt packs, and category baselines
-- allow teams to start from prior category patterns instead of blank setup
+- establish clearer `app/api/consumer/...` ownership for consumer-specific flows
+- separate consumer report contracts and state contracts where practical
+- add compatibility shims if legacy entry points must remain temporarily
 
 Acceptance:
 
-- at least one reusable category or scenario preset is supported end to end
-- presets are distinguishable from project-specific findings
+- consumer-specific API behavior is more obviously owned by consumer modules
+- compatibility remains intact for existing UI flows
 
-### Batch 3: Operating System Layer
+### Batch 2: Consumer-Owned Storage and State Direction
 
-- improve recurring comparison views and insight rollups
-- support more operational research workflows across launches or campaigns
-- make research assets easier to query, compare, and reuse over time
+- move consumer-specific storage access behind consumer-aware contracts
+- reduce leakage between legacy simulation/report structures and consumer-specific artifacts
+- clarify which state belongs to generic runtime vs consumer runtime
 
 Acceptance:
 
-- recurring project comparison becomes more structured than one-off comparison snapshots
-- teams can reuse prior research assets in a controlled, lineage-aware way
+- consumer modules own more of their own state and contract vocabulary
+- storage boundaries are easier to reason about
+
+### Batch 3: Final Bounded-Context Cleanup
+
+- remove or reduce cross-domain entanglement that became unnecessary after service and repository refactors
+- align consumer-specific naming, ownership, and module layout
+- prepare the codebase for later multimodal packaging, pricing depth, and propagation extensions
+
+Acceptance:
+
+- `consumer_test` reads as a real bounded context rather than an add-on path
+- later consumer-specific feature work has clearer extension seams
 
 ## 8. Cross-Cutting Verification
 
 Every Phase 5 subproject must include:
 
 - targeted backend tests
-- targeted frontend tests when UI changes are introduced
+- targeted frontend tests for user-visible changes
 - full backend non-integration regression
 - frontend build verification
-- route-level smoke checks for any new user-visible workflow
+- route-level smoke checks for any changed workflow
+- documentation updates when user-facing naming or contracts change
 
-## 9. Known Risks
-
-- multimodal support may increase storage and provider variability
-- stronger validation requires careful handling of incomplete historical data
-- runtime optimization may introduce subtle cache or reuse bugs
-- category memory can create hidden leakage if lineage and project boundaries are not explicit
-
-## 10. Exit Criteria
+## 9. Exit Criteria
 
 Phase 5 is complete when:
 
-- trust and validation are visibly stronger and evidence-backed
-- packaging and creative testing accept richer multimodal inputs
-- runtime performance and rerun efficiency are measurably improved
-- research assets can accumulate into reusable category and team memory
-- the existing Phase 1-4 feature set remains stable and backward compatible
+- the repo and product surfaces feel unmistakably like `MiroConsumer`
+- Flask routes are thin and service-driven
+- filesystem persistence is abstracted behind repository interfaces
+- persona packs are configurable assets rather than hidden code defaults
+- evidence gatekeeping can block weak conclusions from high-level outputs
+- `consumer_test` is significantly more independent as a bounded context
+
+## 10. Follow-On After Phase 5
+
+After this closure work is complete, the next capability wave can safely proceed with:
+
+- multimodal packaging and creative stimulus
+- larger-scale runtime and model-routing improvements
+- category memory, benchmark library growth, and research operating-system features
+
+These remain important, but they should follow the architecture and product-identity cleanup rather than precede it.

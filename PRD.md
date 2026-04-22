@@ -402,6 +402,12 @@ Phase 4B 在既有 `consumer_test` 主链路上扩展了 3 类新的消费者测
 - `json_object` 兼容性在不同模型或代理配置下仍可能波动
 - `packaging_test` 当前仍是基于文本/描述符的包装测试，不包含真实视觉理解
 - `price_test` 当前仍是价格感知与阈值测试，不是销量预测或外部定价数据建模
+- 全局产品身份仍残留部分 `MiroFish` 命名，仓库感知上还不够“独立产品化”
+- 当前 Flask route 层仍偏厚，随着功能继续增加，维护成本会上升
+- 文件系统持久化尚未被 repository 接口完全包裹，后续替换存储介质的成本偏高
+- persona pack 当前仍偏默认写死，不利于行业、品类、地域和客户自定义扩展
+- evidence validation 目前虽已有评分与校验，但还没有完全升级为 executive summary / comparison / replay 的强门禁
+- `consumer_test` 已形成主链路，但 bounded context 仍未彻底独立，和 legacy flow 仍有较多共居区域
 
 ## 9. 后续阶段与终局愿景
 
@@ -413,11 +419,13 @@ Phase 4B 在既有 `consumer_test` 主链路上扩展了 3 类新的消费者测
 
 ### Phase 5（下一阶段）
 
-- `Phase 5A`：强化结果校准与验证层，补齐历史案例回放、结果对照、confidence calibration 和更强的 source governance
-- `Phase 5B`：将包装与创意测试升级为多模态输入，支持真实包装图、KV 和视觉刺激物进入测试链路
-- `Phase 5C`：继续提升大样本、多分支、多轮实验下的性能、并发与成本控制能力
-- `Phase 5D`：把项目级 research asset 升级为类目级、品牌级和团队级的 research memory 与 operating system
-- 在保持 MiroFish 主骨架稳定的前提下，让平台从“强研究工作台”继续演进为“可信、规模化、可复用的消费者决策平台”
+- `Phase 5A`：先完成产品身份收口，将全局 `MiroFish` 的消费者产品表面统一切为 `MiroConsumer`，包括包名、日志名、首页品牌名、GitHub 链接、README、截图与 docker/service 命名
+- `Phase 5B`：将 API route 层拆薄，新增 `graph_app_service`、`simulation_app_service`、`report_app_service`、`branch_app_service`、`benchmark_app_service`，让 route 只负责 parse / validate / call service / return response
+- `Phase 5C`：把文件持久化抽象成 repository 层，至少先建立 `ProjectRepository`、`SimulationRepository`、`BranchRepository`、`ReportRepository`、`BenchmarkRepository`，并由文件系统实现承接
+- `Phase 5D`：把 persona pack 升级为可配置资产体系，支持通用 pack、行业 pack、品类 pack、地域 pack 和自定义上传 pack
+- `Phase 5E`：把 evidence validation 从“评分”升级成“门禁”，加入 finding 最低证据门槛、source tier 最低要求、无支撑结论禁止进入 executive summary、weak evidence 在 comparison / replay 中降权或 fail
+- `Phase 5F`：继续把 `consumer_test` 主线彻底独立成 bounded context，向 `app/services/consumer/...`、`app/api/consumer/...`、consumer 自有 state / storage / report contracts 方向推进
+- 在这 6 项产品化与架构收口完成之后，再继续推进多模态包装测试、更大规模 runtime 优化和 research operating system 层能力
 
 ### 明确不纳入当前路线
 
