@@ -405,13 +405,19 @@ Phase 4B 在既有 `consumer_test` 主链路上扩展了 3 类新的消费者测
 
 ## 9. 后续阶段与终局愿景
 
-### Phase 4（后续方向）
+### Phase 4（已完成）
 
-- 将 `Lane B` research provider 从当前 grounded implementation 继续升级为更强的真实外部 research / RAG 能力
-- 继续优化 prepare 性能、profile 生成并发和更大样本规模下的稳定性
-- 将对比工作台从单次 comparison 扩展为 benchmark / category memory / recurring insight library
-- 强化项目级与跨项目研究资产复用，但继续保持显式 lineage，避免隐式知识泄漏
-- 从工具型能力升级为咨询型与资产型平台
+- `Phase 4A`：完成可信度升级，包括 source quality、evidence validation、confidence scoring 与 benchmark replay
+- `Phase 4B`：完成测试覆盖面扩展，新增 `packaging_test`、`ab_test`、`price_test`
+- `Phase 4C`：完成效率与工程化升级，强化 prepare/runtime 路径、缓存、回退和稳定性
+
+### Phase 5（下一阶段）
+
+- `Phase 5A`：强化结果校准与验证层，补齐历史案例回放、结果对照、confidence calibration 和更强的 source governance
+- `Phase 5B`：将包装与创意测试升级为多模态输入，支持真实包装图、KV 和视觉刺激物进入测试链路
+- `Phase 5C`：继续提升大样本、多分支、多轮实验下的性能、并发与成本控制能力
+- `Phase 5D`：把项目级 research asset 升级为类目级、品牌级和团队级的 research memory 与 operating system
+- 在保持 MiroFish 主骨架稳定的前提下，让平台从“强研究工作台”继续演进为“可信、规模化、可复用的消费者决策平台”
 
 ### 明确不纳入当前路线
 
