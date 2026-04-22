@@ -157,6 +157,20 @@
         </div>
       </div>
 
+      <div v-if="consumerCascadeMetrics.length > 0" class="consumer-cascade-panel">
+        <div class="consumer-cascade-title">{{ $t('consumer.cascade.title') }}</div>
+        <div class="consumer-cascade-grid">
+          <div
+            v-for="item in consumerCascadeMetrics"
+            :key="item.key"
+            class="consumer-cascade-chip"
+          >
+            <span class="cascade-label">{{ item.label }}</span>
+            <span class="cascade-value mono">{{ item.value }}</span>
+          </div>
+        </div>
+      </div>
+
       <!-- Branch / Intervention Panel -->
       <div v-if="isConsumerMode && phase >= 1" class="consumer-branch-panel">
         <div class="consumer-branch-header">
@@ -441,6 +455,7 @@ import {
 import { generateReport } from '../api/report'
 import {
   buildConsumerMetricCards,
+  formatCascadeMetrics,
   getConsumerEventLabel,
   isConsumerProject,
   pickTopVocQuotes,
@@ -581,6 +596,11 @@ const consumerCausalQuotes = computed(() => {
       quote: q.quote,
       label: getConsumerEventLabel(q.event_type || '', t),
     }))
+})
+
+const consumerCascadeMetrics = computed(() => {
+  if (!isConsumerMode.value || !consumerSummary.value) return []
+  return formatCascadeMetrics(consumerSummary.value.cascade_metrics, t)
 })
 
 // Methods

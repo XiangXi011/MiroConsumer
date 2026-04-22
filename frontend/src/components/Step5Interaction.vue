@@ -460,6 +460,7 @@ import { interviewAgents, getSimulationProfilesRealtime, getBranchComparison } f
 import {
   buildConsumerQuickPrompts,
   buildBranchAwarePrompts,
+  buildCascadeAwarePrompts,
   isConsumerProject,
   pickTopVocQuotes,
   loadSelectedBranch,
@@ -521,7 +522,10 @@ const consumerQuickPrompts = computed(() => {
   const branchPrompts = branchComparisonRaw.value
     ? buildBranchAwarePrompts(branchComparisonRaw.value, t)
     : []
-  return [...basePrompts, ...branchPrompts]
+  const cascadePrompts = props.reportData?.report_context
+    ? buildCascadeAwarePrompts(props.reportData.report_context, t)
+    : []
+  return [...basePrompts, ...branchPrompts, ...cascadePrompts]
 })
 
 const consumerVocHighlights = computed(() => (

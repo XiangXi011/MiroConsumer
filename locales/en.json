@@ -345,7 +345,13 @@
       "sourceEvidence": "What evidence from \"{source}\" supports \"{summary}\"?",
       "branchFork": "How does the branch \"{branchName}\" (forked at round {forkRound}) differ from the base run?",
       "branchIntervention": "What impact did the {count} intervention type(s) have on acceptance?",
-      "branchDelta": "Acceptance {direction} by {delta} percentage points. Why?"
+      "branchDelta": "Acceptance {direction} by {delta} percentage points. Why?",
+      "crossCommunitySpread": "Why did the signal spread across {count} cross-community events?",
+      "blockageReason": "What caused {count} blockage events during propagation?",
+      "reversalPattern": "What patterns explain the {count} reversal events?",
+      "bridgeActivity": "How did bridge personas influence spread in {count} events?",
+      "amplifierActivity": "Which messages were amplified most by high-reach personas?",
+      "narrativeTakeover": "How close did a single narrative come to dominating the conversation?"
     },
     "eventTypes": {
       "positive_relay": "Positive Relay",
@@ -353,6 +359,16 @@
       "misread_amplification": "Misread Amplification",
       "risk_discovery": "Risk Discovery",
       "clarification_recovery": "Clarification Recovery"
+    },
+    "cascade": {
+      "title": "Social Sandbox",
+      "communityCoverage": "Community Coverage",
+      "crossCommunityEvents": "Cross-Community Events",
+      "bridgeEvents": "Bridge Events",
+      "reversalEvents": "Reversal Events",
+      "narrativeTakeover": "Narrative Takeover",
+      "blockedEvents": "Blocked Events",
+      "amplifierEvents": "Amplifier Events"
     },
     "researchFindings": "Research Findings",
     "researchSnapshot": "Research Snapshot",

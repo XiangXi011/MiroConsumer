@@ -351,7 +351,13 @@
       "sourceEvidence": "\"{source}\"提供了哪些证据支持\"{summary}\"？",
       "branchFork": "分支\"{branchName}\"（在第{forkRound}轮分叉）与基线运行有何不同？",
       "branchIntervention": "这{count}种干预类型对接受度产生了什么影响？",
-      "branchDelta": "接受度{direction}了{delta}个百分点。原因是什么？"
+      "branchDelta": "接受度{direction}了{delta}个百分点。原因是什么？",
+      "crossCommunitySpread": "信号为何在{count}次跨社区事件中扩散？",
+      "blockageReason": "传播过程中发生了{count}次阻断事件，原因是什么？",
+      "reversalPattern": "哪些模式可以解释这{count}次反转事件？",
+      "bridgeActivity": "桥接角色在{count}次事件中如何影响传播？",
+      "amplifierActivity": "哪些信息被高触达人设放大得最多？",
+      "narrativeTakeover": "单一叙事的统治力有多强？"
     },
     "eventTypes": {
       "positive_relay": "正向传播",
@@ -359,6 +365,16 @@
       "misread_amplification": "误读放大",
       "risk_discovery": "风险发现",
       "clarification_recovery": "澄清恢复"
+    },
+    "cascade": {
+      "title": "社交沙盒",
+      "communityCoverage": "社区覆盖",
+      "crossCommunityEvents": "跨社区事件",
+      "bridgeEvents": "桥接事件",
+      "reversalEvents": "反转事件",
+      "narrativeTakeover": "叙事主导",
+      "blockedEvents": "阻断事件",
+      "amplifierEvents": "放大事件"
     },
     "researchFindings": "研究发现",
     "researchSnapshot": "研究快照",

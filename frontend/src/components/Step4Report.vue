@@ -79,6 +79,27 @@
               </div>
             </div>
 
+            <div v-if="isConsumerMode && consumerCascadeMetrics.length > 0" class="consumer-cascade-strip">
+              <div class="consumer-cascade-header">{{ $t('consumer.cascade.title') }}</div>
+              <div class="consumer-cascade-grid report">
+                <div v-for="item in consumerCascadeMetrics" :key="item.key" class="consumer-cascade-card">
+                  <span class="consumer-cascade-label">{{ item.label }}</span>
+                  <span class="consumer-cascade-value mono">{{ item.value }}</span>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="isConsumerMode && consumerPersonaGroupSignals.length > 0" class="consumer-persona-strip">
+              <div class="consumer-findings-header">{{ $t('consumer.personaGroupSignals') }}</div>
+              <div class="consumer-persona-list">
+                <div v-for="(p, idx) in consumerPersonaGroupSignals" :key="idx" class="consumer-persona-item">
+                  <span class="persona-name">{{ p.persona }}</span>
+                  <span v-if="p.amplifiedCount > 0" class="persona-signal amplified">+{{ p.amplifiedCount }}</span>
+                  <span v-if="p.blockedCount > 0" class="persona-signal blocked">-{{ p.blockedCount }}</span>
+                </div>
+              </div>
+            </div>
+
             <div v-if="isConsumerMode && consumerResearchSnapshot" class="consumer-findings-strip">
               <div class="consumer-findings-header">{{ $t('consumer.researchSnapshot') }}</div>
               <div class="snapshot-grid report">
@@ -608,6 +629,7 @@ import { getAgentLog, getConsoleLog } from '../api/report'
 import { getBranchComparison } from '../api/simulation'
 import {
   buildConsumerMetricCards,
+  formatCascadeMetrics,
   getConsumerEventLabel,
   isConsumerProject,
   pickTopVocQuotes,
@@ -750,6 +772,25 @@ const consumerCausalChains = computed(() => {
     .filter(c => c && c.finding_summary)
     .map(c => ({
       description: `${c.finding_summary} → ${(c.event_types || []).join(', ')}`,
+    }))
+})
+
+const consumerCascadeMetrics = computed(() => {
+  if (!isConsumerMode.value || !props.reportData?.report_context) return []
+  return formatCascadeMetrics(props.reportData.report_context.cascade_metrics, t)
+})
+
+const consumerPersonaGroupSignals = computed(() => {
+  if (!isConsumerMode.value || !props.reportData?.report_context) return []
+  const signals = props.reportData.report_context.persona_group_signals || {}
+  return Object.entries(signals)
+    .filter(([, data]) => data && (data.amplified?.length || data.blocked?.length))
+    .map(([persona, data]) => ({
+      persona,
+      amplified: data.amplified || [],
+      blocked: data.blocked || [],
+      amplifiedCount: (data.amplified || []).length,
+      blockedCount: (data.blocked || []).length,
     }))
 })
 

@@ -130,6 +130,85 @@ export function buildSourceAwarePrompts(reportContext = {}, t = null) {
   return prompts
 }
 
+// ============== Cascade / social-sandbox helpers ==============
+
+export function formatCascadeMetrics(cascadeMetrics = {}, t = null) {
+  if (!cascadeMetrics || typeof cascadeMetrics !== 'object') return []
+  const items = []
+  const push = (key, labelKey, fallback, formatter) => {
+    const raw = cascadeMetrics[key]
+    if (raw === undefined || raw === null || raw === '') return
+    const value = formatter ? formatter(raw) : String(raw)
+    items.push({
+      key,
+      label: translate(t, labelKey, fallback),
+      value,
+    })
+  }
+  push('community_coverage', 'consumer.cascade.communityCoverage', 'Community Coverage', v => formatPercent(v))
+  push('cross_community_event_count', 'consumer.cascade.crossCommunityEvents', 'Cross-Community Events', v => String(v))
+  push('bridge_event_count', 'consumer.cascade.bridgeEvents', 'Bridge Events', v => String(v))
+  push('reversal_event_count', 'consumer.cascade.reversalEvents', 'Reversal Events', v => String(v))
+  push('narrative_takeover_score', 'consumer.cascade.narrativeTakeover', 'Narrative Takeover', v => formatPercent(v))
+  push('blocked_event_count', 'consumer.cascade.blockedEvents', 'Blocked Events', v => String(v))
+  push('amplifier_event_count', 'consumer.cascade.amplifierEvents', 'Amplifier Events', v => String(v))
+  return items
+}
+
+export function buildCascadeAwarePrompts(reportContext = {}, t = null) {
+  const prompts = []
+  const cascade = reportContext.cascade_metrics || {}
+
+  if (cascade.cross_community_event_count > 0) {
+    prompts.push(translate(
+      t,
+      'consumer.quickPrompts.crossCommunitySpread',
+      `Why did the signal spread across ${cascade.cross_community_event_count} cross-community events?`,
+      { count: cascade.cross_community_event_count },
+    ))
+  }
+  if (cascade.blocked_event_count > 0) {
+    prompts.push(translate(
+      t,
+      'consumer.quickPrompts.blockageReason',
+      `What caused ${cascade.blocked_event_count} blockage events during propagation?`,
+      { count: cascade.blocked_event_count },
+    ))
+  }
+  if (cascade.reversal_event_count > 0) {
+    prompts.push(translate(
+      t,
+      'consumer.quickPrompts.reversalPattern',
+      `What patterns explain the ${cascade.reversal_event_count} reversal events?`,
+      { count: cascade.reversal_event_count },
+    ))
+  }
+  if (cascade.bridge_event_count > 0) {
+    prompts.push(translate(
+      t,
+      'consumer.quickPrompts.bridgeActivity',
+      `How did bridge personas influence spread in ${cascade.bridge_event_count} events?`,
+      { count: cascade.bridge_event_count },
+    ))
+  }
+  if (cascade.amplifier_event_count > 0) {
+    prompts.push(translate(
+      t,
+      'consumer.quickPrompts.amplifierActivity',
+      `Which messages were amplified most by high-reach personas?`,
+    ))
+  }
+  if (cascade.narrative_takeover_score > 0) {
+    prompts.push(translate(
+      t,
+      'consumer.quickPrompts.narrativeTakeover',
+      `How close did a single narrative come to dominating the conversation?`,
+    ))
+  }
+
+  return prompts
+}
+
 // ============== Intervention payload helpers ==============
 
 export function buildInterventionPayload(interventionType, value) {
@@ -331,6 +410,9 @@ export function buildConsumerQuickPrompts(reportContext = {}, t = null) {
 
   const sourcePrompts = buildSourceAwarePrompts(reportContext, t)
   prompts.push(...sourcePrompts)
+
+  const cascadePrompts = buildCascadeAwarePrompts(reportContext, t)
+  prompts.push(...cascadePrompts)
 
   return prompts
 }

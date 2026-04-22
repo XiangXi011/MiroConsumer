@@ -944,8 +944,10 @@ def test_consumer_summary_route_exposes_phase2_fields(tmp_path, monkeypatch):
     payload = response.get_json()["data"]
     assert "event_counts" in payload
     assert "top_risk_findings" in payload
+    assert "cascade_metrics" in payload
     assert payload["event_counts"]["risk_discovery"] == 1
     assert payload["top_risk_findings"][0]["finding_id"] == "r1"
+    assert payload["cascade_metrics"]["community_count"] >= 0
 
 
 def test_generate_consumer_report_includes_voc_quotes(tmp_path, monkeypatch):

@@ -5,6 +5,8 @@ import {
   buildConsumerMetricCards,
   buildConsumerQuickPrompts,
   buildSourceAwarePrompts,
+  formatCascadeMetrics,
+  buildCascadeAwarePrompts,
   isConsumerProject,
   pickTopVocQuotes,
 } from '../src/utils/consumerMode.js'
@@ -426,4 +428,63 @@ test('clearSelectedBranch removes persisted selection so missing branch is reset
     const after = loadSelectedBranch('sim_reset_test')
     assert.equal(after, null)
   })
+})
+
+test('formatCascadeMetrics returns readable cards for non-empty cascade metrics', () => {
+  const items = formatCascadeMetrics({
+    community_coverage: 0.75,
+    cross_community_event_count: 3,
+    bridge_event_count: 1,
+    reversal_event_count: 2,
+    narrative_takeover_score: 0.4,
+    blocked_event_count: 1,
+    amplifier_event_count: 4,
+  })
+  assert.ok(items.length > 0)
+  assert.ok(items.some(i => i.key === 'community_coverage' && i.value === '75%'))
+  assert.ok(items.some(i => i.key === 'cross_community_event_count' && i.value === '3'))
+  assert.ok(items.some(i => i.key === 'bridge_event_count' && i.value === '1'))
+})
+
+test('formatCascadeMetrics returns empty array for empty metrics', () => {
+  assert.deepEqual(formatCascadeMetrics({}), [])
+  assert.deepEqual(formatCascadeMetrics(null), [])
+})
+
+test('buildCascadeAwarePrompts generates cross-community prompt when cross_community_event_count > 0', () => {
+  const prompts = buildCascadeAwarePrompts({
+    cascade_metrics: { cross_community_event_count: 2 },
+  })
+  assert.ok(prompts.some(p => p.includes('cross-community') || p.includes('spread across')), 'Expected cross-community prompt')
+})
+
+test('buildCascadeAwarePrompts generates blockage prompt when blocked_event_count > 0', () => {
+  const prompts = buildCascadeAwarePrompts({
+    cascade_metrics: { blocked_event_count: 1 },
+  })
+  assert.ok(prompts.some(p => p.includes('blockage') || p.includes('阻断')), 'Expected blockage prompt')
+})
+
+test('buildCascadeAwarePrompts generates narrative takeover prompt when narrative_takeover_score > 0', () => {
+  const prompts = buildCascadeAwarePrompts({
+    cascade_metrics: { narrative_takeover_score: 0.5 },
+  })
+  assert.ok(prompts.some(p => p.includes('narrative') || p.includes('dominating')), 'Expected narrative takeover prompt')
+})
+
+test('buildCascadeAwarePrompts returns empty array when all metrics are zero or absent', () => {
+  const prompts = buildCascadeAwarePrompts({
+    cascade_metrics: { cross_community_event_count: 0, blocked_event_count: 0 },
+  })
+  assert.deepEqual(prompts, [])
+})
+
+test('buildConsumerQuickPrompts includes cascade prompts when cascade_metrics present', () => {
+  const prompts = buildConsumerQuickPrompts({
+    top_resonance_points: ['portable breakfast'],
+    cascade_metrics: { cross_community_event_count: 2, reversal_event_count: 1 },
+  })
+  assert.ok(prompts.some(p => p.includes('portable breakfast')), 'Expected resonance prompt')
+  assert.ok(prompts.some(p => p.includes('cross-community') || p.includes('spread across')), 'Expected cascade cross-community prompt')
+  assert.ok(prompts.some(p => p.includes('reversal') || p.includes('patterns')), 'Expected cascade reversal prompt')
 })

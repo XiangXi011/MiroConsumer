@@ -1244,6 +1244,7 @@ def get_consumer_summary(simulation_id: str):
             context["causal_chains"] = phase2_context["causal_chains"]
             context["event_led_reversals"] = phase2_context["event_led_reversals"]
             context["persona_group_signals"] = phase2_context["persona_group_signals"]
+            context["cascade_metrics"] = phase2_context.get("cascade_metrics", {})
 
         return jsonify({
             "success": True,
