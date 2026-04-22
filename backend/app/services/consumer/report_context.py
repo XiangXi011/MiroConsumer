@@ -369,6 +369,8 @@ def build_consumer_report_context(
     events: Iterable[Any],
     traces: Optional[Iterable[Any]] = None,
     snapshot: Optional[Any] = None,
+    report_confidence: Optional[Dict[str, Any]] = None,
+    evidence_validation_summary: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Build structured report context with causal chains from events and findings.
 
@@ -475,6 +477,12 @@ def build_consumer_report_context(
         enrich_report_context_with_snapshot(
             context, typed_findings, typed_traces or None, snapshot
         )
+
+    # Phase 4A: expose confidence and validation fields when available
+    if report_confidence is not None:
+        context["report_confidence"] = report_confidence
+    if evidence_validation_summary is not None:
+        context["evidence_validation_summary"] = evidence_validation_summary
 
     return context
 

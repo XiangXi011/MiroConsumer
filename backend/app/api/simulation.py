@@ -1214,6 +1214,20 @@ def get_consumer_summary(simulation_id: str):
                 consumer_config = json.load(f)
             research_findings = consumer_config.get("research_findings", [])
 
+        # Phase 4A: load project research snapshot for traces/chunks/sources if available
+        traces = []
+        chunks = []
+        sources = []
+        project = ProjectManager.get_project(state.project_id)
+        if project and project.project_type == 'consumer_test':
+            from app.services.consumer.project_research_persistence import load_persisted_snapshot
+            from app.services.consumer.models import ResearchSnapshot
+            snapshot = load_persisted_snapshot(project.project_id)
+            if snapshot:
+                traces = snapshot.retrieval_traces or []
+                chunks = snapshot.chunks or []
+                sources = snapshot.sources or []
+
         # Merge Phase 2 fields when events are present
         if all_events:
             initial_labels = [s.get("attitude_label", "neutral") for s in snapshots if s.get("round_num") == 0]
@@ -1230,11 +1244,17 @@ def get_consumer_summary(simulation_id: str):
                 findings=research_findings,
                 initial_labels=initial_labels,
                 final_labels=final_labels,
+                traces=traces,
+                chunks=chunks,
+                sources=sources,
             )
             phase2_context = build_consumer_report_context(
                 summary=phase2_summary,
                 findings=research_findings,
                 events=all_events,
+                traces=traces,
+                report_confidence=phase2_summary.report_confidence,
+                evidence_validation_summary=phase2_summary.evidence_validation_summary,
             )
 
             context["event_counts"] = phase2_summary.event_counts
@@ -1245,6 +1265,13 @@ def get_consumer_summary(simulation_id: str):
             context["event_led_reversals"] = phase2_context["event_led_reversals"]
             context["persona_group_signals"] = phase2_context["persona_group_signals"]
             context["cascade_metrics"] = phase2_context.get("cascade_metrics", {})
+            # Phase 4A confidence fields (consumer_test only)
+            if phase2_summary.report_confidence is not None:
+                context["report_confidence"] = phase2_summary.report_confidence
+            if phase2_summary.evidence_validation_summary is not None:
+                context["evidence_validation_summary"] = phase2_summary.evidence_validation_summary
+            if phase2_summary.finding_confidences:
+                context["finding_confidences"] = phase2_summary.finding_confidences
 
         return jsonify({
             "success": True,

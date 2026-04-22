@@ -147,9 +147,12 @@ class ConsumerPhase2Summary:
     causal_voc_quotes: List[Dict[str, Any]]
     evidence_bundle: ConsumerEvidenceBundle
     cascade_metrics: Dict[str, Any] = field(default_factory=dict)
+    finding_confidences: List[Dict[str, Any]] = field(default_factory=list)
+    report_confidence: Optional[Dict[str, Any]] = None
+    evidence_validation_summary: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        result: Dict[str, Any] = {
             "attitude_summary": self.attitude_summary.to_dict(),
             "event_counts": self.event_counts,
             "top_risk_findings": self.top_risk_findings,
@@ -158,6 +161,13 @@ class ConsumerPhase2Summary:
             "evidence_bundle": self.evidence_bundle.to_dict(),
             "cascade_metrics": self.cascade_metrics,
         }
+        if self.finding_confidences:
+            result["finding_confidences"] = self.finding_confidences
+        if self.report_confidence is not None:
+            result["report_confidence"] = self.report_confidence
+        if self.evidence_validation_summary is not None:
+            result["evidence_validation_summary"] = self.evidence_validation_summary
+        return result
 
 
 def build_consumer_summary(
@@ -165,6 +175,9 @@ def build_consumer_summary(
     findings: Iterable[Any],
     initial_labels: Optional[Iterable[str]] = None,
     final_labels: Optional[Iterable[str]] = None,
+    traces: Optional[Iterable[Any]] = None,
+    chunks: Optional[Iterable[Any]] = None,
+    sources: Optional[Iterable[Any]] = None,
 ) -> ConsumerPhase2Summary:
     """Build a Phase 2 consumer summary from propagation events and research findings.
 
@@ -173,9 +186,13 @@ def build_consumer_summary(
         findings: ResearchFinding objects or dicts.
         initial_labels: Optional initial attitude labels for baseline metrics.
         final_labels: Optional final attitude labels for shift metrics.
+        traces: Optional RetrievalTrace objects or dicts for evidence validation.
+        chunks: Optional DocumentChunk objects or dicts for snippet alignment.
+        sources: Optional ResearchSource objects or dicts for confidence scoring.
 
     Returns:
-        A ConsumerPhase2Summary with event counts, risk findings, and VOC quotes.
+        A ConsumerPhase2Summary with event counts, risk findings, VOC quotes,
+        and optional confidence/validation fields.
     """
     from .models import PropagationEvent, ResearchFinding
 
@@ -269,6 +286,60 @@ def build_consumer_summary(
         [e.model_dump() if hasattr(e, "model_dump") else dict(e) for e in typed_events],
     )
 
+    # Phase 4A: evidence validation and confidence scoring
+    finding_confidences: List[Dict[str, Any]] = []
+    report_confidence: Optional[Dict[str, Any]] = None
+    evidence_validation_summary: Optional[Dict[str, Any]] = None
+
+    if typed_findings:
+        from .evidence_validator import validate_findings, build_evidence_validation_summary
+        from .confidence_scoring import compute_report_confidence, build_confidence_summary
+
+        typed_traces = []
+        if traces is not None:
+            for t in traces:
+                if hasattr(t, "model_dump"):
+                    typed_traces.append(t)
+                elif isinstance(t, dict):
+                    from .models import RetrievalTrace
+                    typed_traces.append(RetrievalTrace(**t))
+                else:
+                    typed_traces.append(t)
+
+        typed_chunks = []
+        if chunks is not None:
+            for c in chunks:
+                if hasattr(c, "model_dump"):
+                    typed_chunks.append(c)
+                elif isinstance(c, dict):
+                    from .models import DocumentChunk
+                    typed_chunks.append(DocumentChunk(**c))
+                else:
+                    typed_chunks.append(c)
+
+        typed_sources = []
+        if sources is not None:
+            for s in sources:
+                if hasattr(s, "model_dump"):
+                    typed_sources.append(s)
+                elif isinstance(s, dict):
+                    from .models import ResearchSource
+                    typed_sources.append(ResearchSource(**s))
+                else:
+                    typed_sources.append(s)
+
+        validation_results = validate_findings(typed_findings, traces=typed_traces, chunks=typed_chunks)
+        evidence_validation_summary = build_evidence_validation_summary(validation_results)
+
+        report_conf = compute_report_confidence(
+            typed_findings,
+            validation_results,
+            typed_sources,
+            all_findings=typed_findings,
+        )
+        report_confidence = build_confidence_summary(report_conf)
+        finding_confidences = report_confidence.get("finding_confidence_summary", [])
+
     return ConsumerPhase2Summary(
         attitude_summary=attitude_summary,
         event_counts=event_counts,
@@ -277,6 +348,9 @@ def build_consumer_summary(
         causal_voc_quotes=causal_voc_quotes,
         evidence_bundle=evidence_bundle,
         cascade_metrics=cascade_metrics,
+        finding_confidences=finding_confidences,
+        report_confidence=report_confidence,
+        evidence_validation_summary=evidence_validation_summary,
     )
 
 

@@ -14,6 +14,64 @@ from .report_context import ConsumerReportContextBuilder
 from .scoring import ConsumerScoringService
 
 
+def _side_confidence_from_findings(findings: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Extract or compute confidence for a side from its findings."""
+    if not findings:
+        return {
+            "confidence_label": "unknown",
+            "confidence_score": 0.0,
+            "confidence_reasons": ["no_findings"],
+            "support_summary": "No findings available",
+        }
+
+    # Use existing confidence scores if present
+    scores: List[float] = []
+    labels: List[str] = []
+    for f in findings:
+        score = f.get("confidence")
+        if isinstance(score, (int, float)) and score > 0:
+            scores.append(float(score))
+        label = f.get("confidence_label", "")
+        if label:
+            labels.append(label)
+
+    if scores:
+        avg_score = sum(scores) / len(scores)
+        if avg_score >= 0.75:
+            label = "high"
+        elif avg_score >= 0.5:
+            label = "medium"
+        elif avg_score >= 0.25:
+            label = "low"
+        else:
+            label = "unknown"
+        return {
+            "confidence_label": label,
+            "confidence_score": round(avg_score, 4),
+            "confidence_reasons": [f"derived_from_{len(scores)}_finding_scores"],
+            "support_summary": f"Average confidence from {len(scores)} findings: {round(avg_score, 2)}",
+        }
+
+    # Fallback: try to compute from source_quality fields
+    from .confidence_scoring import (
+        compute_report_confidence,
+        build_confidence_summary,
+    )
+    from .evidence_validator import validate_findings, build_evidence_validation_summary
+    from .models import ResearchFinding
+
+    typed_findings = []
+    for f in findings:
+        if isinstance(f, dict):
+            typed_findings.append(ResearchFinding(**f))
+        else:
+            typed_findings.append(f)
+
+    validations = validate_findings(typed_findings)
+    report_conf = compute_report_confidence(typed_findings, validations, [])
+    return build_confidence_summary(report_conf)
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -174,6 +232,10 @@ def compare_run_vs_run(
     if right_state and right_state.get("project_id") and right_state["project_id"] not in project_ids:
         project_ids.append(right_state["project_id"])
 
+    left_confidence = _side_confidence_from_findings(left_findings)
+    right_confidence = _side_confidence_from_findings(right_findings)
+    from .confidence_scoring import compute_comparison_confidence
+
     return {
         "comparison_id": f"cmp_{uuid.uuid4().hex[:12]}",
         "mode": "run_vs_run",
@@ -186,6 +248,9 @@ def compare_run_vs_run(
         "evidence_backed_divergences": divergences,
         "acceptance_delta_pp": acceptance_delta_pp,
         "source_overlap_count": source_overlap_count,
+        "left_confidence": left_confidence,
+        "right_confidence": right_confidence,
+        "comparison_confidence": compute_comparison_confidence(left_confidence, right_confidence),
     }
 
 
@@ -253,6 +318,10 @@ def compare_branch_vs_base(
     if state and state.get("project_id"):
         project_ids.append(state["project_id"])
 
+    left_confidence = _side_confidence_from_findings(left_findings)
+    right_confidence = _side_confidence_from_findings(right_findings)
+    from .confidence_scoring import compute_comparison_confidence
+
     return {
         "comparison_id": f"cmp_{uuid.uuid4().hex[:12]}",
         "mode": "branch_vs_base",
@@ -265,6 +334,9 @@ def compare_branch_vs_base(
         "evidence_backed_divergences": divergences,
         "acceptance_delta_pp": acceptance_delta_pp,
         "source_overlap_count": source_overlap_count,
+        "left_confidence": left_confidence,
+        "right_confidence": right_confidence,
+        "comparison_confidence": compute_comparison_confidence(left_confidence, right_confidence),
     }
 
 
@@ -303,6 +375,10 @@ def compare_project_vs_project(
     divergences = _compute_evidence_backed_divergences(left_findings, right_findings)
     source_overlap_count = _compute_source_overlap_count(left_findings, right_findings)
 
+    left_confidence = _side_confidence_from_findings(left_findings)
+    right_confidence = _side_confidence_from_findings(right_findings)
+    from .confidence_scoring import compute_comparison_confidence
+
     return {
         "comparison_id": f"cmp_{uuid.uuid4().hex[:12]}",
         "mode": "project_vs_project",
@@ -315,6 +391,9 @@ def compare_project_vs_project(
         "evidence_backed_divergences": divergences,
         "acceptance_delta_pp": 0.0,
         "source_overlap_count": source_overlap_count,
+        "left_confidence": left_confidence,
+        "right_confidence": right_confidence,
+        "comparison_confidence": compute_comparison_confidence(left_confidence, right_confidence),
     }
 
 

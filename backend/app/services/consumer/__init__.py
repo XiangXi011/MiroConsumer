@@ -17,6 +17,20 @@ from .source_quality import (
     evaluate_source,
     evaluate_sources,
 )
+from .evidence_validator import (
+    EvidenceValidationResult,
+    build_evidence_validation_summary,
+    validate_finding,
+    validate_findings,
+)
+from .confidence_scoring import (
+    FindingConfidence,
+    ReportConfidence,
+    build_confidence_summary,
+    compute_comparison_confidence,
+    compute_finding_confidence,
+    compute_report_confidence,
+)
 
 __all__ = [
     "ConsumerBusinessBrief",
@@ -35,4 +49,14 @@ __all__ = [
     "build_source_quality_summary",
     "evaluate_source",
     "evaluate_sources",
+    "EvidenceValidationResult",
+    "build_evidence_validation_summary",
+    "validate_finding",
+    "validate_findings",
+    "FindingConfidence",
+    "ReportConfidence",
+    "build_confidence_summary",
+    "compute_comparison_confidence",
+    "compute_finding_confidence",
+    "compute_report_confidence",
 ]

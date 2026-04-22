@@ -1276,6 +1276,16 @@ def get_comparison_snapshot(comparison_id: str):
         snapshot = get_comparison(comparison_id)
         if not snapshot:
             return jsonify({"success": False, "error": f"Comparison not found: {comparison_id}"}), 404
+        # Backfill confidence fields for old snapshots (pre-Phase 4A)
+        if "comparison_confidence" not in snapshot:
+            from app.services.consumer.confidence_scoring import compute_comparison_confidence
+            left_conf = snapshot.get("left_confidence")
+            right_conf = snapshot.get("right_confidence")
+            if left_conf is None:
+                left_conf = {"confidence_score": 0.0, "confidence_label": "unknown"}
+            if right_conf is None:
+                right_conf = {"confidence_score": 0.0, "confidence_label": "unknown"}
+            snapshot["comparison_confidence"] = compute_comparison_confidence(left_conf, right_conf)
         return jsonify({"success": True, "data": snapshot})
 
     except Exception as e:
