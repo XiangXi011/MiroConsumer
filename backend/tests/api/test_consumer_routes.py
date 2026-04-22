@@ -1237,3 +1237,324 @@ def test_report_context_falls_back_to_consumer_config_when_project_artifacts_mis
 
     assert context["research_findings"][0]["finding_id"] == "fallback_f1"
     assert context["research_snapshot"]["snapshot_id"] == "fallback_snap"
+
+
+def test_register_benchmark_rejects_non_consumer_project(tmp_path, monkeypatch):
+    """Benchmark registration should be gated to consumer_test projects."""
+    uploads_dir = tmp_path / "uploads"
+    projects_dir = uploads_dir / "projects"
+    monkeypatch.setattr(graph_api.Config, "UPLOAD_FOLDER", str(uploads_dir))
+    monkeypatch.setattr(ProjectManager, "PROJECTS_DIR", str(projects_dir))
+
+    non_consumer_project = ProjectManager.create_project(name="Non Consumer")
+    non_consumer_project.project_type = "default"
+    ProjectManager.save_project(non_consumer_project)
+
+    def fake_get_asset(asset_id):
+        return {"asset_id": asset_id, "project_id": non_consumer_project.project_id}
+
+    monkeypatch.setattr(report_api, "get_asset", fake_get_asset)
+
+    app = _create_test_app()
+    client = app.test_client()
+
+    response = client.post(
+        "/api/report/benchmarks/register",
+        json={
+            "name": "Test Benchmark",
+            "source_pack_lineage": "asset_pack_001",
+            "expected_signals": {"acceptance_band": "mixed"},
+        },
+    )
+
+    assert response.status_code == 400
+    payload = response.get_json()
+    assert "consumer_test" in payload["error"]
+
+
+def test_register_benchmark_rejects_missing_asset_pack(tmp_path, monkeypatch):
+    """Benchmark registration should reject when the source asset pack does not exist."""
+    app = _create_test_app()
+    client = app.test_client()
+
+    response = client.post(
+        "/api/report/benchmarks/register",
+        json={
+            "name": "Test Benchmark",
+            "source_pack_lineage": "asset_pack_missing",
+            "expected_signals": {"acceptance_band": "mixed"},
+        },
+    )
+
+    assert response.status_code == 404
+    payload = response.get_json()
+    assert "Asset pack not found" in payload["error"]
+
+
+def test_register_benchmark_accepts_consumer_project(tmp_path, monkeypatch):
+    """Benchmark registration should succeed for consumer_test projects."""
+    uploads_dir = tmp_path / "uploads"
+    projects_dir = uploads_dir / "projects"
+    monkeypatch.setattr(graph_api.Config, "UPLOAD_FOLDER", str(uploads_dir))
+    monkeypatch.setattr(ProjectManager, "PROJECTS_DIR", str(projects_dir))
+    monkeypatch.setattr(report_api.Config, "UPLOAD_FOLDER", str(uploads_dir))
+
+    consumer_project = ProjectManager.create_project(name="Consumer Project")
+    consumer_project.project_type = "consumer_test"
+    ProjectManager.save_project(consumer_project)
+
+    def fake_get_asset(asset_id):
+        return {"asset_id": asset_id, "project_id": consumer_project.project_id}
+
+    monkeypatch.setattr(report_api, "get_asset", fake_get_asset)
+
+    app = _create_test_app()
+    client = app.test_client()
+
+    response = client.post(
+        "/api/report/benchmarks/register",
+        json={
+            "name": "Test Benchmark",
+            "source_pack_lineage": "asset_pack_001",
+            "expected_signals": {"acceptance_band": "mixed"},
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["success"] is True
+    assert "benchmark_id" in payload["data"]
+
+
+def test_replay_benchmark_rejects_non_consumer_project(tmp_path, monkeypatch):
+    """Benchmark replay should be gated to consumer_test projects."""
+    uploads_dir = tmp_path / "uploads"
+    projects_dir = uploads_dir / "projects"
+    monkeypatch.setattr(graph_api.Config, "UPLOAD_FOLDER", str(uploads_dir))
+    monkeypatch.setattr(ProjectManager, "PROJECTS_DIR", str(projects_dir))
+
+    non_consumer_project = ProjectManager.create_project(name="Non Consumer")
+    non_consumer_project.project_type = "default"
+    ProjectManager.save_project(non_consumer_project)
+
+    app = _create_test_app()
+    client = app.test_client()
+
+    response = client.post(
+        "/api/report/benchmarks/bench_123/replay",
+        json={
+            "report_context": {"summary": {}},
+            "project_id": non_consumer_project.project_id,
+        },
+    )
+
+    assert response.status_code == 400
+    payload = response.get_json()
+    assert "consumer_test" in payload["error"]
+
+
+def test_replay_benchmark_rejects_non_consumer_simulation(tmp_path, monkeypatch):
+    """Benchmark replay should be gated to consumer_test simulations."""
+    uploads_dir = tmp_path / "uploads"
+    projects_dir = uploads_dir / "projects"
+    _configure_simulation_storage(tmp_path, monkeypatch)
+    monkeypatch.setattr(graph_api.Config, "UPLOAD_FOLDER", str(uploads_dir))
+    monkeypatch.setattr(ProjectManager, "PROJECTS_DIR", str(projects_dir))
+
+    non_consumer_project = ProjectManager.create_project(name="Non Consumer")
+    non_consumer_project.project_type = "default"
+    ProjectManager.save_project(non_consumer_project)
+
+    state = SimulationManager().create_simulation(
+        project_id=non_consumer_project.project_id,
+        graph_id="graph_123",
+        project_type="default",
+    )
+
+    app = _create_test_app()
+    client = app.test_client()
+
+    response = client.post(
+        "/api/report/benchmarks/bench_123/replay",
+        json={
+            "report_context": {"summary": {}},
+            "simulation_id": state.simulation_id,
+        },
+    )
+
+    assert response.status_code == 400
+    payload = response.get_json()
+    assert "consumer_test" in payload["error"]
+
+
+def test_replay_benchmark_requires_project_or_simulation_id(tmp_path, monkeypatch):
+    """Benchmark replay should require project_id or simulation_id for gating."""
+    app = _create_test_app()
+    client = app.test_client()
+
+    response = client.post(
+        "/api/report/benchmarks/bench_123/replay",
+        json={
+            "report_context": {"summary": {}},
+        },
+    )
+
+    assert response.status_code == 400
+    payload = response.get_json()
+    assert "project_id or simulation_id is required" in payload["error"]
+
+
+def test_replay_benchmark_accepts_consumer_project(tmp_path, monkeypatch):
+    """Benchmark replay should succeed for consumer_test projects."""
+    uploads_dir = tmp_path / "uploads"
+    projects_dir = uploads_dir / "projects"
+    monkeypatch.setattr(graph_api.Config, "UPLOAD_FOLDER", str(uploads_dir))
+    monkeypatch.setattr(ProjectManager, "PROJECTS_DIR", str(projects_dir))
+    monkeypatch.setattr(report_api.Config, "UPLOAD_FOLDER", str(uploads_dir))
+
+    consumer_project = ProjectManager.create_project(name="Consumer Project")
+    consumer_project.project_type = "consumer_test"
+    ProjectManager.save_project(consumer_project)
+
+    from app.services.consumer.benchmark_registry import register_benchmark
+    benchmark = register_benchmark(
+        name="Test Bench",
+        source_pack_lineage="pack_001",
+        expected_signals={"acceptance_band": "mixed"},
+        upload_root=str(uploads_dir),
+    )
+
+    app = _create_test_app()
+    client = app.test_client()
+
+    response = client.post(
+        f"/api/report/benchmarks/{benchmark['benchmark_id']}/replay",
+        json={
+            "report_context": {"summary": {}},
+            "project_id": consumer_project.project_id,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["success"] is True
+    assert "replay_id" in payload["data"]
+
+
+def test_get_replay_result_rejects_non_consumer_project(tmp_path, monkeypatch):
+    """Replay result fetch should be gated to consumer_test projects."""
+    uploads_dir = tmp_path / "uploads"
+    projects_dir = uploads_dir / "projects"
+    monkeypatch.setattr(graph_api.Config, "UPLOAD_FOLDER", str(uploads_dir))
+    monkeypatch.setattr(ProjectManager, "PROJECTS_DIR", str(projects_dir))
+    monkeypatch.setattr(report_api.Config, "UPLOAD_FOLDER", str(uploads_dir))
+
+    non_consumer_project = ProjectManager.create_project(name="Non Consumer")
+    non_consumer_project.project_type = "default"
+    ProjectManager.save_project(non_consumer_project)
+
+    from app.services.consumer.benchmark_replay import replay_benchmark
+    from app.services.consumer.benchmark_registry import register_benchmark
+    benchmark = register_benchmark(
+        name="Test Bench",
+        source_pack_lineage="pack_001",
+        expected_signals={"acceptance_band": "mixed"},
+        upload_root=str(uploads_dir),
+    )
+    replay = replay_benchmark(
+        benchmark_id=benchmark["benchmark_id"],
+        report_context={"summary": {}},
+        project_id=non_consumer_project.project_id,
+        upload_root=str(uploads_dir),
+    )
+
+    app = _create_test_app()
+    client = app.test_client()
+
+    response = client.get(f"/api/report/benchmark-replays/{replay['replay_id']}")
+
+    assert response.status_code == 400
+    payload = response.get_json()
+    assert "consumer_test" in payload["error"]
+
+
+def test_get_replay_result_rejects_non_consumer_simulation(tmp_path, monkeypatch):
+    """Replay result fetch should be gated to consumer_test simulations."""
+    uploads_dir = tmp_path / "uploads"
+    projects_dir = uploads_dir / "projects"
+    _configure_simulation_storage(tmp_path, monkeypatch)
+    monkeypatch.setattr(graph_api.Config, "UPLOAD_FOLDER", str(uploads_dir))
+    monkeypatch.setattr(ProjectManager, "PROJECTS_DIR", str(projects_dir))
+    monkeypatch.setattr(report_api.Config, "UPLOAD_FOLDER", str(uploads_dir))
+
+    non_consumer_project = ProjectManager.create_project(name="Non Consumer")
+    non_consumer_project.project_type = "default"
+    ProjectManager.save_project(non_consumer_project)
+
+    state = SimulationManager().create_simulation(
+        project_id=non_consumer_project.project_id,
+        graph_id="graph_123",
+        project_type="default",
+    )
+
+    from app.services.consumer.benchmark_replay import replay_benchmark
+    from app.services.consumer.benchmark_registry import register_benchmark
+    benchmark = register_benchmark(
+        name="Test Bench",
+        source_pack_lineage="pack_001",
+        expected_signals={"acceptance_band": "mixed"},
+        upload_root=str(uploads_dir),
+    )
+    replay = replay_benchmark(
+        benchmark_id=benchmark["benchmark_id"],
+        report_context={"summary": {}},
+        simulation_id=state.simulation_id,
+        upload_root=str(uploads_dir),
+    )
+
+    app = _create_test_app()
+    client = app.test_client()
+
+    response = client.get(f"/api/report/benchmark-replays/{replay['replay_id']}")
+
+    assert response.status_code == 400
+    payload = response.get_json()
+    assert "consumer_test" in payload["error"]
+
+
+def test_get_replay_result_accepts_consumer_project(tmp_path, monkeypatch):
+    """Replay result fetch should succeed for consumer_test projects."""
+    uploads_dir = tmp_path / "uploads"
+    projects_dir = uploads_dir / "projects"
+    monkeypatch.setattr(graph_api.Config, "UPLOAD_FOLDER", str(uploads_dir))
+    monkeypatch.setattr(ProjectManager, "PROJECTS_DIR", str(projects_dir))
+    monkeypatch.setattr(report_api.Config, "UPLOAD_FOLDER", str(uploads_dir))
+
+    consumer_project = ProjectManager.create_project(name="Consumer Project")
+    consumer_project.project_type = "consumer_test"
+    ProjectManager.save_project(consumer_project)
+
+    from app.services.consumer.benchmark_replay import replay_benchmark
+    from app.services.consumer.benchmark_registry import register_benchmark
+    benchmark = register_benchmark(
+        name="Test Bench",
+        source_pack_lineage="pack_001",
+        expected_signals={"acceptance_band": "mixed"},
+        upload_root=str(uploads_dir),
+    )
+    replay = replay_benchmark(
+        benchmark_id=benchmark["benchmark_id"],
+        report_context={"summary": {}},
+        project_id=consumer_project.project_id,
+        upload_root=str(uploads_dir),
+    )
+
+    app = _create_test_app()
+    client = app.test_client()
+
+    response = client.get(f"/api/report/benchmark-replays/{replay['replay_id']}")
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["success"] is True
+    assert payload["data"]["replay_id"] == replay["replay_id"]

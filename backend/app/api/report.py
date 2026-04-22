@@ -1340,6 +1340,19 @@ def register_benchmark_route():
         if not expected_signals:
             return jsonify({"success": False, "error": "expected_signals is required"}), 400
 
+        # Verify source asset pack exists and belongs to a consumer_test project
+        asset_pack = get_asset(source_pack_lineage)
+        if not asset_pack:
+            return jsonify({"success": False, "error": f"Asset pack not found: {source_pack_lineage}"}), 404
+
+        pack_project_id = asset_pack.get("project_id")
+        if pack_project_id:
+            project = ProjectManager.get_project(pack_project_id)
+            if not project:
+                return jsonify({"success": False, "error": t('api.projectNotFound', id=pack_project_id)}), 404
+            if project.project_type != 'consumer_test':
+                return jsonify({"success": False, "error": "Benchmarks are only available for consumer_test projects"}), 400
+
         benchmark = register_benchmark(
             name=name,
             source_pack_lineage=source_pack_lineage,
@@ -1408,6 +1421,25 @@ def replay_benchmark_route(benchmark_id: str):
         if not report_context:
             return jsonify({"success": False, "error": "report_context is required"}), 400
 
+        project_id = data.get("project_id")
+        simulation_id = data.get("simulation_id")
+
+        if project_id:
+            project = ProjectManager.get_project(project_id)
+            if not project:
+                return jsonify({"success": False, "error": t('api.projectNotFound', id=project_id)}), 404
+            if project.project_type != 'consumer_test':
+                return jsonify({"success": False, "error": "Benchmark replays are only available for consumer_test projects"}), 400
+        elif simulation_id:
+            manager = SimulationManager()
+            state = manager.get_simulation(simulation_id)
+            if not state:
+                return jsonify({"success": False, "error": t('api.simulationNotFound', id=simulation_id)}), 404
+            if not state.consumer_mode:
+                return jsonify({"success": False, "error": "Benchmark replays are only available for consumer_test simulations"}), 400
+        else:
+            return jsonify({"success": False, "error": "project_id or simulation_id is required"}), 400
+
         replay = replay_benchmark(
             benchmark_id=benchmark_id,
             report_context=report_context,
@@ -1434,6 +1466,20 @@ def get_replay_result_route(replay_id: str):
         replay = get_replay_result(replay_id)
         if not replay:
             return jsonify({"success": False, "error": f"Replay not found: {replay_id}"}), 404
+
+        # Verify replay belongs to a consumer_test project/simulation
+        replay_project_id = replay.get("project_id")
+        replay_simulation_id = replay.get("simulation_id")
+        if replay_project_id:
+            project = ProjectManager.get_project(replay_project_id)
+            if project and project.project_type != 'consumer_test':
+                return jsonify({"success": False, "error": "Benchmark replay results are only available for consumer_test projects"}), 400
+        elif replay_simulation_id:
+            manager = SimulationManager()
+            state = manager.get_simulation(replay_simulation_id)
+            if state and not state.consumer_mode:
+                return jsonify({"success": False, "error": "Benchmark replay results are only available for consumer_test simulations"}), 400
+
         return jsonify({"success": True, "data": replay})
     except Exception as e:
         logger.error(f"获取回放结果失败: {str(e)}")
