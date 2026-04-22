@@ -181,44 +181,6 @@ class OpenAIWebSearchProvider:
         self._base_url = base_url
         self._model = model
         self._client = None
-
-    def _get_client(self) -> Any:
-        if self._client is None:
-            from openai import OpenAI
-            self._client = OpenAI(api_key=self._api_key, base_url=self._base_url)
-        return self._client
-
-    @staticmethod
-    def _stable_source_id(url: str) -> str:
-        digest = hashlib.sha256(url.encode("utf-8")).hexdigest()[:12]
-        return f"src_{digest}"
-
-    @staticmethod
-    def _stable_doc_id(url: str) -> str:
-        digest = hashlib.sha256(url.encode("utf-8")).hexdigest()[:12]
-        return f"doc_{digest}"
-
-    @staticmethod
-    def _stable_chunk_id(url: str, text: str) -> str:
-        digest = hashlib.sha256(f"{url}:{text}".encode("utf-8")).hexdigest()[:12]
-        return f"chk_{digest}"
-
-    def __init__(
-        self,
-        project_id: str,
-        upload_root: Optional[str] = None,
-        api_key: Optional[str] = None,
-        base_url: Optional[str] = None,
-        model: Optional[str] = None,
-    ):
-        self.project_id = project_id
-        self.upload_root = upload_root
-        self._registry = SourceRegistry(project_id, upload_root=upload_root)
-        self._ingest = DocumentIngestService(project_id, upload_root=upload_root)
-        self._api_key = api_key
-        self._base_url = base_url
-        self._model = model
-        self._client = None
         self._last_governance_decisions: List[GovernanceDecision] = []
 
     def _get_client(self) -> Any:
