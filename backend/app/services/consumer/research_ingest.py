@@ -452,7 +452,10 @@ def build_research_snapshot(
     if scored_sources:
         for s in scored_sources:
             registry.update_source(s)
-    findings = apply_source_quality_to_findings(findings, scored_sources)
+    # resolve_research_findings() already annotates findings when project_id
+    # is provided; skip re-application to avoid double-boosting / double-capping.
+    if not findings or not findings[0].confidence_label:
+        findings = apply_source_quality_to_findings(findings, scored_sources)
     quality_summary = build_source_quality_summary(scored_sources)
     persist_source_quality(project_id, quality_summary, upload_root=upload_root)
 

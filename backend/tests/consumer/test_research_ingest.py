@@ -599,3 +599,46 @@ def test_build_research_snapshot_includes_url_ingested_findings(tmp_path):
     assert len(snapshot.documents) > 0
     assert len(snapshot.chunks) > 0
 
+
+def test_build_research_snapshot_does_not_double_apply_source_quality(tmp_path):
+    """Regression test: snapshot must not re-apply source quality to findings
+    that were already annotated by resolve_research_findings().
+    A Lane A finding with base confidence 0.6 should be boosted once to 0.75,
+    not double-boosted to 0.85.
+    """
+    root = str(tmp_path / "uploads")
+    registry = SourceRegistry("proj_double", upload_root=root)
+    ingest = DocumentIngestService("proj_double", upload_root=root)
+
+    src = registry.register_source(
+        lane=ResearchSourceLane.LaneA,
+        source_type=ResearchSourceType.Upload,
+        label="Upload",
+    )
+    ingest.ingest_text(
+        source_id=src.source_id,
+        text="Breakfast trends are shifting toward high protein options.",
+    )
+
+    brief = ConsumerBriefAdapter.from_payload(
+        {
+            "task_type": "concept_test",
+            "product_concept_assets": ["High protein breakfast"],
+            "research_goal": "Understand breakfast trends",
+        }
+    )
+
+    snapshot = build_research_snapshot(
+        "proj_double",
+        brief=brief,
+        upload_root=root,
+    )
+
+    workspace_findings = [f for f in snapshot.findings if f.source_label == "ingested_document"]
+    assert len(workspace_findings) > 0
+    for f in workspace_findings:
+        assert f.confidence == 0.75, (
+            f"Expected confidence 0.75 but got {f.confidence} — "
+            "source quality was double-applied"
+        )
+
