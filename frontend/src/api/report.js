@@ -49,3 +49,59 @@ export const getReport = (reportId) => {
 export const chatWithReport = (data) => {
   return requestWithRetry(() => service.post('/api/report/chat', data), 3, 1000)
 }
+
+// ============== Research Assets API ==============
+
+/**
+ * Export a research asset pack
+ * @param {Object} data - { project_id, simulation_id?, branch_id?, name? }
+ */
+export const exportResearchAsset = (data) => {
+  return service.post('/api/report/research-assets/export', data)
+}
+
+/**
+ * List research assets for a project
+ * @param {string} projectId
+ */
+export const listResearchAssets = (projectId) => {
+  return service.get('/api/report/research-assets', { params: { project_id: projectId } })
+}
+
+/**
+ * Get a single research asset
+ * @param {string} assetId
+ */
+export const getResearchAsset = (assetId) => {
+  return service.get(`/api/report/research-assets/${assetId}`)
+}
+
+// ============== Comparison API ==============
+
+/**
+ * Compare research snapshots
+ * Supports:
+ *   a) { mode: "run_vs_run", left_simulation_id, right_simulation_id }
+ *   b) { mode: "branch_vs_base", simulation_id, branch_id }
+ *   c) { mode: "project_vs_project", left_project_id, right_project_id }
+ * @param {Object} data
+ */
+export const compareResearchSnapshots = (data) => {
+  return service.post('/api/report/compare', data)
+}
+
+/**
+ * List comparisons for a project
+ * @param {string} projectId
+ */
+export const listComparisons = (projectId) => {
+  return service.get('/api/report/comparisons', { params: { project_id: projectId } })
+}
+
+/**
+ * Get a single comparison
+ * @param {string} comparisonId
+ */
+export const getComparison = (comparisonId) => {
+  return service.get(`/api/report/comparisons/${comparisonId}`)
+}

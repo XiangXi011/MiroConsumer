@@ -239,6 +239,46 @@ export function getInterventionDisplayText(interventionType, payload) {
   return payload.text || JSON.stringify(payload)
 }
 
+// ============== Comparison persistence (simulation-scoped, lightweight) ==============
+
+function _comparisonKey(simulationId) {
+  return `mirofish:consumer:comparison:${simulationId}`
+}
+
+export function loadSelectedComparison(simulationId) {
+  if (!simulationId || typeof window === 'undefined') return null
+  try {
+    const raw = window.localStorage.getItem(_comparisonKey(simulationId))
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    return parsed && parsed.comparisonId ? parsed.comparisonId : null
+  } catch {
+    return null
+  }
+}
+
+export function saveSelectedComparison(simulationId, comparisonId) {
+  if (!simulationId || typeof window === 'undefined') return
+  try {
+    if (comparisonId) {
+      window.localStorage.setItem(_comparisonKey(simulationId), JSON.stringify({ comparisonId, selectedAt: Date.now() }))
+    } else {
+      window.localStorage.removeItem(_comparisonKey(simulationId))
+    }
+  } catch {
+    // ignore storage errors
+  }
+}
+
+export function clearSelectedComparison(simulationId) {
+  if (!simulationId || typeof window === 'undefined') return
+  try {
+    window.localStorage.removeItem(_comparisonKey(simulationId))
+  } catch {
+    // ignore
+  }
+}
+
 // ============== Branch persistence (simulation-scoped, lightweight) ==============
 
 function _branchKey(simulationId) {
@@ -344,6 +384,81 @@ export function buildBranchAwarePrompts(comparison = {}, t = null) {
     const delta = branchAcceptance - baseAcceptance
     const direction = delta >= 0 ? 'improved' : 'worsened'
     prompts.push(translate(t, 'consumer.quickPrompts.branchDelta', `Acceptance ${direction} by ${Math.round(Math.abs(delta) * 100)} percentage points. Why?`, { direction, delta: Math.round(Math.abs(delta) * 100) }))
+  }
+
+  return prompts
+}
+
+export function buildComparisonAwarePrompts(comparisonSnapshot = {}, t = null) {
+  const prompts = []
+  if (!comparisonSnapshot || typeof comparisonSnapshot !== 'object') return prompts
+
+  const mode = comparisonSnapshot.mode || ''
+  const left = comparisonSnapshot.left || {}
+  const right = comparisonSnapshot.right || {}
+  const acceptanceDelta = comparisonSnapshot.acceptance_delta_pp ?? 0
+
+  if (mode === 'branch_vs_base' && left.label && right.label) {
+    prompts.push(translate(
+      t,
+      'consumer.quickPrompts.comparisonBranchVsBase',
+      `How does the branch "${right.label}" differ from the base run "${left.label}"?`,
+      { left: left.label, right: right.label },
+    ))
+  }
+
+  if (mode === 'run_vs_run' && left.label && right.label) {
+    prompts.push(translate(
+      t,
+      'consumer.quickPrompts.comparisonRunVsRun',
+      `What explains the difference between run "${left.label}" and run "${right.label}"?`,
+      { left: left.label, right: right.label },
+    ))
+  }
+
+  if (mode === 'project_vs_project' && left.label && right.label) {
+    prompts.push(translate(
+      t,
+      'consumer.quickPrompts.comparisonProjectVsProject',
+      `How do the research findings differ between project "${left.label}" and project "${right.label}"?`,
+      { left: left.label, right: right.label },
+    ))
+  }
+
+  if ((comparisonSnapshot.resonance_overlap || []).length > 0) {
+    prompts.push(translate(
+      t,
+      'consumer.quickPrompts.comparisonResonanceOverlap',
+      'What do the overlapping resonance signals tell us about the core message?',
+    ))
+  }
+
+  if ((comparisonSnapshot.recurring_risk_signals || []).length > 0) {
+    prompts.push(translate(
+      t,
+      'consumer.quickPrompts.comparisonRecurringRisks',
+      'Why do these risk signals keep appearing across both runs?',
+    ))
+  }
+
+  if ((comparisonSnapshot.evidence_backed_divergences || []).length > 0) {
+    const firstDiv = comparisonSnapshot.evidence_backed_divergences[0]
+    prompts.push(translate(
+      t,
+      'consumer.quickPrompts.comparisonDivergence',
+      `The signal "${firstDiv?.signal || ''}" diverges between runs. What explains this?`,
+      { signal: firstDiv?.signal || '' },
+    ))
+  }
+
+  if (acceptanceDelta !== 0) {
+    const direction = acceptanceDelta > 0 ? 'increased' : 'decreased'
+    prompts.push(translate(
+      t,
+      'consumer.quickPrompts.comparisonAcceptanceDelta',
+      `Acceptance ${direction} by ${Math.abs(Math.round(acceptanceDelta))} percentage points. What drove this?`,
+      { direction, delta: Math.abs(Math.round(acceptanceDelta)) },
+    ))
   }
 
   return prompts

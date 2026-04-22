@@ -455,16 +455,18 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { chatWithReport, getReport, getAgentLog } from '../api/report'
+import { chatWithReport, getReport, getAgentLog, getComparison } from '../api/report'
 import { interviewAgents, getSimulationProfilesRealtime, getBranchComparison } from '../api/simulation'
 import {
   buildConsumerQuickPrompts,
   buildBranchAwarePrompts,
   buildCascadeAwarePrompts,
+  buildComparisonAwarePrompts,
   isConsumerProject,
   pickTopVocQuotes,
   loadSelectedBranch,
   clearSelectedBranch,
+  loadSelectedComparison,
 } from '../utils/consumerMode'
 
 const { t } = useI18n()
@@ -473,7 +475,8 @@ const props = defineProps({
   reportId: String,
   simulationId: String,
   reportData: Object,
-  projectData: Object
+  projectData: Object,
+  comparisonSnapshot: Object,
 })
 
 const emit = defineEmits(['add-log', 'update-status'])
@@ -513,6 +516,9 @@ const isConsumerMode = computed(() => (
 ))
 
 const branchComparisonRaw = ref(null)
+const comparisonSnapshotLocal = ref(null)
+
+const effectiveComparisonSnapshot = computed(() => props.comparisonSnapshot || comparisonSnapshotLocal.value)
 
 const consumerQuickPrompts = computed(() => {
   if (!isConsumerMode.value) return []
@@ -525,7 +531,11 @@ const consumerQuickPrompts = computed(() => {
   const cascadePrompts = props.reportData?.report_context
     ? buildCascadeAwarePrompts(props.reportData.report_context, t)
     : []
-  return [...basePrompts, ...branchPrompts, ...cascadePrompts]
+  const snapshot = effectiveComparisonSnapshot.value
+  const comparisonPrompts = snapshot
+    ? buildComparisonAwarePrompts(snapshot, t)
+    : []
+  return [...basePrompts, ...branchPrompts, ...cascadePrompts, ...comparisonPrompts]
 })
 
 const consumerVocHighlights = computed(() => (
@@ -597,8 +607,36 @@ const loadBranchComparison = async () => {
   }
 }
 
+const loadComparisonSnapshot = async () => {
+  if (props.comparisonSnapshot) {
+    comparisonSnapshotLocal.value = null
+    return
+  }
+  if (!props.simulationId || !isConsumerMode.value) {
+    comparisonSnapshotLocal.value = null
+    return
+  }
+  const comparisonId = loadSelectedComparison(props.simulationId)
+  if (!comparisonId) {
+    comparisonSnapshotLocal.value = null
+    return
+  }
+  try {
+    const res = await getComparison(comparisonId)
+    if (res.success && res.data) {
+      comparisonSnapshotLocal.value = res.data
+    } else {
+      comparisonSnapshotLocal.value = null
+    }
+  } catch (err) {
+    console.warn('loadComparisonSnapshot failed:', err)
+    comparisonSnapshotLocal.value = null
+  }
+}
+
 watch(() => props.simulationId, () => {
   loadBranchComparison()
+  loadComparisonSnapshot()
 })
 
 const toggleSectionCollapse = (idx) => {
@@ -1074,6 +1112,7 @@ onMounted(() => {
   loadReportData()
   loadProfiles()
   loadBranchComparison()
+  loadComparisonSnapshot()
   document.addEventListener('click', handleClickOutside)
 })
 

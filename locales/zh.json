@@ -357,7 +357,14 @@
       "reversalPattern": "哪些模式可以解释这{count}次反转事件？",
       "bridgeActivity": "桥接角色在{count}次事件中如何影响传播？",
       "amplifierActivity": "哪些信息被高触达人设放大得最多？",
-      "narrativeTakeover": "单一叙事的统治力有多强？"
+      "narrativeTakeover": "单一叙事的统治力有多强？",
+      "comparisonBranchVsBase": "分支\"{right}\"与基线运行\"{left}\"有何不同？",
+      "comparisonRunVsRun": "运行\"{left}\"与运行\"{right}\"的差异是什么？",
+      "comparisonProjectVsProject": "项目\"{left}\"与项目\"{right}\"的研究发现有何不同？",
+      "comparisonResonanceOverlap": "重叠的共鸣信号说明了什么核心信息？",
+      "comparisonRecurringRisks": "为什么这些风险信号在两个运行中反复出现？",
+      "comparisonDivergence": "信号\"{signal}\"在两个运行中出现分歧。原因是什么？",
+      "comparisonAcceptanceDelta": "接受度{direction}了{delta}个百分点。驱动因素是什么？"
     },
     "eventTypes": {
       "positive_relay": "正向传播",
@@ -476,6 +483,36 @@
       "delta": "差异",
       "newResonance": "新增共鸣引语",
       "newRisk": "新增风险引语"
+    },
+    "researchAssets": {
+      "title": "研究资产 / 对比工作区",
+      "exportPack": "导出研究资产包",
+      "exportNamePlaceholder": "资产包名称（可选）",
+      "exporting": "导出中...",
+      "existingPacks": "现有资产包",
+      "noPacks": "暂无研究资产包",
+      "comparisons": "对比分析",
+      "noComparisons": "暂无对比分析",
+      "compareBranchVsBase": "对比分支与基线",
+      "compareRunVsRun": "对比运行与运行",
+      "compareProjectVsProject": "对比项目与项目",
+      "rightSimIdPlaceholder": "右侧模拟ID",
+      "rightProjectIdPlaceholder": "右侧项目ID",
+      "comparing": "对比中...",
+      "runComparison": "运行对比",
+      "comparisonResult": "对比结果",
+      "resonanceOverlap": "共鸣重叠",
+      "recurringRisks": "反复出现的风险信号",
+      "evidenceBackedDivergences": "有证据支持的分歧",
+      "acceptanceDelta": "接受度差异",
+      "sourceOverlap": "来源重叠",
+      "noResonanceOverlap": "无重叠的共鸣信号",
+      "noRecurringRisks": "无反复出现的风险信号",
+      "noDivergences": "无有证据支持的分歧",
+      "left": "左侧",
+      "right": "右侧",
+      "presencePresent": "存在",
+      "presenceAbsent": "不存在"
     }
   },
   "graph": {

@@ -7,6 +7,7 @@ import {
   buildSourceAwarePrompts,
   formatCascadeMetrics,
   buildCascadeAwarePrompts,
+  buildComparisonAwarePrompts,
   isConsumerProject,
   pickTopVocQuotes,
 } from '../src/utils/consumerMode.js'
@@ -307,6 +308,9 @@ import {
   loadSelectedBranch,
   saveSelectedBranch,
   clearSelectedBranch,
+  loadSelectedComparison,
+  saveSelectedComparison,
+  clearSelectedComparison,
   formatBranchComparison,
   buildBranchAwarePrompts,
   buildInterventionPayload,
@@ -430,6 +434,27 @@ test('clearSelectedBranch removes persisted selection so missing branch is reset
   })
 })
 
+test('loadSelectedComparison returns null in non-browser environment', () => {
+  assert.equal(loadSelectedComparison('sim_123'), null)
+})
+
+test('saveSelectedComparison does not throw in non-browser environment', () => {
+  assert.doesNotThrow(() => saveSelectedComparison('sim_123', 'comp_abc'))
+})
+
+test('clearSelectedComparison does not throw in non-browser environment', () => {
+  assert.doesNotThrow(() => clearSelectedComparison('sim_123'))
+})
+
+test('clearSelectedComparison removes persisted selection so missing comparison is reset', () => {
+  assert.doesNotThrow(() => {
+    saveSelectedComparison('sim_reset_test', 'comp_old')
+    clearSelectedComparison('sim_reset_test')
+    const after = loadSelectedComparison('sim_reset_test')
+    assert.equal(after, null)
+  })
+})
+
 test('formatCascadeMetrics returns readable cards for non-empty cascade metrics', () => {
   const items = formatCascadeMetrics({
     community_coverage: 0.75,
@@ -487,4 +512,79 @@ test('buildConsumerQuickPrompts includes cascade prompts when cascade_metrics pr
   assert.ok(prompts.some(p => p.includes('portable breakfast')), 'Expected resonance prompt')
   assert.ok(prompts.some(p => p.includes('cross-community') || p.includes('spread across')), 'Expected cascade cross-community prompt')
   assert.ok(prompts.some(p => p.includes('reversal') || p.includes('patterns')), 'Expected cascade reversal prompt')
+})
+
+test('buildComparisonAwarePrompts generates branch_vs_base prompt', () => {
+  const prompts = buildComparisonAwarePrompts({
+    mode: 'branch_vs_base',
+    left: { label: 'Base Run', acceptance_positive: 0.35 },
+    right: { label: 'Clarified Branch', acceptance_positive: 0.55 },
+  })
+  assert.ok(prompts.some(p => p.includes('Clarified Branch') && p.includes('Base Run')), 'Expected branch vs base prompt')
+})
+
+test('buildComparisonAwarePrompts generates run_vs_run prompt', () => {
+  const prompts = buildComparisonAwarePrompts({
+    mode: 'run_vs_run',
+    left: { label: 'Run A' },
+    right: { label: 'Run B' },
+  })
+  assert.ok(prompts.some(p => p.includes('Run A') && p.includes('Run B')), 'Expected run vs run prompt')
+})
+
+test('buildComparisonAwarePrompts generates project_vs_project prompt', () => {
+  const prompts = buildComparisonAwarePrompts({
+    mode: 'project_vs_project',
+    left: { label: 'Project X' },
+    right: { label: 'Project Y' },
+  })
+  assert.ok(prompts.some(p => p.includes('Project X') && p.includes('Project Y')), 'Expected project vs project prompt')
+})
+
+test('buildComparisonAwarePrompts generates resonance overlap prompt', () => {
+  const prompts = buildComparisonAwarePrompts({
+    mode: 'run_vs_run',
+    left: { label: 'Run A' },
+    right: { label: 'Run B' },
+    resonance_overlap: ['portable breakfast', 'easy to share'],
+  })
+  assert.ok(prompts.some(p => p.includes('overlapping resonance') || p.includes('core message')), 'Expected resonance overlap prompt')
+})
+
+test('buildComparisonAwarePrompts generates recurring risk prompt', () => {
+  const prompts = buildComparisonAwarePrompts({
+    mode: 'run_vs_run',
+    left: { label: 'Run A' },
+    right: { label: 'Run B' },
+    recurring_risk_signals: ['sugar concern', 'price too high'],
+  })
+  assert.ok(prompts.some(p => p.includes('risk signals') || p.includes('keep appearing')), 'Expected recurring risk prompt')
+})
+
+test('buildComparisonAwarePrompts generates divergence prompt for evidence-backed divergences', () => {
+  const prompts = buildComparisonAwarePrompts({
+    mode: 'run_vs_run',
+    left: { label: 'Run A' },
+    right: { label: 'Run B' },
+    evidence_backed_divergences: [
+      { signal: 'sweetener debate', left_presence: true, right_presence: false, left_sources: ['Source A'], right_sources: [] },
+    ],
+  })
+  assert.ok(prompts.some(p => p.includes('sweetener debate') && p.includes('diverges')), 'Expected divergence prompt')
+})
+
+test('buildComparisonAwarePrompts generates acceptance delta prompt', () => {
+  const prompts = buildComparisonAwarePrompts({
+    mode: 'run_vs_run',
+    left: { label: 'Run A', acceptance_positive: 0.35 },
+    right: { label: 'Run B', acceptance_positive: 0.55 },
+    acceptance_delta_pp: 20,
+  })
+  assert.ok(prompts.some(p => p.includes('20') && (p.includes('increased') || p.includes('decreased'))), 'Expected acceptance delta prompt')
+})
+
+test('buildComparisonAwarePrompts returns empty array for null or empty snapshot', () => {
+  assert.deepEqual(buildComparisonAwarePrompts(null), [])
+  assert.deepEqual(buildComparisonAwarePrompts({}), [])
+  assert.deepEqual(buildComparisonAwarePrompts(undefined), [])
 })

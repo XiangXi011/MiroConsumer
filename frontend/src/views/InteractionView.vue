@@ -56,6 +56,7 @@
           :simulationId="simulationId"
           :reportData="reportData"
           :projectData="projectData"
+          :comparisonSnapshot="comparisonSnapshot"
           :systemLogs="systemLogs"
           @add-log="addLog"
           @update-status="updateStatus"
@@ -93,6 +94,7 @@ const currentReportId = ref(route.params.reportId)
 const simulationId = ref(null)
 const reportData = ref(null)
 const projectData = ref(null)
+const comparisonSnapshot = ref(null)
 const graphData = ref(null)
 const graphLoading = ref(false)
 const systemLogs = ref([])
