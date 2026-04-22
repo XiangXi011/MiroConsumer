@@ -10,10 +10,14 @@ import uuid
 from typing import Any, Callable, Dict, Optional
 
 from ...config import Config
-from ...models.project import ProjectManager
 from ...models.task import TaskManager, TaskStatus
-from ...services.report_agent import ReportAgent, ReportManager, ReportStatus
-from ...services.simulation_manager import SimulationManager
+from ...repositories import ProjectRepository, ReportRepository, SimulationRepository
+from ...repositories.filesystem import (
+    FilesystemProjectRepository,
+    FilesystemReportRepository,
+    FilesystemSimulationRepository,
+)
+from ...services.report_agent import ReportAgent, ReportStatus
 from ...utils.locale import t, get_locale, set_locale
 from ...utils.logger import get_logger
 
@@ -23,10 +27,14 @@ logger = get_logger("miroconsumer.app_service.report")
 class ReportAppService:
     """Application service for report generation orchestration."""
 
+    _project_repo: ProjectRepository = FilesystemProjectRepository()
+    _simulation_repo: SimulationRepository = FilesystemSimulationRepository()
+    _report_repo: ReportRepository = FilesystemReportRepository()
+
     @classmethod
     def get_existing_report_for_simulation(cls, simulation_id: str) -> Optional[dict]:
         """Return an existing completed report dict, or None."""
-        existing = ReportManager.get_report_by_simulation(simulation_id)
+        existing = cls._report_repo.get_report_by_simulation(simulation_id)
         if existing and existing.status == ReportStatus.COMPLETED:
             return {
                 "simulation_id": simulation_id,
@@ -45,8 +53,7 @@ class ReportAppService:
         Returns immediate response payload with task_id / report_id.
         Raises ValueError on validation failure.
         """
-        manager = SimulationManager()
-        state = manager.get_simulation(simulation_id)
+        state = cls._simulation_repo.get_simulation(simulation_id)
 
         if not state:
             raise ValueError(t("api.simulationNotFound", id=simulation_id))
@@ -56,7 +63,7 @@ class ReportAppService:
             if existing:
                 return existing
 
-        project = ProjectManager.get_project(state.project_id)
+        project = cls._project_repo.get_project(state.project_id)
         if not project:
             raise ValueError(t("api.projectNotFound", id=state.project_id))
 
@@ -116,7 +123,7 @@ class ReportAppService:
                     report_id=report_id,
                 )
 
-                ReportManager.save_report(report)
+                cls._report_repo.save_report(report)
 
                 if report.status == ReportStatus.COMPLETED:
                     task_manager.complete_task(

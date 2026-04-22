@@ -11,11 +11,15 @@ import traceback
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ...config import Config
-from ...models.project import ProjectManager
 from ...models.task import TaskManager, TaskStatus
+from ...repositories import ProjectRepository, SimulationRepository
+from ...repositories.filesystem import (
+    FilesystemProjectRepository,
+    FilesystemSimulationRepository,
+)
 from ...services.consumer.persona_pack import load_default_persona_pack
 from ...services.prepare_manifest import read_manifest
-from ...services.simulation_manager import SimulationManager, SimulationStatus
+from ...services.simulation_manager import SimulationStatus
 from ...services.simulation_runner import SimulationRunner
 from ...services.zep_entity_reader import ZepEntityReader
 from ...utils.locale import t, get_locale, set_locale
@@ -119,6 +123,9 @@ def _check_simulation_prepared(simulation_id: str) -> Tuple[bool, dict]:
 class SimulationAppService:
     """Application service for simulation lifecycle orchestration."""
 
+    _project_repo: ProjectRepository = FilesystemProjectRepository()
+    _simulation_repo: SimulationRepository = FilesystemSimulationRepository()
+
     @classmethod
     def create_simulation(cls, data: dict) -> dict:
         """
@@ -131,7 +138,7 @@ class SimulationAppService:
         if not project_id:
             raise ValueError(t("api.requireProjectId"))
 
-        project = ProjectManager.get_project(project_id)
+        project = cls._project_repo.get_project(project_id)
         if not project:
             raise ValueError(t("api.projectNotFound", id=project_id))
 
@@ -139,8 +146,7 @@ class SimulationAppService:
         if not graph_id:
             raise ValueError(t("api.graphNotBuilt"))
 
-        manager = SimulationManager()
-        state = manager.create_simulation(
+        state = cls._simulation_repo.create_simulation(
             project_id=project_id,
             graph_id=graph_id,
             project_type=project.project_type or "default",
@@ -167,8 +173,7 @@ class SimulationAppService:
         If already prepared and not force_regenerate, returns ready metadata.
         Otherwise creates a background task and returns task metadata.
         """
-        manager = SimulationManager()
-        state = manager.get_simulation(simulation_id)
+        state = cls._simulation_repo.get_simulation(simulation_id)
 
         if not state:
             raise ValueError(t("api.simulationNotFound", id=simulation_id))
@@ -178,7 +183,7 @@ class SimulationAppService:
         if not force_regenerate:
             is_prepared, prepare_info = _check_simulation_prepared(simulation_id)
             if is_prepared:
-                manifest_dict = manager.record_manifest_reuse(simulation_id)
+                manifest_dict = cls._simulation_repo.record_manifest_reuse(simulation_id)
                 response_data = {
                     "simulation_id": simulation_id,
                     "status": "ready",
@@ -190,7 +195,7 @@ class SimulationAppService:
                     response_data["prepare_manifest"] = manifest_dict
                 return response_data
 
-        project = ProjectManager.get_project(state.project_id)
+        project = cls._project_repo.get_project(state.project_id)
         if not project:
             raise ValueError(t("api.projectNotFound", id=state.project_id))
 
@@ -199,7 +204,7 @@ class SimulationAppService:
         if not consumer_mode and not simulation_requirement:
             raise ValueError(t("api.projectMissingRequirement"))
 
-        document_text = ProjectManager.get_extracted_text(state.project_id) or ""
+        document_text = cls._project_repo.get_extracted_text(state.project_id) or ""
 
         entity_types_list = data.get("entity_types")
         use_llm_for_profiles = data.get("use_llm_for_profiles", True)
@@ -238,11 +243,12 @@ class SimulationAppService:
         )
 
         state.status = SimulationStatus.PREPARING
-        manager._save_simulation_state(state)
+        cls._simulation_repo.save_simulation(state)
 
         current_locale = get_locale()
 
         def run_prepare():
+            from ...services.simulation_manager import SimulationManager
             set_locale(current_locale)
             try:
                 task_manager.update_task(
@@ -309,7 +315,9 @@ class SimulationAppService:
                         progress_detail=progress_detail_data,
                     )
 
-                result_state = manager.prepare_simulation(
+                # prepare_simulation is domain logic; delegate to SimulationManager
+                domain_manager = SimulationManager()
+                result_state = domain_manager.prepare_simulation(
                     simulation_id=simulation_id,
                     simulation_requirement=simulation_requirement,
                     document_text=document_text,
@@ -328,11 +336,11 @@ class SimulationAppService:
                 logger.error(f"Prepare simulation failed: {str(e)}")
                 task_manager.fail_task(task_id, str(e))
 
-                state = manager.get_simulation(simulation_id)
+                state = cls._simulation_repo.get_simulation(simulation_id)
                 if state:
                     state.status = SimulationStatus.FAILED
                     state.error = str(e)
-                    manager._save_simulation_state(state)
+                    cls._simulation_repo.save_simulation(state)
 
         thread = threading.Thread(target=run_prepare, daemon=True)
         thread.start()
@@ -372,8 +380,7 @@ class SimulationAppService:
         if platform not in ["twitter", "reddit", "parallel"]:
             raise ValueError(t("api.invalidPlatform", platform=platform))
 
-        manager = SimulationManager()
-        state = manager.get_simulation(simulation_id)
+        state = cls._simulation_repo.get_simulation(simulation_id)
 
         if not state:
             raise ValueError(t("api.simulationNotFound", id=simulation_id))
@@ -407,7 +414,7 @@ class SimulationAppService:
                     f"Simulation {simulation_id} preparation complete, resetting to ready (was {state.status.value})"
                 )
                 state.status = SimulationStatus.READY
-                manager._save_simulation_state(state)
+                cls._simulation_repo.save_simulation(state)
             else:
                 raise ValueError(t("api.simNotReady", status=state.status.value))
 
@@ -415,7 +422,7 @@ class SimulationAppService:
         if enable_graph_memory_update:
             graph_id = state.graph_id
             if not graph_id:
-                project = ProjectManager.get_project(state.project_id)
+                project = cls._project_repo.get_project(state.project_id)
                 if project:
                     graph_id = project.graph_id
 
@@ -433,7 +440,7 @@ class SimulationAppService:
         )
 
         state.status = SimulationStatus.RUNNING
-        manager._save_simulation_state(state)
+        cls._simulation_repo.save_simulation(state)
 
         response_data = run_state.to_dict()
         if max_rounds:

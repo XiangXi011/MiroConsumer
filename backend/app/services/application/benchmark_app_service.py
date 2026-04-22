@@ -6,23 +6,22 @@ Thin wrapper around benchmark registry and replay for route-level orchestration.
 
 from typing import Any, Dict, List, Optional
 
-from ...models.project import ProjectManager
+from ...repositories import BenchmarkRepository, ProjectRepository, SimulationRepository
+from ...repositories.filesystem import (
+    FilesystemBenchmarkRepository,
+    FilesystemProjectRepository,
+    FilesystemSimulationRepository,
+)
 from ...services.consumer.asset_library import get_asset
-from ...services.consumer.benchmark_registry import (
-    register_benchmark,
-    list_benchmarks,
-    get_benchmark,
-)
-from ...services.consumer.benchmark_replay import (
-    replay_benchmark,
-    get_replay_result,
-)
-from ...services.simulation_manager import SimulationManager
 from ...utils.locale import t
 
 
 class BenchmarkAppService:
     """Application service for benchmark registration and replay."""
+
+    _project_repo: ProjectRepository = FilesystemProjectRepository()
+    _simulation_repo: SimulationRepository = FilesystemSimulationRepository()
+    _benchmark_repo: BenchmarkRepository = FilesystemBenchmarkRepository()
 
     @classmethod
     def register_benchmark(
@@ -50,13 +49,13 @@ class BenchmarkAppService:
 
         pack_project_id = asset_pack.get("project_id")
         if pack_project_id:
-            project = ProjectManager.get_project(pack_project_id)
+            project = cls._project_repo.get_project(pack_project_id)
             if not project:
                 raise ValueError(t("api.projectNotFound", id=pack_project_id))
             if project.project_type != "consumer_test":
                 raise ValueError("Benchmarks are only available for consumer_test projects")
 
-        return register_benchmark(
+        return cls._benchmark_repo.register_benchmark(
             name=name,
             source_pack_lineage=source_pack_lineage,
             expected_signals=expected_signals,
@@ -66,12 +65,12 @@ class BenchmarkAppService:
     @classmethod
     def list_benchmarks(cls) -> List[dict]:
         """List all registered benchmarks."""
-        return list_benchmarks()
+        return cls._benchmark_repo.list_benchmarks()
 
     @classmethod
     def get_benchmark(cls, benchmark_id: str) -> Optional[dict]:
         """Get a single benchmark by ID."""
-        return get_benchmark(benchmark_id)
+        return cls._benchmark_repo.get_benchmark(benchmark_id)
 
     @classmethod
     def replay_benchmark(
@@ -90,14 +89,13 @@ class BenchmarkAppService:
             raise ValueError("report_context is required")
 
         if project_id:
-            project = ProjectManager.get_project(project_id)
+            project = cls._project_repo.get_project(project_id)
             if not project:
                 raise ValueError(t("api.projectNotFound", id=project_id))
             if project.project_type != "consumer_test":
                 raise ValueError("Benchmark replays are only available for consumer_test projects")
         elif simulation_id:
-            manager = SimulationManager()
-            state = manager.get_simulation(simulation_id)
+            state = cls._simulation_repo.get_simulation(simulation_id)
             if not state:
                 raise ValueError(t("api.simulationNotFound", id=simulation_id))
             if not state.consumer_mode:
@@ -105,7 +103,7 @@ class BenchmarkAppService:
         else:
             raise ValueError("project_id or simulation_id is required")
 
-        return replay_benchmark(
+        return cls._benchmark_repo.replay_benchmark(
             benchmark_id=benchmark_id,
             report_context=report_context,
             project_id=project_id,
@@ -119,19 +117,18 @@ class BenchmarkAppService:
 
         Raises ValueError if replay not found or not consumer_test.
         """
-        replay = get_replay_result(replay_id)
+        replay = cls._benchmark_repo.get_replay_result(replay_id)
         if not replay:
             raise ValueError(f"Replay not found: {replay_id}")
 
         replay_project_id = replay.get("project_id")
         replay_simulation_id = replay.get("simulation_id")
         if replay_project_id:
-            project = ProjectManager.get_project(replay_project_id)
+            project = cls._project_repo.get_project(replay_project_id)
             if project and project.project_type != "consumer_test":
                 raise ValueError("Benchmark replay results are only available for consumer_test projects")
         elif replay_simulation_id:
-            manager = SimulationManager()
-            state = manager.get_simulation(replay_simulation_id)
+            state = cls._simulation_repo.get_simulation(replay_simulation_id)
             if state and not state.consumer_mode:
                 raise ValueError("Benchmark replay results are only available for consumer_test simulations")
 

@@ -10,8 +10,10 @@ import traceback
 from typing import Any, Callable, Dict, List, Optional
 
 from ...config import Config
-from ...models.project import ProjectManager, ProjectStatus
+from ...models.project import ProjectStatus
 from ...models.task import TaskManager, TaskStatus
+from ...repositories import ProjectRepository
+from ...repositories.filesystem import FilesystemProjectRepository
 from ...services.graph_builder import GraphBuilderService
 from ...services.text_processor import TextProcessor
 from ...services.consumer import ConsumerBriefAdapter, ConsumerGraphBuilder, load_default_persona_pack
@@ -54,12 +56,6 @@ def _consumer_graph_id(project_id: str) -> str:
     return f"consumer_{project_id}"
 
 
-def _get_consumer_graph_payload(project):
-    if not project or project.project_type != "consumer_test":
-        return None
-    return ProjectManager.load_consumer_graph_payload(project.project_id)
-
-
 def _ingest_project_files_into_research_workspace(project_id: str, file_texts: list) -> None:
     """Register uploaded files as Lane A sources and ingest their text into the research workspace."""
     if not file_texts:
@@ -84,7 +80,7 @@ def _ingest_project_files_into_research_workspace(project_id: str, file_texts: l
         )
 
 
-def _build_consumer_graph(project, text: str):
+def _build_consumer_graph(project, text: str, project_repo: ProjectRepository):
     """Synchronous consumer graph build (domain logic)."""
     if not project.consumer_brief:
         raise ValueError("consumer_brief is required for consumer_test graph builds")
@@ -115,7 +111,7 @@ def _build_consumer_graph(project, text: str):
         research_findings=research_findings,
     )
 
-    ProjectManager.save_consumer_graph_payload(project.project_id, graph_payload)
+    project_repo.save_consumer_graph_payload(project.project_id, graph_payload)
     project.graph_id = graph_payload["graph_id"]
     project.status = ProjectStatus.GRAPH_COMPLETED
 
@@ -162,13 +158,15 @@ def _build_consumer_graph(project, text: str):
         },
         "source_quality_summary": source_quality_summary,
     }
-    ProjectManager.save_project(project)
+    project_repo.save_project(project)
 
     return graph_payload
 
 
 class GraphAppService:
     """Application service for graph build orchestration."""
+
+    _project_repo: ProjectRepository = FilesystemProjectRepository()
 
     @staticmethod
     def allowed_file(filename: str) -> bool:
@@ -198,7 +196,7 @@ class GraphAppService:
                 message=t("progress.initGraphService"),
                 progress=10,
             )
-            graph_data = _build_consumer_graph(project, text)
+            graph_data = _build_consumer_graph(project, text, cls._project_repo)
             node_count = graph_data.get("node_count", 0)
             edge_count = graph_data.get("edge_count", 0)
             task_manager.update_task(
@@ -219,7 +217,7 @@ class GraphAppService:
             logger.error(f"Consumer graph build failed: {traceback.format_exc()}")
             project.status = ProjectStatus.FAILED
             project.error = traceback.format_exc()
-            ProjectManager.save_project(project)
+            cls._project_repo.save_project(project)
             task_manager.update_task(
                 task_id,
                 status=TaskStatus.FAILED,
@@ -276,7 +274,7 @@ class GraphAppService:
                 graph_id = builder.create_graph(name=graph_name)
 
                 project.graph_id = graph_id
-                ProjectManager.save_project(project)
+                cls._project_repo.save_project(project)
 
                 task_manager.update_task(
                     task_id,
@@ -330,7 +328,7 @@ class GraphAppService:
                 graph_data = builder.get_graph_data(graph_id)
 
                 project.status = ProjectStatus.GRAPH_COMPLETED
-                ProjectManager.save_project(project)
+                cls._project_repo.save_project(project)
 
                 node_count = graph_data.get("node_count", 0)
                 edge_count = graph_data.get("edge_count", 0)
@@ -358,7 +356,7 @@ class GraphAppService:
 
                 project.status = ProjectStatus.FAILED
                 project.error = str(e)
-                ProjectManager.save_project(project)
+                cls._project_repo.save_project(project)
 
                 task_manager.update_task(
                     task_id,

@@ -6,15 +6,16 @@ Thin wrapper around ConsumerInterventionManager for route-level orchestration.
 
 from typing import Any, Dict, List, Optional, Tuple
 
-from ...services.consumer.intervention_manager import (
-    ConsumerInterventionManager,
-    InterventionType,
-)
-from ...services.simulation_manager import SimulationManager
+from ...repositories import BranchRepository, SimulationRepository
+from ...repositories.filesystem import FilesystemBranchRepository, FilesystemSimulationRepository
+from ...services.consumer.intervention_manager import InterventionType
 
 
 class BranchAppService:
     """Application service for branch and intervention orchestration."""
+
+    _simulation_repo: SimulationRepository = FilesystemSimulationRepository()
+    _branch_repo: BranchRepository = FilesystemBranchRepository()
 
     @classmethod
     def _require_consumer_simulation(cls, simulation_id: str) -> Tuple[Optional[Any], Optional[str]]:
@@ -23,8 +24,7 @@ class BranchAppService:
 
         Returns (state, None) on success, or (None, error_message) on failure.
         """
-        manager = SimulationManager()
-        state = manager.get_simulation(simulation_id)
+        state = cls._simulation_repo.get_simulation(simulation_id)
         if not state:
             return None, "Simulation not found"
         if not state.consumer_mode:
@@ -50,8 +50,7 @@ class BranchAppService:
         if fork_round is None or not isinstance(fork_round, int) or fork_round < 0:
             raise ValueError("fork_round must be a non-negative integer")
 
-        mgr = ConsumerInterventionManager()
-        branch = mgr.create_branch(
+        branch = cls._branch_repo.create_branch(
             simulation_id=simulation_id,
             name=name,
             fork_round=fork_round,
@@ -67,8 +66,7 @@ class BranchAppService:
         if error:
             raise ValueError(error)
 
-        mgr = ConsumerInterventionManager()
-        branches = mgr.list_branches(simulation_id)
+        branches = cls._branch_repo.list_branches(simulation_id)
         return [b.model_dump() for b in branches]
 
     @classmethod
@@ -82,8 +80,7 @@ class BranchAppService:
         if error:
             raise ValueError(error)
 
-        mgr = ConsumerInterventionManager()
-        interventions = mgr.list_interventions(simulation_id, branch_id=branch_id)
+        interventions = cls._branch_repo.list_interventions(simulation_id, branch_id=branch_id)
         return [i.model_dump() for i in interventions]
 
     @classmethod
@@ -108,8 +105,7 @@ class BranchAppService:
         except ValueError:
             raise ValueError(f"Unsupported intervention_type: {intervention_type}")
 
-        mgr = ConsumerInterventionManager()
-        intervention = mgr.add_intervention(
+        intervention = cls._branch_repo.add_intervention(
             simulation_id=simulation_id,
             branch_id=branch_id,
             intervention_type=intervention_type,
@@ -125,11 +121,10 @@ class BranchAppService:
         if error:
             raise ValueError(error)
 
-        mgr = ConsumerInterventionManager()
-        branch = mgr.get_branch(simulation_id, branch_id)
+        branch = cls._branch_repo.get_branch(simulation_id, branch_id)
         if branch is None:
             raise ValueError("Branch not found")
-        return mgr.build_comparison_context(simulation_id, branch_id)
+        return cls._branch_repo.build_comparison_context(simulation_id, branch_id)
 
     @classmethod
     def get_branch_run_status(cls, simulation_id: str, branch_id: str) -> dict:
@@ -138,12 +133,11 @@ class BranchAppService:
         if error:
             raise ValueError(error)
 
-        mgr = ConsumerInterventionManager()
-        branch = mgr.get_branch(simulation_id, branch_id)
+        branch = cls._branch_repo.get_branch(simulation_id, branch_id)
         if branch is None:
             raise ValueError("Branch not found")
 
-        run_status = mgr.get_branch_run_status(simulation_id, branch_id)
+        run_status = cls._branch_repo.get_branch_run_status(simulation_id, branch_id)
         return {
             **run_status,
             "branch_status": branch.status,
