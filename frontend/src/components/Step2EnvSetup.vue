@@ -711,7 +711,7 @@ import {
   getSimulationConfig,
   getSimulationConfigRealtime
 } from '../api/simulation'
-import { isConsumerProject, formatSourceQualitySummary } from '../utils/consumerMode'
+import { isConsumerProject, formatSourceQualitySummary, resolveSourceQualitySummary } from '../utils/consumerMode'
 
 const { t } = useI18n()
 
@@ -802,8 +802,8 @@ const consumerResearchFindings = computed(() => consumerConfigMeta.value.researc
 const consumerResearchSnapshot = computed(() => consumerConfigMeta.value.research_snapshot || {})
 
 const consumerSourceQualitySummary = computed(() => {
-  const snapshot = consumerConfigMeta.value.research_snapshot || {}
-  return formatSourceQualitySummary(snapshot.source_quality_summary, t)
+  const summary = resolveSourceQualitySummary(consumerConfigMeta.value)
+  return formatSourceQualitySummary(summary, t)
 })
 
 const consumerEnableLaneB = computed(() => consumerConfigMeta.value.enable_lane_b || false)

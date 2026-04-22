@@ -11,6 +11,7 @@ import {
   isConsumerProject,
   pickTopVocQuotes,
   formatSourceQualitySummary,
+  resolveSourceQualitySummary,
   getConfidenceBadgeClass,
   getConfidenceLabelText,
   mergeFindingConfidence,
@@ -596,6 +597,17 @@ test('buildComparisonAwarePrompts returns empty array for null or empty snapshot
 })
 
 // ============== Phase 4A: Source Quality / Confidence helpers ==============
+
+test('resolveSourceQualitySummary reads source_quality_summary from top-level backend context', () => {
+  const backendContext = {
+    research_snapshot: { source_count: 10 },
+    source_quality_summary: { source_count: 10, lane_a_count: 7, lane_b_count: 3 },
+  }
+  assert.deepEqual(resolveSourceQualitySummary(backendContext), backendContext.source_quality_summary)
+  assert.equal(resolveSourceQualitySummary(null), null)
+  assert.equal(resolveSourceQualitySummary({}), null)
+  assert.equal(resolveSourceQualitySummary({ research_snapshot: {} }), null)
+})
 
 test('formatSourceQualitySummary returns empty array when summary is missing', () => {
   assert.deepEqual(formatSourceQualitySummary(null), [])

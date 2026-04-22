@@ -923,6 +923,7 @@ import {
   getConfidenceLabelText,
   formatComparisonConfidence,
   formatSourceQualitySummary,
+  resolveSourceQualitySummary,
 } from '../utils/consumerMode'
 
 const router = useRouter()
@@ -1353,8 +1354,8 @@ const consumerEvidenceValidationSummary = computed(() => {
 
 const consumerSourceQualitySummary = computed(() => {
   if (!isConsumerMode.value || !props.reportData?.report_context) return []
-  const snapshot = props.reportData.report_context.research_snapshot || {}
-  return formatSourceQualitySummary(snapshot.source_quality_summary, t)
+  const summary = resolveSourceQualitySummary(props.reportData.report_context)
+  return formatSourceQualitySummary(summary, t)
 })
 
 const comparisonConfidenceFormatted = computed(() => {

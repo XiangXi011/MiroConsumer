@@ -466,6 +466,11 @@ export function buildComparisonAwarePrompts(comparisonSnapshot = {}, t = null) {
 
 // ============== Phase 4A: Source quality / confidence helpers ==============
 
+export function resolveSourceQualitySummary(context) {
+  if (!context || typeof context !== 'object') return null
+  return context.source_quality_summary || null
+}
+
 export function formatSourceQualitySummary(summary = {}, t = null) {
   if (!summary || typeof summary !== 'object') return []
   const items = []
