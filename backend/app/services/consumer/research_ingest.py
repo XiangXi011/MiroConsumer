@@ -15,7 +15,13 @@ from .models import (
 )
 from .document_ingest import DocumentIngestService
 from .finding_distiller import distill_findings_from_chunks
+from .project_research_persistence import persist_source_quality
 from .retrieval import PublicWebSearchProvider, RetrievalService
+from .source_quality import (
+    apply_source_quality_to_findings,
+    build_source_quality_summary,
+    evaluate_sources,
+)
 from .source_registry import SourceRegistry
 
 
@@ -388,6 +394,16 @@ def resolve_research_findings(
                 result.append(finding)
                 seen_ids.add(finding.finding_id)
 
+    # Phase 4A: apply source quality scoring when project context exists
+    if project_id is not None:
+        registry = SourceRegistry(project_id, upload_root=upload_root)
+        sources = registry.list_sources()
+        if sources:
+            scored_sources = evaluate_sources(sources)
+            for s in scored_sources:
+                registry.update_source(s)
+            result = apply_source_quality_to_findings(result, scored_sources)
+
     return result
 
 
@@ -431,11 +447,20 @@ def build_research_snapshot(
     retrieval = RetrievalService(project_id, upload_root=upload_root)
     retrieval_traces = retrieval.load_traces()
 
+    # Phase 4A: score source quality and annotate findings
+    scored_sources = evaluate_sources(sources)
+    if scored_sources:
+        for s in scored_sources:
+            registry.update_source(s)
+    findings = apply_source_quality_to_findings(findings, scored_sources)
+    quality_summary = build_source_quality_summary(scored_sources)
+    persist_source_quality(project_id, quality_summary, upload_root=upload_root)
+
     return ResearchSnapshot(
         snapshot_id=f"rsnap_{project_id}",
         project_id=project_id,
         created_at=datetime.now(timezone.utc).isoformat(),
-        sources=sources,
+        sources=scored_sources,
         documents=documents,
         chunks=chunks,
         findings=findings,

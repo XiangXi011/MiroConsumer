@@ -36,6 +36,11 @@ class ResearchSource(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
     added_at: str = ""
     trust_tier: int = 1
+    # Phase 4A source quality fields
+    freshness_score: int = 0
+    source_confidence: float = 0.0
+    coverage_tags: List[str] = Field(default_factory=list)
+    quality_reasons: List[str] = Field(default_factory=list)
 
 
 class IngestedDocument(BaseModel):
@@ -79,6 +84,10 @@ class ResearchFinding(BaseModel):
     source_id: str = ""
     snippet_id: str = ""
     retrieval_trace_id: str = ""
+    # Phase 4A confidence companion fields
+    confidence_label: str = ""
+    confidence_reasons: List[str] = Field(default_factory=list)
+    support_summary: str = ""
 
 
 class ResearchSnapshot(BaseModel):

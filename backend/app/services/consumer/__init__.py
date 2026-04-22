@@ -11,6 +11,12 @@ from .persona_pack import (
     map_persona_to_agent_traits,
 )
 from .scoring import ConsumerAttitudeSummary, ConsumerEvidenceBundle, ConsumerScoringService
+from .source_quality import (
+    apply_source_quality_to_findings,
+    build_source_quality_summary,
+    evaluate_source,
+    evaluate_sources,
+)
 
 __all__ = [
     "ConsumerBusinessBrief",
@@ -25,4 +31,8 @@ __all__ = [
     "can_access_deep_graph",
     "load_default_persona_pack",
     "map_persona_to_agent_traits",
+    "apply_source_quality_to_findings",
+    "build_source_quality_summary",
+    "evaluate_source",
+    "evaluate_sources",
 ]

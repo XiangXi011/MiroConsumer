@@ -138,6 +138,21 @@ class SourceRegistry:
             source_id=source_id,
         )
 
+    def update_source(self, source: ResearchSource) -> bool:
+        """Replace an existing source by source_id. Returns True if found and updated."""
+        sources = self._load()
+        replaced = False
+        new_list: List[ResearchSource] = []
+        for s in sources:
+            if s.source_id == source.source_id:
+                new_list.append(source)
+                replaced = True
+            else:
+                new_list.append(s)
+        if replaced:
+            self._save(new_list)
+        return replaced
+
     def source_count(self, lane: Optional[ResearchSourceLane] = None) -> int:
         return len(self.list_sources(lane=lane))
 

@@ -18,6 +18,7 @@ from .models import ResearchFinding, ResearchSnapshot
 RESEARCH_DIR_NAME = "research"
 FINDINGS_FILE_NAME = "findings.json"
 SNAPSHOT_FILE_NAME = "research_snapshot.json"
+SOURCE_QUALITY_FILE_NAME = "source_quality.json"
 
 
 def _get_research_dir(project_id: str, upload_root: Optional[str] = None) -> Path:
@@ -148,6 +149,49 @@ def load_persisted_retrieval_traces(
 
     traces = snapshot_data.get("retrieval_traces", [])
     return traces if traces else None
+
+
+def persist_source_quality(
+    project_id: str,
+    summary: Dict[str, Any],
+    upload_root: Optional[str] = None,
+) -> Path:
+    """Persist a source quality summary to the project research workspace.
+
+    Returns the path to the written file.
+    """
+    research_dir = _get_research_dir(project_id, upload_root)
+    research_dir.mkdir(parents=True, exist_ok=True)
+
+    payload: Dict[str, Any] = {
+        "project_id": project_id,
+        "created_at": _now_iso(),
+        "summary": summary,
+    }
+
+    quality_path = research_dir / SOURCE_QUALITY_FILE_NAME
+    with quality_path.open("w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
+
+    return quality_path
+
+
+def load_source_quality(
+    project_id: str,
+    upload_root: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """Load a persisted source quality summary from the project research workspace.
+
+    Returns None if the source quality file does not exist.
+    """
+    quality_path = _get_research_dir(project_id, upload_root) / SOURCE_QUALITY_FILE_NAME
+    if not quality_path.exists():
+        return None
+
+    with quality_path.open("r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    return data.get("summary")
 
 
 def artifacts_exist(
