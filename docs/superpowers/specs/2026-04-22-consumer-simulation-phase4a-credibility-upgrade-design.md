@@ -540,16 +540,38 @@ Phase 4A is done when the current `consumer_test` workflow can answer not only "
 ### 15.4 Known Limits At Acceptance
 
 - `auto_enrich` and Lane B public-web supplementation still rely on deterministic synthetic research rather than live external search
-- Manual end-to-end smoke run through the full consumer workflow (build with research -> prepare -> inspect confidence summary -> benchmark replay) is not yet recorded in repo evidence
 - Kimi For Coding prepare time remains ~3-5 minutes per profile; 4-profile prepare ~21 minutes
 - `json_object` compatibility remains proxy-mitigated but may fluctuate
 - `pendingUpload.js` dynamic/static import mix warning persists (non-blocking)
 - Frontend chunk size warning persists (non-blocking)
 
-### 15.5 Next Steps
+### 15.5 Manual Smoke Evidence
+
+A manual route-level smoke run was recorded on 2026-04-22 using a fresh seeded `consumer_test` project and the real Flask routes:
+
+- `POST /api/graph/build`
+- `POST /api/simulation/create`
+- `POST /api/simulation/prepare`
+- `POST /api/simulation/start` with `max_rounds=3`
+- `GET /api/simulation/<simulation_id>/consumer-summary`
+- `POST /api/report/research-assets/export`
+- `POST /api/report/benchmarks/register`
+- `POST /api/report/benchmarks/<benchmark_id>/replay`
+
+Observed outcomes:
+
+- `source_quality_summary` returned `source_count=2`, `lane_a_count=1`, `lane_b_count=1`, `average_source_confidence=0.725`
+- simulation prepare completed with `persona_pack_id=default_persona_pack`
+- run status completed at `current_round=3` with `total_actions_count=24`
+- consumer summary exposed `report_confidence.confidence_label=medium` and `confidence_score=0.5696`
+- evidence validation summary exposed `weak_support_count=8` and `insufficient_support_count=7`
+- research asset export succeeded and benchmark replay returned `alignment_status=aligned`
+
+This closes the last remaining acceptance gap from the original Phase 4A rollout.
+
+### 15.6 Next Steps
 
 1. Replace deterministic `auto_enrich` / grounded Lane B with a live external retrieval provider when stability allows
 2. Improve prepare concurrency and larger-sample stability
 3. Expand benchmark library from minimal repeatability into category memory / recurring insight library
 4. Strengthen cross-project research asset lineage without implicit knowledge leakage
-5. Record a manual end-to-end smoke run when feasible

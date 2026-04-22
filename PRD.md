@@ -281,6 +281,13 @@ Phase 4A 在 Phase 3 基线上增加了可信决策层，使系统不仅能回�
   - 后端完整非集成回归：`347 passed`
   - 前端定向回归：`73 passed`
   - 前端构建：成功
+  - 手工 route-level smoke：`graph/build -> simulation/create -> prepare -> start(max_rounds=3) -> consumer-summary -> research-assets/export -> benchmark register/replay` 全链路通过
+  - 手工 smoke 关键结果：
+    - `source_quality_summary`：`source_count=2`、`lane_a_count=1`、`lane_b_count=1`、`average_source_confidence=0.725`
+    - 运行结果：`profiles=8`、`runner_status=completed`、`current_round=3`、`total_actions_count=24`
+    - 报告级可信度：`confidence_label=medium`、`confidence_score=0.5696`
+    - 证据验证摘要：`weak_support=8`、`insufficient_support=7`
+    - Benchmark replay：`alignment_status=aligned`
 
 结论：
 

@@ -101,7 +101,36 @@ Phase 4A upgraded `consumer_test` from a research-grade simulation workflow into
 - Small-scale profiles (4) are stable; larger scales still recommend faster models
 - `pendingUpload.js` dynamic/static import mix warning persists (non-blocking)
 - Frontend chunk size warning persists (non-blocking)
-- Manual end-to-end smoke run through the full consumer workflow (build graph with research enabled -> prepare simulation -> inspect confidence-bearing summary -> export benchmark/replay state) is not yet recorded in repo evidence
+
+---
+
+## Manual Smoke Evidence
+
+A manual route-level smoke run was executed on 2026-04-22 against the real Flask app with a fresh seeded `consumer_test` project.
+
+Workflow exercised:
+
+1. `POST /api/graph/build`
+2. `POST /api/simulation/create`
+3. `POST /api/simulation/prepare`
+4. `POST /api/simulation/start` with `max_rounds=3`
+5. `GET /api/simulation/<simulation_id>/consumer-summary`
+6. `POST /api/report/research-assets/export`
+7. `POST /api/report/benchmarks/register`
+8. `POST /api/report/benchmarks/<benchmark_id>/replay`
+9. `GET /api/report/benchmark-replays/<replay_id>`
+
+Observed results:
+
+- `source_quality_summary`: `source_count=2`, `lane_a_count=1`, `lane_b_count=1`, `average_source_confidence=0.725`
+- prepare completed with `persona_pack_id=default_persona_pack`
+- run completed with `current_round=3` and `total_actions_count=24`
+- consumer summary exposed `report_confidence.confidence_label=medium` with `confidence_score=0.5696`
+- evidence validation summary exposed `weak_support_count=8` and `insufficient_support_count=7`
+- research asset export succeeded
+- benchmark replay succeeded with `alignment_status=aligned`
+
+This smoke run closes the final “not yet recorded in repo evidence” item from the earlier Phase 4A handoff.
 
 ---
 
@@ -111,7 +140,6 @@ Phase 4A upgraded `consumer_test` from a research-grade simulation workflow into
 2. **Performance scaling** — profile generation concurrency and larger sample stability
 3. **Benchmark library expansion** — grow from minimal repeatability checks into a category memory / recurring insight library
 4. **Cross-project asset reuse** — strengthen project-level and cross-project research asset lineage without implicit knowledge leakage
-5. **Manual end-to-end smoke verification** — run a full consumer workflow through Step 2 -> Step 4 -> Step 5 with confidence signals and benchmark replay visible
 
 ---
 
