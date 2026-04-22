@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 from typing import Callable, List, Optional
 
+from .lane_b_provider import GovernedDocumentChunk
 from .models import (
     DocumentChunk,
     GraphVisibility,
@@ -111,6 +112,27 @@ def _classify_visibility(text: str) -> GraphVisibility:
     return GraphVisibility.Propagation_Only
 
 
+def _is_chunk_accepted(chunk: DocumentChunk) -> bool:
+    """Return True if the chunk is accepted by Lane B governance (or not governed)."""
+    if isinstance(chunk, GovernedDocumentChunk):
+        return chunk.governance_status == "accepted"
+    return True
+
+
+def _chunk_confidence(chunk: DocumentChunk, base: float = 0.6) -> float:
+    """Return adjusted confidence for a chunk, lowering it if downgraded."""
+    if isinstance(chunk, GovernedDocumentChunk) and chunk.downgraded:
+        return round(base * 0.75, 2)
+    return base
+
+
+def _chunk_governance_reasons(chunk: DocumentChunk) -> List[str]:
+    """Return governance reasons attached to a governed chunk."""
+    if isinstance(chunk, GovernedDocumentChunk):
+        return list(chunk.governance_reasons)
+    return []
+
+
 def distill_findings_from_chunks(
     chunks: List[DocumentChunk],
     lane: ResearchSourceLane = ResearchSourceLane.LaneA,
@@ -120,11 +142,17 @@ def distill_findings_from_chunks(
 
     Each chunk becomes a candidate finding.  Provenance is attached
     via source_id, snippet_id (= chunk_id), and retrieval_trace_id.
+
+    Lane B governed chunks that are rejected are skipped.
     """
     findings: List[ResearchFinding] = []
     seen: set[str] = set()
 
     for chunk in chunks:
+        # Skip rejected governed chunks
+        if not _is_chunk_accepted(chunk):
+            continue
+
         text = chunk.text.strip()
         if not text:
             continue
@@ -136,6 +164,11 @@ def distill_findings_from_chunks(
 
         finding_type = _classify_finding_type(text)
         visibility = _classify_visibility(text)
+        confidence = _chunk_confidence(chunk)
+        gov_reasons = _chunk_governance_reasons(chunk)
+        support_summary = ""
+        if gov_reasons:
+            support_summary = "Governance: " + "; ".join(gov_reasons)
 
         findings.append(
             ResearchFinding(
@@ -145,10 +178,12 @@ def distill_findings_from_chunks(
                 evidence_snippets=[text],
                 source_label="ingested_document" if lane == ResearchSourceLane.LaneA else "public_web",
                 visibility=visibility,
-                confidence=0.6,
+                confidence=confidence,
                 source_id=chunk.source_id,
                 snippet_id=chunk.chunk_id,
                 retrieval_trace_id=trace_id or "",
+                confidence_reasons=gov_reasons,
+                support_summary=support_summary,
             )
         )
 

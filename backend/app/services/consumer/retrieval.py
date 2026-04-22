@@ -19,12 +19,14 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 from .document_ingest import DocumentIngestService
 from .finding_distiller import build_retrieval_trace
+from .lane_b_provider import GovernedDocumentChunk
 from .models import DocumentChunk, ResearchFinding, ResearchSourceLane, RetrievalTrace
 from .source_registry import SourceRegistry
 
 
 RESEARCH_DIR_NAME = "research"
 RETRIEVAL_TRACES_FILE_NAME = "retrieval_traces.jsonl"
+GOVERNANCE_TRACES_FILE_NAME = "governance_traces.jsonl"
 
 
 PublicWebSearchProvider = Callable[[str, int], List[DocumentChunk]]
@@ -107,8 +109,10 @@ class RetrievalService:
         self.project_id = project_id
         self._dir = _get_research_dir(project_id, upload_root)
         self._traces_path = self._dir / RETRIEVAL_TRACES_FILE_NAME
+        self._governance_path = self._dir / GOVERNANCE_TRACES_FILE_NAME
         self._ingest = DocumentIngestService(project_id, upload_root=upload_root)
         self._registry = SourceRegistry(project_id, upload_root=upload_root)
+        self._last_governance_decisions: list = []
         self._ensure_dir()
 
     def _ensure_dir(self) -> None:
@@ -142,9 +146,13 @@ class RetrievalService:
         already present in the workspace.  If no Lane B corpus exists,
         returns an empty list (still traceable).
         """
+        self._last_governance_decisions = []
         if provider is not None:
             try:
                 chunks = provider(query, top_k)
+                # Capture governance decisions if provider exposes them
+                if hasattr(provider, "last_governance") and callable(provider.last_governance):
+                    self._last_governance_decisions = provider.last_governance()
                 return _rank_chunks(query, chunks)[:top_k]
             except Exception:
                 # Graceful fallback: continue to deterministic workspace search
@@ -193,6 +201,15 @@ class RetrievalService:
         self.persist_trace(trace_a)
         self.persist_trace(trace_b)
 
+        # Record governance decisions for Lane B
+        if self._last_governance_decisions:
+            self._persist_governance_trace(
+                trace_id=trace_b.trace_id,
+                query=query,
+                lane=ResearchSourceLane.LaneB,
+                decisions=self._last_governance_decisions,
+            )
+
         return {
             "lane_a": lane_a_results,
             "lane_b": lane_b_results,
@@ -223,6 +240,57 @@ class RetrievalService:
                     continue
                 traces.append(RetrievalTrace(**data))
         return traces
+
+    def _persist_governance_trace(
+        self,
+        trace_id: str,
+        query: str,
+        lane: ResearchSourceLane,
+        decisions: list,
+    ) -> None:
+        """Append a governance trace to the project workspace."""
+        accepted_ids = [d.chunk_id for d in decisions if d.status == "accepted"]
+        rejected_ids = [d.chunk_id for d in decisions if d.status == "rejected"]
+        reasons = {
+            "accepted": [f"{d.chunk_id}: {', '.join(d.reasons)}" for d in decisions if d.status == "accepted" and d.reasons],
+            "rejected": [f"{d.chunk_id}: {', '.join(d.reasons)}" for d in decisions if d.status == "rejected" and d.reasons],
+        }
+        record = {
+            "trace_id": trace_id,
+            "query": query,
+            "lane": lane.value,
+            "accepted_ids": accepted_ids,
+            "rejected_ids": rejected_ids,
+            "reasons": reasons,
+            "recorded_at": _now_iso(),
+        }
+        with self._governance_path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False))
+            f.write("\n")
+
+    def load_governance_traces(
+        self,
+        lane: Optional[ResearchSourceLane] = None,
+    ) -> List[Dict[str, any]]:
+        """Load persisted governance traces, optionally filtered by lane."""
+        traces: List[Dict[str, any]] = []
+        if not self._governance_path.exists():
+            return traces
+        with self._governance_path.open("r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                data = json.loads(line)
+                if lane is not None and data.get("lane") != lane.value:
+                    continue
+                traces.append(data)
+        return traces
+
+    def clear_governance_traces(self) -> None:
+        """Remove all persisted governance traces."""
+        if self._governance_path.exists():
+            self._governance_path.unlink()
 
     def clear_traces(self) -> None:
         """Remove all persisted retrieval traces."""

@@ -14,9 +14,9 @@ from __future__ import annotations
 import hashlib
 import logging
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ...config import Config
 from .document_ingest import DocumentIngestService
@@ -30,6 +30,127 @@ class WebSearchResultItem(BaseModel):
     url: str
     title: str
     snippet: str
+
+
+class GovernanceDecision(BaseModel):
+    """Record of a single chunk's governance evaluation."""
+
+    chunk_id: str
+    status: str  # "accepted" or "rejected"
+    reasons: List[str] = Field(default_factory=list)
+    downgraded: bool = False
+
+
+class GovernedDocumentChunk(DocumentChunk):
+    """DocumentChunk extended with Lane B governance metadata."""
+
+    governance_status: str = "accepted"
+    governance_reasons: List[str] = Field(default_factory=list)
+    downgraded: bool = False
+
+
+class LaneBGovernance:
+    """Govern public-web search results before they become findings.
+
+    Responsibilities:
+    - Enforce minimum snippet quality (length, non-empty content)
+    - Suppress duplicate or near-duplicate results
+    - Downgrade sources with weak provenance
+    - Return accepted chunks + full decision log
+    """
+
+    def __init__(self, min_snippet_length: int = 20):
+        self.min_snippet_length = min_snippet_length
+
+    def evaluate(
+        self, chunks: List[DocumentChunk]
+    ) -> Tuple[List[GovernedDocumentChunk], List[GovernanceDecision]]:
+        """Evaluate chunks and return (accepted_chunks, all_decisions)."""
+        accepted: List[GovernedDocumentChunk] = []
+        decisions: List[GovernanceDecision] = []
+        seen_texts: set[str] = set()
+
+        for chunk in chunks:
+            reasons: List[str] = []
+            status = "accepted"
+            downgraded = False
+
+            text = chunk.text.strip()
+
+            # Minimum snippet quality check
+            if len(text) < self.min_snippet_length:
+                status = "rejected"
+                reasons.append(f"Failed minimum snippet length ({len(text)} < {self.min_snippet_length})")
+
+            # Duplicate suppression check
+            normalized = text.casefold()
+            if normalized in seen_texts:
+                status = "rejected"
+                reasons.append("Duplicate or near-duplicate content")
+            else:
+                seen_texts.add(normalized)
+
+            # Weak provenance / source downgrade rule
+            if status == "accepted" and self._is_weak_provenance(text):
+                downgraded = True
+                reasons.append("Weak provenance: vague or low-detail snippet")
+
+            gov_chunk = GovernedDocumentChunk(
+                chunk_id=chunk.chunk_id,
+                doc_id=chunk.doc_id,
+                source_id=chunk.source_id,
+                text=chunk.text,
+                index=chunk.index,
+                char_start=chunk.char_start,
+                char_end=chunk.char_end,
+                created_at=chunk.created_at,
+                governance_status=status,
+                governance_reasons=list(reasons),
+                downgraded=downgraded,
+            )
+
+            decisions.append(
+                GovernanceDecision(
+                    chunk_id=chunk.chunk_id,
+                    status=status,
+                    reasons=list(reasons),
+                    downgraded=downgraded,
+                )
+            )
+
+            if status == "accepted":
+                accepted.append(gov_chunk)
+
+        return accepted, decisions
+
+    @staticmethod
+    def _is_weak_provenance(text: str) -> bool:
+        """Heuristic: short-ish, vague, or low-detail snippets are weak provenance."""
+        stripped = text.strip()
+        # If under 30 chars it's vague regardless
+        if len(stripped) < 30:
+            return True
+        # For longer text, downgrade only if it lacks any specificity markers
+        # AND is under 60 chars
+        if len(stripped) >= 60:
+            return False
+        has_specificity = any(c.isdigit() for c in stripped)
+        has_specificity = has_specificity or any(
+            marker in stripped.casefold()
+            for marker in (
+                "%",
+                "$",
+                "study",
+                "report",
+                "survey",
+                "according to",
+                "said",
+                "found",
+                "data",
+                "research",
+            )
+        )
+        return not has_specificity
 
 
 class OpenAIWebSearchProvider:
@@ -82,17 +203,56 @@ class OpenAIWebSearchProvider:
         digest = hashlib.sha256(f"{url}:{text}".encode("utf-8")).hexdigest()[:12]
         return f"chk_{digest}"
 
+    def __init__(
+        self,
+        project_id: str,
+        upload_root: Optional[str] = None,
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+        model: Optional[str] = None,
+    ):
+        self.project_id = project_id
+        self.upload_root = upload_root
+        self._registry = SourceRegistry(project_id, upload_root=upload_root)
+        self._ingest = DocumentIngestService(project_id, upload_root=upload_root)
+        self._api_key = api_key
+        self._base_url = base_url
+        self._model = model
+        self._client = None
+        self._last_governance_decisions: List[GovernanceDecision] = []
+
+    def _get_client(self) -> Any:
+        if self._client is None:
+            from openai import OpenAI
+            self._client = OpenAI(api_key=self._api_key, base_url=self._base_url)
+        return self._client
+
+    @staticmethod
+    def _stable_source_id(url: str) -> str:
+        digest = hashlib.sha256(url.encode("utf-8")).hexdigest()[:12]
+        return f"src_{digest}"
+
+    @staticmethod
+    def _stable_doc_id(url: str) -> str:
+        digest = hashlib.sha256(url.encode("utf-8")).hexdigest()[:12]
+        return f"doc_{digest}"
+
+    @staticmethod
+    def _stable_chunk_id(url: str, text: str) -> str:
+        digest = hashlib.sha256(f"{url}:{text}".encode("utf-8")).hexdigest()[:12]
+        return f"chk_{digest}"
+
     def __call__(self, query: str, top_k: int) -> List[DocumentChunk]:
         """Execute search, persist sources/chunks to workspace, return chunks."""
         results = self._search(query, top_k)
-        chunks: List[DocumentChunk] = []
+        raw_chunks: List[DocumentChunk] = []
 
         for item in results:
-            if not item.url or not item.snippet:
+            if not item.url:
                 continue
             source_id = self._stable_source_id(item.url)
             doc_id = self._stable_doc_id(item.url)
-            chunk_id = self._stable_chunk_id(item.url, item.snippet)
+            chunk_id = self._stable_chunk_id(item.url, item.snippet or "")
 
             source = self._registry.get_or_register_source(
                 lane=ResearchSourceLane.LaneB,
@@ -103,22 +263,35 @@ class OpenAIWebSearchProvider:
                 source_id=source_id,
             )
 
+            snippet_text = item.snippet.strip() if item.snippet else ""
+            if not snippet_text:
+                continue
+
             chunk = DocumentChunk(
                 chunk_id=chunk_id,
                 doc_id=doc_id,
                 source_id=source.source_id,
-                text=item.snippet,
+                text=snippet_text,
                 index=0,
                 char_start=0,
-                char_end=len(item.snippet),
+                char_end=len(snippet_text),
                 created_at=datetime.now(timezone.utc).isoformat(),
             )
-            chunks.append(chunk)
+            raw_chunks.append(chunk)
 
-        if chunks:
-            self._ingest.ingest_chunks(chunks)
+        # Apply Lane B governance
+        governance = LaneBGovernance()
+        accepted_chunks, decisions = governance.evaluate(raw_chunks)
+        self._last_governance_decisions = decisions
 
-        return chunks
+        if accepted_chunks:
+            self._ingest.ingest_chunks(accepted_chunks)
+
+        return accepted_chunks
+
+    def last_governance(self) -> List[GovernanceDecision]:
+        """Return governance decisions from the last search call."""
+        return list(self._last_governance_decisions)
 
     def _search(self, query: str, top_k: int) -> List[WebSearchResultItem]:
         client = self._get_client()

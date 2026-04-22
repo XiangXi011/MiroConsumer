@@ -1,8 +1,14 @@
 from unittest.mock import MagicMock
 
 from app.services.consumer.document_ingest import DocumentIngestService
-from app.services.consumer.lane_b_provider import OpenAIWebSearchProvider, WebSearchResultItem, build_lane_b_provider
-from app.services.consumer.models import ResearchSourceLane, ResearchSourceType
+from app.services.consumer.lane_b_provider import (
+    GovernedDocumentChunk,
+    LaneBGovernance,
+    OpenAIWebSearchProvider,
+    WebSearchResultItem,
+    build_lane_b_provider,
+)
+from app.services.consumer.models import DocumentChunk, ResearchSourceLane, ResearchSourceType
 from app.services.consumer.source_registry import SourceRegistry
 
 
@@ -82,8 +88,8 @@ def test_provider_returns_multiple_results(tmp_path):
     provider = OpenAIWebSearchProvider("proj_multi", upload_root=root)
 
     provider._search = lambda query, top_k: [
-        WebSearchResultItem(url="https://a.com", title="A", snippet="Snippet A"),
-        WebSearchResultItem(url="https://b.com", title="B", snippet="Snippet B"),
+        WebSearchResultItem(url="https://a.com", title="A", snippet="Snippet A with enough length to pass governance checks."),
+        WebSearchResultItem(url="https://b.com", title="B", snippet="Snippet B also meets the minimum length requirement."),
     ]
 
     chunks = provider("query", top_k=3)
@@ -99,13 +105,13 @@ def test_provider_skips_results_without_url_or_snippet(tmp_path):
 
     provider._search = lambda query, top_k: [
         WebSearchResultItem(url="", title="Empty URL", snippet="Has snippet but no URL"),
-        WebSearchResultItem(url="https://valid.com", title="Valid", snippet="Valid snippet"),
+        WebSearchResultItem(url="https://valid.com", title="Valid", snippet="Valid snippet with sufficient length for governance."),
         WebSearchResultItem(url="https://no-snippet.com", title="No Snippet", snippet=""),
     ]
 
     chunks = provider("query", top_k=3)
     assert len(chunks) == 1
-    assert chunks[0].text == "Valid snippet"
+    assert chunks[0].text == "Valid snippet with sufficient length for governance."
 
 
 def test_provider_raises_on_search_failure(tmp_path):
@@ -408,3 +414,79 @@ def test_provider_full_flow_with_snippetless_sources(tmp_path):
     loaded = ingest.load_chunks()
     assert len(loaded) == 1
     assert loaded[0].text == "A competitor launched a new product line."
+
+
+# ---------------------------------------------------------------------------
+# Governance integration tests
+# ---------------------------------------------------------------------------
+
+def test_provider_applies_governance_to_search_results(tmp_path):
+    root = str(tmp_path / "uploads")
+    provider = OpenAIWebSearchProvider("proj_gov_int", upload_root=root)
+
+    provider._search = lambda query, top_k: [
+        WebSearchResultItem(url="https://a.com", title="A", snippet="This is a valid long snippet that should pass all governance checks."),
+        WebSearchResultItem(url="https://b.com", title="B", snippet="Short."),
+    ]
+
+    chunks = provider("query", top_k=3)
+    assert len(chunks) == 1
+    assert isinstance(chunks[0], GovernedDocumentChunk)
+    assert chunks[0].governance_status == "accepted"
+
+    decisions = provider.last_governance()
+    assert len(decisions) == 2
+    assert any(d.status == "rejected" for d in decisions)
+    assert any(d.status == "accepted" for d in decisions)
+
+
+def test_provider_returns_governed_chunks_with_metadata(tmp_path):
+    root = str(tmp_path / "uploads")
+    provider = OpenAIWebSearchProvider("proj_gov_meta", upload_root=root)
+
+    provider._search = lambda query, top_k: [
+        WebSearchResultItem(url="https://a.com", title="A", snippet="This is a valid long snippet that should pass all governance checks."),
+    ]
+
+    chunks = provider("query", top_k=3)
+    assert len(chunks) == 1
+    chunk = chunks[0]
+    assert isinstance(chunk, GovernedDocumentChunk)
+    assert hasattr(chunk, "governance_status")
+    assert hasattr(chunk, "governance_reasons")
+    assert hasattr(chunk, "downgraded")
+
+
+def test_lane_b_governance_unit_evaluate():
+    gov = LaneBGovernance(min_snippet_length=30)
+    chunks = [
+        DocumentChunk(chunk_id="c1", doc_id="d1", source_id="s1", text="A" * 50, index=0),
+        DocumentChunk(chunk_id="c2", doc_id="d1", source_id="s1", text="Short.", index=1),
+        DocumentChunk(chunk_id="c3", doc_id="d1", source_id="s1", text="A" * 50, index=2),
+    ]
+    accepted, decisions = gov.evaluate(chunks)
+    assert len(accepted) == 1
+    assert accepted[0].chunk_id == "c1"
+    rejected_c2 = next(d for d in decisions if d.chunk_id == "c2")
+    assert rejected_c2.status == "rejected"
+    rejected_c3 = next(d for d in decisions if d.chunk_id == "c3")
+    assert rejected_c3.status == "rejected"
+    assert any("duplicate" in r.lower() for r in rejected_c3.reasons)
+
+
+def test_provider_persists_sources_even_when_rejected(tmp_path):
+    root = str(tmp_path / "uploads")
+    provider = OpenAIWebSearchProvider("proj_gov_persist", upload_root=root)
+
+    provider._search = lambda query, top_k: [
+        WebSearchResultItem(url="https://a.com", title="A", snippet="Short."),
+    ]
+
+    chunks = provider("query", top_k=3)
+    assert len(chunks) == 0
+
+    # Source should still be registered even if chunk was rejected
+    registry = SourceRegistry("proj_gov_persist", upload_root=root)
+    sources = registry.list_sources(lane=ResearchSourceLane.LaneB)
+    assert len(sources) == 1
+    assert sources[0].uri == "https://a.com"
