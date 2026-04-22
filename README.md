@@ -82,6 +82,18 @@ That makes it useful for **pre-launch rehearsal**, not just static scoring.
 - **Deep Follow-Up Interaction**
   Continue asking the report agent or representative simulated consumers why reactions changed.
 
+- **Source Quality Scoring**
+  Every research source is scored by trust tier, freshness, and coverage so you know whether a finding rests on user-uploaded materials or public-web supplements.
+
+- **Evidence Validation**
+  Findings are checked against their cited snippets before they reach the report. Weak or unsupported evidence is flagged as `weak_support` or `insufficient_support`.
+
+- **Confidence Scoring**
+  Report conclusions carry structured confidence labels and reason codes derived from source quality, evidence sufficiency, and signal consistency.
+
+- **Benchmark Replay**
+  Save a benchmark case from a research pack or project snapshot, rerun it later, and compare current outputs against stable derived-signal baselines.
+
 ## Product Workflow
 
 1. **Create a consumer test**

@@ -514,3 +514,42 @@ Phase 4A is done when the current `consumer_test` workflow can answer not only "
 - how trustworthy the evidence was
 - how strong the conclusion is
 - whether the result aligns with replayed benchmark expectations
+
+## 15. Actual Acceptance Results (2026-04-22)
+
+### 15.1 Backend Test Results
+
+| Suite | Tests | Result |
+|-------|-------|--------|
+| `test_benchmark_registry.py` + `test_benchmark_replay.py` | 17 passed | Pass |
+| Benchmark route tests in `test_consumer_routes.py` | 7 passed | Pass |
+| Full non-integration suite (`pytest tests -q --ignore=tests/integration`) | 347 passed | Pass |
+
+### 15.2 Frontend Test Results
+
+| Suite | Tests | Result |
+|-------|-------|--------|
+| `consumerMode.test.js` + `consumerBrief.test.js` + `pendingUpload.test.js` | 73 passed | Pass |
+| `npm run build` | success | Pass |
+
+### 15.3 Backward Compatibility
+
+- `project_type=default` routes do not invoke source quality, evidence validation, confidence scoring, or benchmark replay — verified by existing route tests
+- Old consumer projects without Phase 4A artifacts load with fallback `unknown` / `not_scored` fields — verified by `report_context.py` fallback logic and existing consumer route tests
+
+### 15.4 Known Limits At Acceptance
+
+- `auto_enrich` and Lane B public-web supplementation still rely on deterministic synthetic research rather than live external search
+- Manual end-to-end smoke run through the full consumer workflow (build with research -> prepare -> inspect confidence summary -> benchmark replay) is not yet recorded in repo evidence
+- Kimi For Coding prepare time remains ~3-5 minutes per profile; 4-profile prepare ~21 minutes
+- `json_object` compatibility remains proxy-mitigated but may fluctuate
+- `pendingUpload.js` dynamic/static import mix warning persists (non-blocking)
+- Frontend chunk size warning persists (non-blocking)
+
+### 15.5 Next Steps
+
+1. Replace deterministic `auto_enrich` / grounded Lane B with a live external retrieval provider when stability allows
+2. Improve prepare concurrency and larger-sample stability
+3. Expand benchmark library from minimal repeatability into category memory / recurring insight library
+4. Strengthen cross-project research asset lineage without implicit knowledge leakage
+5. Record a manual end-to-end smoke run when feasible

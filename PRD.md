@@ -235,7 +235,58 @@ Phase 2 在 Phase 1 基线上增加了以下能力：
 
 - `consumer_test` Phase 1、Phase 2 与 Phase 3 均已完成并通过当前正式验收。
 
-### 7.4 当前已知限制
+### 7.4 Phase 4A 已完成（可信度升级）
+
+Phase 4A 在 Phase 3 基线上增加了可信决策层，使系统不仅能回答“发生了什么”，还能回答“证据有多可靠、结论有多强”。
+
+- **源质量评分（Source Quality Scoring）**
+  - `source_quality.py`：为 Lane A 和 Lane B 的每个 research source 计算 `trust_tier`、`freshness_score`、`source_confidence`、`coverage_tags` 和 `quality_reasons`
+  - 用户上传材料默认高于匿名公开网络结果的信任层级
+  - 质量评分对同一输入快照是确定性的
+
+- **Lane B 治理强化（Lane B Governance Upgrade）**
+  - `lane_b_provider.py` 增加最低片段质量检查、重复结果抑制、弱来源降级规则
+  - `retrieval.py` 将治理决策（接受/拒绝）记录到检索追踪中
+  - `finding_distiller.py` 仅使用通过治理的证据进行提炼
+
+- **证据验证与置信度评分（Evidence Validation & Confidence Scoring）**
+  - `evidence_validator.py`：为每个发现附加机器可读验证状态：`supported` / `weak_support` / `insufficient_support`
+  - `confidence_scoring.py`：综合源质量、证据充分性、信号一致性计算发现级和报告级置信度
+  - `scoring.py`、`report_context.py`、`comparison_engine.py` 分别将置信度附加到运行摘要、报告上下文和对比快照
+
+- **报告与 UI 置信度展示（Report & UI Confidence Exposure）**
+  - Step 2：展示研究源质量摘要（接受来源数、主导信任层级、证据充足度）
+  - Step 4：展示发现置信度标签、证据充分性、对比差异的支持强度
+  - Step 5：生成针对弱证据、低置信度结论和回放漂移的追问提示
+
+- **基准回放与校准（Benchmark Replay & Calibration）**
+  - `benchmark_registry.py` + `benchmark_replay.py`：支持注册基准案例、执行回放、将当前输出与已知基线对比
+  - 回放产物持久化到 `backend/uploads/benchmarks/`，包括 manifest、expected signals、replay result
+  - 使用稳定衍生信号（`acceptance_band`、`top_resonance_labels`、`cascade_band` 等）进行对齐比较，而非脆弱的原始文本匹配
+  - 新增 API 路由：`POST /api/report/benchmarks/register`、`GET /api/report/benchmarks`、`POST /api/report/benchmarks/<id>/replay`、`GET /api/report/benchmark-replays/<id>`
+
+- **Phase 4A 模块验收：**
+  - Source Quality：`trust_tier` / `freshness_score` / `coverage_tags` 计算与持久化通过
+  - Lane B Governance：重复过滤、弱片段拒绝、治理原因持久化通过
+  - Evidence Validator：`supported` / `weak_support` / `insufficient_support` 状态附加通过
+  - Confidence Scoring：发现级、报告级、对比级置信度计算通过
+  - Benchmark Registry：注册、列表、读取通过
+  - Benchmark Replay：回放执行、对齐比较、产物持久化通过
+  - API：benchmark 路由 consumer_test 门控通过；非 consumer 项目正确拒绝通过
+  - 向后兼容：`project_type=default` 不受影响；无 Phase 4A 产物的旧 consumer 项目以 `unknown` / `not_scored` 回退加载
+
+- **Phase 4A 回归结果（2026-04-22）：**
+  - 后端 benchmark 模块测试：`17 passed`
+  - 后端 benchmark 路由测试：`7 passed`
+  - 后端完整非集成回归：`347 passed`
+  - 前端定向回归：`73 passed`
+  - 前端构建：成功
+
+结论：
+
+- `consumer_test` Phase 1、Phase 2、Phase 3 与 Phase 4A 均已完成并通过当前正式验收。
+
+### 7.5 当前已知限制
 
 - `auto_enrich` 已升级为双源 research 底座的一部分：当前包含 `Lane B` 外部检索 provider 与 deterministic fallback；若需更强的真实全网预研能力，后续仍建议替换为更稳定的外部 provider
 - Kimi For Coding 响应较慢，单个 profile 约 `3-5` 分钟，`4` 个 profile 的完整 prepare 约 `21` 分钟
