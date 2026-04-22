@@ -260,6 +260,51 @@
                   </div>
                 </div>
 
+                <div class="brief-field brief-field-wide">
+                  <label>Persona Pack</label>
+                  <div class="persona-pack-selector">
+                    <div class="pack-options">
+                      <button
+                        v-for="pack in availablePacks"
+                        :key="pack.pack_id"
+                        class="mode-btn"
+                        :class="{ active: formData.personaPackSelection?.pack_id === pack.pack_id && !formData.personaPackSelection?.custom_upload }"
+                        @click="selectPersonaPack(pack)"
+                        :disabled="loading"
+                        :title="pack.description"
+                      >
+                        {{ pack.label }}
+                      </button>
+                      <button
+                        class="mode-btn"
+                        :class="{ active: formData.personaPackSelection?.custom_upload }"
+                        @click="$refs.personaPackFileInput?.click()"
+                        :disabled="loading"
+                      >
+                        {{ personaPackFileName ? 'Custom: ' + personaPackFileName : '+ Upload Custom' }}
+                      </button>
+                    </div>
+                    <input
+                      ref="personaPackFileInput"
+                      type="file"
+                      accept=".json"
+                      @change="handlePersonaPackFileSelect"
+                      style="display: none"
+                      :disabled="loading"
+                    />
+                    <p v-if="selectedPackLabel && !formData.personaPackSelection?.custom_upload" class="research-mode-hint">
+                      {{ selectedPackLabel }}
+                      <span v-if="availablePacks.find(p => p.pack_id === formData.personaPackSelection?.pack_id)?.description">
+                        — {{ availablePacks.find(p => p.pack_id === formData.personaPackSelection?.pack_id)?.description }}
+                      </span>
+                    </p>
+                    <p v-if="formData.personaPackSelection?.custom_upload" class="research-mode-hint">
+                      Custom persona pack: {{ personaPackFileName }}
+                      <button @click="removePersonaPackFile" class="remove-btn" style="margin-left: 8px;">×</button>
+                    </p>
+                  </div>
+                </div>
+
                 <div v-if="formData.consumerTaskType === 'concept_test' || formData.consumerTaskType === 'price_test'" class="brief-field brief-field-wide">
                   <label>{{ $t('home.consumerConceptLabel') }}</label>
                   <textarea
@@ -440,7 +485,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import HistoryDatabase from '../components/HistoryDatabase.vue'
@@ -451,6 +496,7 @@ import {
   resolveSimulationRequirement
 } from '../utils/consumerBrief'
 import { setPendingUpload } from '../store/pendingUpload.js'
+import { listPersonaPacks } from '../api/graph.js'
 
 const router = useRouter()
 const { t } = useI18n()
@@ -472,8 +518,14 @@ const formData = ref({
   consumerPackagingAssets: '',
   consumerTestVariants: '',
   consumerPricePoints: '',
-  consumerPriceContext: ''
+  consumerPriceContext: '',
+  personaPackSelection: null
 })
+
+// Persona pack state
+const availablePacks = ref([])
+const personaPackFile = ref(null)
+const personaPackFileName = ref('')
 
 // 文件列表
 const files = ref([])
@@ -569,10 +621,79 @@ const scrollToBottom = () => {
   })
 }
 
+// Persona pack handling
+const selectPersonaPack = (pack) => {
+  formData.value.personaPackSelection = {
+    pack_id: pack.pack_id,
+    pack_class: pack.pack_class,
+    custom_upload: false
+  }
+  personaPackFile.value = null
+  personaPackFileName.value = ''
+}
+
+const handlePersonaPackFileSelect = (event) => {
+  const file = event.target.files?.[0]
+  if (!file) return
+  if (!file.name.toLowerCase().endsWith('.json')) {
+    alert('Persona pack must be a JSON file')
+    event.target.value = ''
+    return
+  }
+  personaPackFile.value = file
+  personaPackFileName.value = file.name
+  formData.value.personaPackSelection = {
+    pack_id: 'custom_upload',
+    pack_class: 'custom',
+    custom_upload: true
+  }
+}
+
+const removePersonaPackFile = () => {
+  personaPackFile.value = null
+  personaPackFileName.value = ''
+  // Revert to default pack
+  const defaultPack = availablePacks.value.find(p => p.pack_id === 'default_persona_pack')
+  if (defaultPack) {
+    selectPersonaPack(defaultPack)
+  } else {
+    formData.value.personaPackSelection = null
+  }
+}
+
+const selectedPackLabel = computed(() => {
+  if (formData.value.personaPackSelection?.custom_upload) {
+    return 'Custom: ' + personaPackFileName.value
+  }
+  const pack = availablePacks.value.find(
+    p => p.pack_id === formData.value.personaPackSelection?.pack_id
+  )
+  return pack?.label || 'Default Consumer Pack'
+})
+
+// Fetch available persona packs on mount
+const fetchPersonaPacks = async () => {
+  try {
+    const res = await listPersonaPacks()
+    if (res.success && res.data) {
+      availablePacks.value = res.data
+      // Auto-select default if none selected
+      if (!formData.value.personaPackSelection) {
+        const defaultPack = res.data.find(p => p.pack_id === 'default_persona_pack')
+        if (defaultPack) {
+          selectPersonaPack(defaultPack)
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to load persona packs:', e)
+  }
+}
+
 // 开始模拟 - 立即跳转，API调用在Process页面进行
 const startSimulation = () => {
   if (!canSubmit.value || loading.value) return
-  
+
   // 存储待上传的数据
   setPendingUpload({
     files: files.value,
@@ -580,7 +701,9 @@ const startSimulation = () => {
     projectType: formData.value.projectType,
     consumerBrief: isConsumerMode.value ? buildConsumerBrief(formData.value) : null,
     researchMode: isConsumerMode.value ? (formData.value.consumerResearchMode || 'manual_only') : 'manual_only',
-    enableLaneB: isConsumerMode.value ? Boolean(formData.value.consumerEnableLaneB) : false
+    enableLaneB: isConsumerMode.value ? Boolean(formData.value.consumerEnableLaneB) : false,
+    personaPackSelection: isConsumerMode.value ? formData.value.personaPackSelection : null,
+    personaPackFile: isConsumerMode.value ? personaPackFile.value : null
   })
 
   // 立即跳转到Process页面（使用特殊标识表示新建项目）
@@ -589,6 +712,10 @@ const startSimulation = () => {
     params: { projectId: 'new' }
   })
 }
+
+onMounted(() => {
+  fetchPersonaPacks()
+})
 </script>
 
 <style scoped>

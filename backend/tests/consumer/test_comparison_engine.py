@@ -75,11 +75,12 @@ def test_compare_run_vs_run_produces_snapshot(tmp_path):
     sim_right = "sim_right"
     _write_consumer_rounds(tmp_path, sim_left)
     _write_consumer_rounds(tmp_path, sim_right)
+    # Phase 5C: provide long evidence text so findings pass validation gatekeeping
     _write_consumer_config(tmp_path, sim_left, findings=[
-        {"finding_id": "f1", "finding_type": "risk_signal", "summary": "Sugar concern", "source_label": "brief_background"},
+        {"finding_id": "f1", "finding_type": "category_context", "summary": "Sugar concern", "source_label": "brief_background", "evidence_snippets": ["x" * 200]},
     ])
     _write_consumer_config(tmp_path, sim_right, findings=[
-        {"finding_id": "f2", "finding_type": "risk_signal", "summary": "Price concern", "source_label": "public_web"},
+        {"finding_id": "f2", "finding_type": "category_context", "summary": "Price concern", "source_label": "public_web", "evidence_snippets": ["y" * 200]},
     ])
 
     snapshot = compare_run_vs_run(sim_left, sim_right, upload_root=str(tmp_path))
@@ -126,11 +127,12 @@ def test_compare_project_vs_project_produces_snapshot(tmp_path):
     from app.services.consumer.models import ResearchFinding, GraphVisibility
     from app.services.consumer.project_research_persistence import persist_findings
 
+    # Phase 5C: provide long evidence text so findings pass validation gatekeeping
     persist_findings(left_project, [
-        ResearchFinding(finding_id="f1", finding_type="risk_signal", summary="Sugar concern", visibility=GraphVisibility.Propagation_Only, source_label="brief_background"),
+        ResearchFinding(finding_id="f1", finding_type="category_context", summary="Sugar concern", visibility=GraphVisibility.Propagation_Only, source_label="brief_background", evidence_snippets=["x" * 200]),
     ], upload_root=str(tmp_path))
     persist_findings(right_project, [
-        ResearchFinding(finding_id="f2", finding_type="trend_signal", summary="Market shift", visibility=GraphVisibility.Propagation_Only, source_label="public_web"),
+        ResearchFinding(finding_id="f2", finding_type="category_context", summary="Market shift", visibility=GraphVisibility.Propagation_Only, source_label="public_web", evidence_snippets=["y" * 200]),
     ], upload_root=str(tmp_path))
 
     snapshot = compare_project_vs_project(left_project, right_project, upload_root=str(tmp_path))
@@ -312,3 +314,78 @@ def test_acceptance_delta_pp_negative_when_right_lower(tmp_path):
 
     # 0.0 - 1.0 = -1.0 ratio → -100.0 percentage points
     assert snapshot["acceptance_delta_pp"] == -100.0
+
+
+# Phase 5C: Evidence gatekeeping in comparison engine tests
+
+def test_side_confidence_downweighted_when_findings_blocked(tmp_path):
+    from app.services.consumer.comparison_engine import _side_confidence_from_findings
+
+    findings = [
+        {
+            "finding_id": "f1",
+            "finding_type": "category_context",
+            "summary": "Sugar concern",
+            "evidence_snippets": ["x" * 200],
+            "source_label": "brief_background",
+            "confidence": 0.9,
+        },
+        {
+            "finding_id": "f2",
+            "finding_type": "risk_signal",
+            "summary": "Price concern",
+            # No evidence snippets - will be blocked
+        },
+    ]
+    result = _side_confidence_from_findings(findings)
+    assert "evidence_gatekeeping_summary" in result
+    assert result["evidence_gatekeeping_summary"]["blocked_count"] == 1
+    assert result["evidence_gatekeeping_summary"]["downgraded_count"] == 1
+    # Should be down-weighted due to blocked finding penalty
+    assert result["confidence_score"] < 0.9
+    assert any("blocked_findings_penalty" in r for r in result["confidence_reasons"])
+
+
+def test_side_confidence_unknown_when_all_findings_blocked():
+    from app.services.consumer.comparison_engine import _side_confidence_from_findings
+
+    findings = [
+        {
+            "finding_id": "f1",
+            "finding_type": "risk_signal",
+            "summary": "No evidence",
+        },
+    ]
+    result = _side_confidence_from_findings(findings)
+    assert result["confidence_label"] == "unknown"
+    assert result["confidence_score"] == 0.0
+    assert any("all_findings_blocked_by_evidence_gatekeeping" in r for r in result["confidence_reasons"])
+
+
+def test_compare_run_vs_run_excludes_blocked_findings_from_divergences(tmp_path):
+    sim_left = "sim_gate_left"
+    sim_right = "sim_gate_right"
+    _write_consumer_rounds(tmp_path, sim_left)
+    _write_consumer_rounds(tmp_path, sim_right)
+    # Phase 5C: long evidence text for category_context to pass gatekeeping
+    _write_consumer_config(tmp_path, sim_left, findings=[
+        {"finding_id": "f1", "finding_type": "category_context", "summary": "Sugar concern", "source_label": "brief_background", "evidence_snippets": ["x" * 200]},
+        {"finding_id": "f2", "finding_type": "risk_signal", "summary": "No evidence blocked", "source_label": "public_web"},
+    ])
+    _write_consumer_config(tmp_path, sim_right, findings=[
+        {"finding_id": "f3", "finding_type": "category_context", "summary": "Price concern", "source_label": "public_web", "evidence_snippets": ["y" * 200]},
+    ])
+
+    snapshot = compare_run_vs_run(sim_left, sim_right, upload_root=str(tmp_path))
+
+    # Divergences should only include signals from allowed findings
+    divergences = snapshot["evidence_backed_divergences"]
+    signals = {d["signal"] for d in divergences}
+    # "No evidence blocked" should NOT appear because it is gatekept out
+    assert "No evidence blocked" not in signals
+    assert "Sugar concern" in signals
+    assert "Price concern" in signals
+
+    # Comparison confidence should include gatekeeping summaries
+    assert "evidence_gatekeeping_summary" in snapshot["left_confidence"]
+    assert "evidence_gatekeeping_summary" in snapshot["right_confidence"]

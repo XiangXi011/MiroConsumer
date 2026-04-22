@@ -2,7 +2,7 @@
   <div class="process-page">
     <!-- 顶部导航栏 -->
     <nav class="navbar">
-      <div class="nav-brand" @click="goHome">MIROFISH</div>
+      <div class="nav-brand" @click="goHome">MIROCONSUMER</div>
       
       <!-- 中间步骤指示器 -->
       <div class="nav-center">
@@ -414,7 +414,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { generateOntology, getProject, buildGraph, getTaskStatus, getGraphData } from '../api/graph'
+import { generateOntology, getProject, buildGraph, getTaskStatus, getGraphData, buildOntologyFormData } from '../api/graph'
 import { getPendingUpload, clearPendingUpload } from '../store/pendingUpload'
 import * as d3 from 'd3'
 
@@ -580,12 +580,8 @@ const handleNewProject = async () => {
     ontologyProgress.value = { message: '正在上传文件并分析文档...' }
     
     // 构建 FormData
-    const formDataObj = new FormData()
-    pending.files.forEach(file => {
-      formDataObj.append('files', file)
-    })
-    formDataObj.append('simulation_requirement', pending.simulationRequirement)
-    
+    const formDataObj = buildOntologyFormData(pending)
+
     // 调用本体生成 API
     const response = await generateOntology(formDataObj)
     

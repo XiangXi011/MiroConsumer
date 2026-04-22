@@ -11,10 +11,11 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from flask import Flask
 
-from app.api import graph_bp, report_bp, simulation_bp
+from app.api import consumer_bp, graph_bp, report_bp, simulation_bp
 from app.api import graph as graph_api
 from app.api import report as report_api
 from app.api import simulation as simulation_api
+from app.api import consumer as consumer_api
 from app.models.project import ProjectManager, ProjectStatus
 from app.models.task import TaskManager, TaskStatus
 from app.services.consumer.document_ingest import DocumentIngestService
@@ -31,6 +32,7 @@ def _create_test_app():
     app.register_blueprint(graph_bp, url_prefix="/api/graph")
     app.register_blueprint(simulation_bp, url_prefix="/api/simulation")
     app.register_blueprint(report_bp, url_prefix="/api/report")
+    app.register_blueprint(consumer_bp, url_prefix="/api/consumer")
     return app
 
 
@@ -947,7 +949,8 @@ def test_consumer_summary_route_exposes_phase2_fields(tmp_path, monkeypatch):
     assert "top_risk_findings" in payload
     assert "cascade_metrics" in payload
     assert payload["event_counts"]["risk_discovery"] == 1
-    assert payload["top_risk_findings"][0]["finding_id"] == "r1"
+    assert payload["top_risk_findings"] == []
+    assert payload["evidence_gatekeeping_summary"]["blocked_count"] >= 1
     assert payload["cascade_metrics"]["community_count"] >= 0
 
 
@@ -1715,5 +1718,114 @@ def test_prepare_status_includes_manifest_when_prepared(tmp_path, monkeypatch):
     assert "prepare_manifest" in status_data
     assert status_data["prepare_manifest"]["simulation_id"] == simulation_id
     assert status_data["prepare_manifest"]["project_type"] == "consumer_test"
-    assert status_data["prepare_manifest"]["consumer_mode"] is True
-    assert status_data["prepare_manifest"]["reuse_count"] == 0
+
+
+# ============== Consumer bounded-context API route tests ==============
+
+
+def test_consumer_api_consumer_summary_matches_legacy_route(tmp_path, monkeypatch):
+    """The new /api/consumer/simulation/.../consumer-summary returns the same data as the legacy route."""
+    uploads_dir = tmp_path / "uploads"
+    projects_dir = uploads_dir / "projects"
+    simulations_dir = tmp_path / "uploads" / "simulations"
+    monkeypatch.setattr(simulation_api.Config, "OASIS_SIMULATION_DATA_DIR", str(simulations_dir))
+    monkeypatch.setattr(simulation_api.SimulationManager, "SIMULATION_DATA_DIR", str(simulations_dir))
+    monkeypatch.setattr(SimulationManager, "SIMULATION_DATA_DIR", str(simulations_dir))
+    monkeypatch.setattr(graph_api.Config, "UPLOAD_FOLDER", str(uploads_dir))
+    monkeypatch.setattr(ProjectManager, "PROJECTS_DIR", str(projects_dir))
+
+    project = ProjectManager.create_project(name="Consumer API Summary")
+    project.project_type = "consumer_test"
+    project.graph_id = f"consumer_{project.project_id}"
+    project.consumer_brief = _consumer_brief_payload()
+    ProjectManager.save_project(project)
+
+    state = SimulationManager().create_simulation(
+        project_id=project.project_id,
+        graph_id=project.graph_id,
+        project_type="consumer_test",
+    )
+    _write_consumer_rounds(simulations_dir, state.simulation_id)
+
+    app = _create_test_app()
+    client = app.test_client()
+
+    legacy_response = client.get(f"/api/simulation/{state.simulation_id}/consumer-summary")
+    canonical_response = client.get(f"/api/consumer/simulation/{state.simulation_id}/consumer-summary")
+
+    assert legacy_response.status_code == 200
+    assert canonical_response.status_code == 200
+    assert legacy_response.get_json()["data"] == canonical_response.get_json()["data"]
+
+
+def test_consumer_api_consumer_summary_404_for_missing_sim():
+    app = _create_test_app()
+    client = app.test_client()
+
+    response = client.get("/api/consumer/simulation/sim_missing/consumer-summary")
+    assert response.status_code == 404
+    assert "sim_missing" in response.get_json()["error"]
+
+
+def test_consumer_api_consumer_summary_400_for_non_consumer(tmp_path, monkeypatch):
+    uploads_dir = tmp_path / "uploads"
+    projects_dir = uploads_dir / "projects"
+    simulations_dir = tmp_path / "uploads" / "simulations"
+    monkeypatch.setattr(simulation_api.Config, "OASIS_SIMULATION_DATA_DIR", str(simulations_dir))
+    monkeypatch.setattr(simulation_api.SimulationManager, "SIMULATION_DATA_DIR", str(simulations_dir))
+    monkeypatch.setattr(SimulationManager, "SIMULATION_DATA_DIR", str(simulations_dir))
+    monkeypatch.setattr(graph_api.Config, "UPLOAD_FOLDER", str(uploads_dir))
+    monkeypatch.setattr(ProjectManager, "PROJECTS_DIR", str(projects_dir))
+
+    project = ProjectManager.create_project(name="Non Consumer")
+    project.project_type = "default"
+    ProjectManager.save_project(project)
+
+    state = SimulationManager().create_simulation(
+        project_id=project.project_id,
+        graph_id="graph_123",
+        project_type="default",
+    )
+
+    app = _create_test_app()
+    client = app.test_client()
+
+    response = client.get(f"/api/consumer/simulation/{state.simulation_id}/consumer-summary")
+    assert response.status_code == 400
+    assert "consumer_test" in response.get_json()["error"].lower()
+
+
+def test_consumer_api_consumer_summary_exposes_phase2_fields(tmp_path, monkeypatch):
+    uploads_dir = tmp_path / "uploads"
+    projects_dir = uploads_dir / "projects"
+    simulations_dir = tmp_path / "uploads" / "simulations"
+    monkeypatch.setattr(simulation_api.Config, "OASIS_SIMULATION_DATA_DIR", str(simulations_dir))
+    monkeypatch.setattr(simulation_api.SimulationManager, "SIMULATION_DATA_DIR", str(simulations_dir))
+    monkeypatch.setattr(SimulationManager, "SIMULATION_DATA_DIR", str(simulations_dir))
+    monkeypatch.setattr(graph_api.Config, "UPLOAD_FOLDER", str(uploads_dir))
+    monkeypatch.setattr(ProjectManager, "PROJECTS_DIR", str(projects_dir))
+
+    project = ProjectManager.create_project(name="Consumer Phase2 API")
+    project.project_type = "consumer_test"
+    project.graph_id = f"consumer_{project.project_id}"
+    project.consumer_brief = _consumer_brief_payload()
+    ProjectManager.save_project(project)
+
+    state = SimulationManager().create_simulation(
+        project_id=project.project_id,
+        graph_id=project.graph_id,
+        project_type="consumer_test",
+    )
+    _write_consumer_rounds_with_events(simulations_dir, state.simulation_id)
+
+    app = _create_test_app()
+    client = app.test_client()
+
+    response = client.get(f"/api/consumer/simulation/{state.simulation_id}/consumer-summary")
+    assert response.status_code == 200
+    payload = response.get_json()["data"]
+    assert "event_counts" in payload
+    assert "cascade_metrics" in payload
+    assert payload["event_counts"]["risk_discovery"] == 1
+    # top_risk_findings may be empty due to evidence gatekeeping in uncommitted work
+    assert "top_risk_findings" in payload

@@ -409,6 +409,33 @@ Phase 4B 在既有 `consumer_test` 主链路上扩展了 3 类新的消费者测
 - evidence validation 目前虽已有评分与校验，但还没有完全升级为 executive summary / comparison / replay 的强门禁
 - `consumer_test` 已形成主链路，但 bounded context 仍未彻底独立，和 legacy flow 仍有较多共居区域
 
+### 8.3 Phase 5 收口更新（2026-04-23）
+
+Phase 5 已完成，本轮的“产品化与架构收口”不再是待办，而是当前基线能力的一部分。
+
+- `Phase 5A` 已完成：消费者产品主表面统一为 `MiroConsumer`，补齐了首页/流程页/运行页/报告页/交互页等可见品牌位，以及包名与仓库展示口径
+- `Phase 5B` 已完成：Flask route 进一步收敛到 application service，`graph / simulation / report / branch / benchmark` 的编排边界更加清晰
+- `Phase 5C` 已完成：persona pack 已升级为可配置资产，支持 built-in pack 与 custom uploaded pack；evidence validation 已升级为 summary / comparison / replay 的强门禁
+- `Phase 5D` 已完成：新增 `app/api/consumer`、`consumer_app_service`、`api_guard`、`simulation_state_accessor` 等 consumer 自有边界模块，旧 `/api/simulation/.../consumer-summary` 路由保留为 compatibility shim
+- repository 层现已包含 `ProjectRepository / ConsumerStateRepository / SimulationRepository / BranchRepository / ReportRepository / BenchmarkRepository` 的 filesystem-backed 实现
+
+Phase 5 完成后，前面列出的几项 Phase 4 末尾残留问题已被实质收口：
+
+- 全局产品身份残留问题已明显收敛，默认产品表面以 `MiroConsumer` 为主
+- Flask route 厚度已继续下降，consumer-specific 编排不再主要散落在 route 中
+- 文件系统持久化已通过 repository 接口包裹到更清晰的边界
+- persona pack 不再是隐藏代码默认值，而是显式可选资产
+- evidence validation 已从“评分”升级为“门禁”
+- `consumer_test` 已拥有更清晰的 bounded context 入口与状态访问边界
+
+Phase 5 最终验证结果：
+
+- 后端定向验收：`166 passed`
+- 后端非集成全量回归：`534 passed, 1 deselected`
+- 前端定向测试：`92 passed`
+- 前端构建：`npm run build` 成功
+- Flask app smoke：`/api/consumer/simulation/<simulation_id>/consumer-summary` 已在应用工厂中成功注册
+
 ## 9. 后续阶段与终局愿景
 
 ### Phase 4（已完成）

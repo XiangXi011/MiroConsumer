@@ -4,7 +4,7 @@ from pathlib import Path
 
 from flask import Flask
 
-from app.api import graph_bp, report_bp, simulation_bp
+from app.api import consumer_bp, graph_bp, report_bp, simulation_bp
 from app.api import graph as graph_api
 from app.api import simulation as simulation_api
 from app.models.project import ProjectManager, ProjectStatus
@@ -22,6 +22,7 @@ def _create_test_app():
     app.register_blueprint(graph_bp, url_prefix="/api/graph")
     app.register_blueprint(simulation_bp, url_prefix="/api/simulation")
     app.register_blueprint(report_bp, url_prefix="/api/report")
+    app.register_blueprint(consumer_bp, url_prefix="/api/consumer")
     return app
 
 

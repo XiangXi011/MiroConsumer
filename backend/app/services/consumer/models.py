@@ -30,6 +30,39 @@ class ResearchSourceType(str, Enum):
     PublicWeb = "public_web"
 
 
+class PersonaPackClass(str, Enum):
+    Generic = "generic"
+    Industry = "industry"
+    Category = "category"
+    Geography = "geography"
+    Custom = "custom"
+
+
+@dataclass
+class PersonaPackSelection:
+    """Lightweight persona pack selection carried inside a consumer brief."""
+
+    pack_id: str = "default_persona_pack"
+    pack_class: PersonaPackClass = PersonaPackClass.Generic
+    custom_upload: bool = False
+
+    def __post_init__(self) -> None:
+        if isinstance(self.pack_class, str):
+            try:
+                self.pack_class = PersonaPackClass(self.pack_class.strip().lower())
+            except ValueError:
+                self.pack_class = PersonaPackClass.Generic
+        if not isinstance(self.pack_class, PersonaPackClass):
+            self.pack_class = PersonaPackClass.Generic
+
+    def to_summary(self) -> Dict[str, Any]:
+        return {
+            "pack_id": self.pack_id,
+            "pack_class": self.pack_class.value,
+            "custom_upload": self.custom_upload,
+        }
+
+
 class ResearchSource(BaseModel):
     source_id: str
     lane: ResearchSourceLane
@@ -287,6 +320,27 @@ def _normalize_price_context(value: Any) -> Optional[str]:
     return None
 
 
+def _normalize_persona_pack_selection(value: Any) -> PersonaPackSelection:
+    if value is None:
+        return PersonaPackSelection()
+    if isinstance(value, PersonaPackSelection):
+        return value
+    if isinstance(value, Mapping):
+        pack_id = str(value.get("pack_id", "default_persona_pack")).strip()
+        pack_class_raw = str(value.get("pack_class", "generic")).strip().lower()
+        try:
+            pack_class = PersonaPackClass(pack_class_raw)
+        except ValueError:
+            pack_class = PersonaPackClass.Generic
+        custom_upload = bool(value.get("custom_upload", False))
+        return PersonaPackSelection(
+            pack_id=pack_id,
+            pack_class=pack_class,
+            custom_upload=custom_upload,
+        )
+    return PersonaPackSelection()
+
+
 @dataclass
 class ConsumerBusinessBrief:
     task_type: ConsumerTaskType
@@ -305,6 +359,7 @@ class ConsumerBusinessBrief:
     price_points: List[str] = field(default_factory=list)
     test_variants: List[TestVariant] = field(default_factory=list)
     price_context: Optional[str] = None
+    persona_pack_selection: PersonaPackSelection = field(default_factory=PersonaPackSelection)
     supported_task_types: ClassVar[set[ConsumerTaskType]] = {
         ConsumerTaskType.ConceptTest,
         ConsumerTaskType.CopyFeedback,
@@ -359,6 +414,7 @@ class ConsumerBusinessBrief:
         self.graph_visibility = _normalize_graph_visibility(self.graph_visibility)
         self.research_mode = _normalize_research_mode(self.research_mode)
         self.enable_lane_b = _normalize_enable_lane_b(self.enable_lane_b)
+        self.persona_pack_selection = _normalize_persona_pack_selection(self.persona_pack_selection)
 
     def to_summary(self) -> Dict[str, Any]:
         return {
@@ -378,4 +434,5 @@ class ConsumerBusinessBrief:
             "price_points": self.price_points,
             "test_variants": [v.to_summary() for v in self.test_variants],
             "price_context": self.price_context,
+            "persona_pack_selection": self.persona_pack_selection.to_summary(),
         }

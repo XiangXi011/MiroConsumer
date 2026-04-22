@@ -17,6 +17,7 @@ from ...repositories.filesystem import (
     FilesystemProjectRepository,
     FilesystemSimulationRepository,
 )
+from ...services.consumer.api_guard import ConsumerApiGuard
 from ...services.consumer.persona_pack import load_default_persona_pack
 from ...services.prepare_manifest import read_manifest
 from ...services.simulation_manager import SimulationStatus
@@ -199,7 +200,7 @@ class SimulationAppService:
         if not project:
             raise ValueError(t("api.projectNotFound", id=state.project_id))
 
-        consumer_mode = state.consumer_mode or (project.project_type == "consumer_test")
+        consumer_mode = ConsumerApiGuard.is_consumer_context(state=state, project=project)
         simulation_requirement = project.simulation_requirement or ""
         if not consumer_mode and not simulation_requirement:
             raise ValueError(t("api.projectMissingRequirement"))

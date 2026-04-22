@@ -14,50 +14,13 @@ from .report_context import ConsumerReportContextBuilder
 from .scoring import ConsumerScoringService
 
 
-def _side_confidence_from_findings(findings: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Extract or compute confidence for a side from its findings."""
-    if not findings:
-        return {
-            "confidence_label": "unknown",
-            "confidence_score": 0.0,
-            "confidence_reasons": ["no_findings"],
-            "support_summary": "No findings available",
-        }
-
-    # Use existing confidence scores if present
-    scores: List[float] = []
-    labels: List[str] = []
-    for f in findings:
-        score = f.get("confidence")
-        if isinstance(score, (int, float)) and score > 0:
-            scores.append(float(score))
-        label = f.get("confidence_label", "")
-        if label:
-            labels.append(label)
-
-    if scores:
-        avg_score = sum(scores) / len(scores)
-        if avg_score >= 0.75:
-            label = "high"
-        elif avg_score >= 0.5:
-            label = "medium"
-        elif avg_score >= 0.25:
-            label = "low"
-        else:
-            label = "unknown"
-        return {
-            "confidence_label": label,
-            "confidence_score": round(avg_score, 4),
-            "confidence_reasons": [f"derived_from_{len(scores)}_finding_scores"],
-            "support_summary": f"Average confidence from {len(scores)} findings: {round(avg_score, 2)}",
-        }
-
-    # Fallback: try to compute from source_quality fields
-    from .confidence_scoring import (
-        compute_report_confidence,
-        build_confidence_summary,
+def _gatekeep_comparison_findings(findings: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Apply evidence gatekeeping to comparison findings and return filtered set + summary."""
+    from .evidence_validator import (
+        apply_evidence_gatekeeping_to_findings,
+        build_gatekeeping_summary,
+        validate_findings,
     )
-    from .evidence_validator import validate_findings, build_evidence_validation_summary
     from .models import ResearchFinding
 
     typed_findings = []
@@ -68,8 +31,129 @@ def _side_confidence_from_findings(findings: List[Dict[str, Any]]) -> Dict[str, 
             typed_findings.append(f)
 
     validations = validate_findings(typed_findings)
+    # Use a lenient policy for comparison contexts where traces/chunks
+    # may not be available; require only basic evidence presence.
+    from .evidence_validator import EvidenceGatekeepingPolicy
+    lenient_policy = EvidenceGatekeepingPolicy(
+        min_evidence_snippets=1,
+        min_aligned_snippets=0,
+        require_retrieval_trace=False,
+    )
+    gatekeeping_results = apply_evidence_gatekeeping_to_findings(
+        typed_findings, validations, policy=lenient_policy
+    )
+    summary = build_gatekeeping_summary(gatekeeping_results)
+
+    allowed_ids = {
+        g.finding_id for g in gatekeeping_results
+        if g.gatekeeping_status in ("allowed", "downgraded")
+    }
+    filtered = [
+        f for f in findings
+        if (f.get("finding_id") if isinstance(f, dict) else getattr(f, "finding_id", "")) in allowed_ids
+    ]
+    return {
+        "filtered_findings": filtered,
+        "gatekeeping_summary": summary,
+        "gatekeeping_results": gatekeeping_results,
+    }
+
+
+def _side_confidence_from_findings(findings: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Extract or compute confidence for a side from its findings.
+
+    Phase 5C: Down-weights or fails weak evidence according to gatekeeping policy.
+    """
+    if not findings:
+        return {
+            "confidence_label": "unknown",
+            "confidence_score": 0.0,
+            "confidence_reasons": ["no_findings"],
+            "support_summary": "No findings available",
+        }
+
+    # Phase 5C: apply gatekeeping to filter blocked findings
+    gatekeep = _gatekeep_comparison_findings(findings)
+    allowed_findings = gatekeep["filtered_findings"]
+    gatekeeping_summary = gatekeep["gatekeeping_summary"]
+
+    if not allowed_findings:
+        return {
+            "confidence_label": "unknown",
+            "confidence_score": 0.0,
+            "confidence_reasons": [
+                "all_findings_blocked_by_evidence_gatekeeping",
+                f"blocked_count:{gatekeeping_summary.get('blocked_count', 0)}",
+            ],
+            "support_summary": "All findings blocked by evidence gatekeeping policy",
+            "evidence_gatekeeping_summary": gatekeeping_summary,
+        }
+
+    # Use existing confidence scores if present
+    scores: List[float] = []
+    labels: List[str] = []
+    for f in allowed_findings:
+        score = f.get("confidence") if isinstance(f, dict) else getattr(f, "confidence", None)
+        if isinstance(score, (int, float)) and score > 0:
+            scores.append(float(score))
+        label = f.get("confidence_label", "") if isinstance(f, dict) else getattr(f, "confidence_label", "")
+        if label:
+            labels.append(label)
+
+    if scores:
+        avg_score = sum(scores) / len(scores)
+        # Phase 5C: down-weight if gatekeeping blocked or downgraded any findings
+        blocked_count = gatekeeping_summary.get("blocked_count", 0)
+        downgraded_count = gatekeeping_summary.get("downgraded_count", 0)
+        total_count = gatekeeping_summary.get("finding_count", len(findings))
+        if blocked_count > 0:
+            penalty = min(0.3, 0.1 * blocked_count)
+            avg_score = max(0.0, avg_score - penalty)
+        if downgraded_count > 0:
+            penalty = min(0.15, 0.05 * downgraded_count)
+            avg_score = max(0.0, avg_score - penalty)
+
+        if avg_score >= 0.75:
+            label = "high"
+        elif avg_score >= 0.5:
+            label = "medium"
+        elif avg_score >= 0.25:
+            label = "low"
+        else:
+            label = "unknown"
+        reasons = [f"derived_from_{len(scores)}_finding_scores"]
+        if blocked_count > 0:
+            reasons.append(f"blocked_findings_penalty:{blocked_count}/{total_count}")
+        if downgraded_count > 0:
+            reasons.append(f"downgraded_findings_penalty:{downgraded_count}/{total_count}")
+        return {
+            "confidence_label": label,
+            "confidence_score": round(avg_score, 4),
+            "confidence_reasons": reasons,
+            "support_summary": f"Average confidence from {len(scores)} allowed findings: {round(avg_score, 2)}; gatekept {total_count - len(allowed_findings)}",
+            "evidence_gatekeeping_summary": gatekeeping_summary,
+        }
+
+    # Fallback: try to compute from source_quality fields
+    from .confidence_scoring import (
+        compute_report_confidence,
+        build_confidence_summary,
+    )
+    from .evidence_validator import validate_findings
+    from .models import ResearchFinding
+
+    typed_findings = []
+    for f in allowed_findings:
+        if isinstance(f, dict):
+            typed_findings.append(ResearchFinding(**f))
+        else:
+            typed_findings.append(f)
+
+    validations = validate_findings(typed_findings)
     report_conf = compute_report_confidence(typed_findings, validations, [])
-    return build_confidence_summary(report_conf)
+    result = build_confidence_summary(report_conf)
+    result["evidence_gatekeeping_summary"] = gatekeeping_summary
+    return result
 
 
 def _now_iso() -> str:
@@ -149,9 +233,15 @@ def _compute_evidence_backed_divergences(
     left_findings: List[Dict[str, Any]],
     right_findings: List[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
-    """Find signals present in one side but not the other, with source attribution."""
-    left_signals = _extract_signals_from_findings(left_findings)
-    right_signals = _extract_signals_from_findings(right_findings)
+    """Find signals present in one side but not the other, with source attribution.
+
+    Phase 5C: Filters out findings blocked by evidence gatekeeping before computing divergences.
+    """
+    left_gatekeep = _gatekeep_comparison_findings(left_findings)
+    right_gatekeep = _gatekeep_comparison_findings(right_findings)
+
+    left_signals = _extract_signals_from_findings(left_gatekeep["filtered_findings"])
+    right_signals = _extract_signals_from_findings(right_gatekeep["filtered_findings"])
 
     all_signals = set(left_signals.keys()) | set(right_signals.keys())
     divergences: List[Dict[str, Any]] = []

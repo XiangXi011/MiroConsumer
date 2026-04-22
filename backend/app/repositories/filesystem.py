@@ -13,9 +13,11 @@ from ..models.project import ProjectManager
 from ..services.simulation_manager import SimulationManager
 from ..services.report_agent import ReportManager
 from ..services.consumer.intervention_manager import ConsumerInterventionManager
+from ..services.consumer.simulation_state_accessor import ConsumerSimulationStateAccessor
 from ..services.consumer import benchmark_registry, benchmark_replay
 from . import (
     ProjectRepository,
+    ConsumerStateRepository,
     SimulationRepository,
     BranchRepository,
     ReportRepository,
@@ -52,6 +54,22 @@ class FilesystemProjectRepository(ProjectRepository):
 
     def load_consumer_graph_payload(self, project_id: str) -> Optional[Dict[str, Any]]:
         return ProjectManager.load_consumer_graph_payload(project_id)
+
+
+class FilesystemConsumerStateRepository(ConsumerStateRepository):
+    """Delegates to ConsumerSimulationStateAccessor."""
+
+    def load_consumer_config(self, simulation_id: str) -> Dict[str, Any]:
+        return ConsumerSimulationStateAccessor.load_consumer_config(simulation_id)
+
+    def load_consumer_rounds(self, simulation_id: str) -> List[Dict[str, Any]]:
+        return ConsumerSimulationStateAccessor.load_consumer_rounds(simulation_id)
+
+    def load_brief(self, simulation_id: str) -> Optional[Any]:
+        return ConsumerSimulationStateAccessor.load_brief(simulation_id)
+
+    def load_research_findings(self, simulation_id: str) -> List[Dict[str, Any]]:
+        return ConsumerSimulationStateAccessor.load_research_findings(simulation_id)
 
 
 class FilesystemSimulationRepository(SimulationRepository):
@@ -280,6 +298,7 @@ class FilesystemBenchmarkRepository(BenchmarkRepository):
 
 __all__ = [
     "FilesystemProjectRepository",
+    "FilesystemConsumerStateRepository",
     "FilesystemSimulationRepository",
     "FilesystemBranchRepository",
     "FilesystemReportRepository",

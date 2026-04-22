@@ -55,6 +55,31 @@ class ProjectRepository(ABC):
         """Load consumer graph payload or None."""
 
 
+class ConsumerStateRepository(ABC):
+    """Abstract consumer-specific simulation state persistence.
+
+    Owns the layout and loading of consumer-specific simulation artifacts
+    (rounds, config, brief, findings) so the application service layer
+    depends on an explicit contract rather than file-path knowledge.
+    """
+
+    @abstractmethod
+    def load_consumer_config(self, simulation_id: str) -> Dict[str, Any]:
+        """Load consumer_config.json or return an empty dict."""
+
+    @abstractmethod
+    def load_consumer_rounds(self, simulation_id: str) -> List[Dict[str, Any]]:
+        """Load consumer_rounds.jsonl or return an empty list."""
+
+    @abstractmethod
+    def load_brief(self, simulation_id: str) -> Optional[Any]:
+        """Load and adapt the consumer brief or return None."""
+
+    @abstractmethod
+    def load_research_findings(self, simulation_id: str) -> List[Dict[str, Any]]:
+        """Load research findings list or return an empty list."""
+
+
 class SimulationRepository(ABC):
     """Abstract simulation state persistence."""
 

@@ -425,3 +425,53 @@ def test_test_variants_in_summary():
     assert summary["test_variants"][0]["label"] == "Variant A"
     assert summary["test_variants"][0]["variant_id"] == "v1"
     assert summary["test_variants"][1]["variant_id"] == "v2"
+
+
+def test_persona_pack_selection_defaults_to_default():
+    brief = ConsumerBriefAdapter.from_payload(
+        {
+            "task_type": "concept_test",
+            "product_concept_assets": ["prototype.png"],
+            "research_goal": "Understand appeal",
+        }
+    )
+    assert brief.persona_pack_selection.pack_id == "default_persona_pack"
+    assert brief.persona_pack_selection.pack_class.value == "generic"
+    assert brief.persona_pack_selection.custom_upload is False
+
+
+def test_persona_pack_selection_from_payload():
+    brief = ConsumerBriefAdapter.from_payload(
+        {
+            "task_type": "concept_test",
+            "product_concept_assets": ["prototype.png"],
+            "research_goal": "Understand appeal",
+            "persona_pack_selection": {
+                "pack_id": "tech_early_adopters",
+                "pack_class": "industry",
+                "custom_upload": False,
+            },
+        }
+    )
+    assert brief.persona_pack_selection.pack_id == "tech_early_adopters"
+    assert brief.persona_pack_selection.pack_class.value == "industry"
+    assert brief.persona_pack_selection.custom_upload is False
+
+
+def test_persona_pack_selection_in_summary():
+    brief = ConsumerBriefAdapter.from_payload(
+        {
+            "task_type": "concept_test",
+            "product_concept_assets": ["prototype.png"],
+            "research_goal": "Understand appeal",
+            "persona_pack_selection": {
+                "pack_id": "custom_moms",
+                "pack_class": "category",
+                "custom_upload": True,
+            },
+        }
+    )
+    summary = brief.to_summary()
+    assert summary["persona_pack_selection"]["pack_id"] == "custom_moms"
+    assert summary["persona_pack_selection"]["pack_class"] == "category"
+    assert summary["persona_pack_selection"]["custom_upload"] is True

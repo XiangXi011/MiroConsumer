@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel
@@ -14,6 +15,53 @@ class EvidenceValidationResult(BaseModel):
     aligned_snippet_ids: List[str]
     missing_support_reasons: List[str]
     validator_notes: str
+
+
+class EvidenceGatekeepingResult(BaseModel):
+    finding_id: str
+    gatekeeping_status: Literal["allowed", "downgraded", "blocked"]
+    policy_violations: List[str]
+    gatekeeping_notes: str
+
+
+@dataclass
+class EvidenceGatekeepingPolicy:
+    """Policy configuration for evidence gatekeeping.
+
+    Defaults enforce:
+    - At least 1 evidence snippet per finding
+    - At least 1 aligned snippet for high-stakes finding types
+    - Retrieval trace required for high-stakes findings
+    - Source trust tier limits by finding type (lower tier = more trusted)
+    - insufficient_support findings are blocked from summaries
+    - weak_support findings are downgraded
+    """
+
+    min_evidence_snippets: int = 1
+    min_aligned_snippets: int = 1
+    require_retrieval_trace: bool = True
+    source_tier_maximums: Dict[str, int] = field(default_factory=lambda: {
+        "risk_signal": 2,
+        "competitor_signal": 2,
+        "trend_signal": 3,
+        "category_context": 3,
+    })
+    blocked_statuses: set = field(default_factory=lambda: {"insufficient_support"})
+    downgraded_statuses: set = field(default_factory=lambda: {"weak_support"})
+    high_stakes_finding_types: set = field(default_factory=lambda: {"risk_signal", "competitor_signal"})
+    blocking_violations: set = field(default_factory=lambda: {
+        "missing_retrieval_trace_for_high_stakes",
+        "missing_source_for_high_stakes",
+    })
+    # Phase 5C: per-type evidence-count thresholds (higher for high-stakes)
+    min_evidence_by_type: Dict[str, int] = field(default_factory=lambda: {
+        "risk_signal": 2,
+        "competitor_signal": 2,
+    })
+    min_aligned_by_type: Dict[str, int] = field(default_factory=lambda: {
+        "risk_signal": 1,
+        "competitor_signal": 1,
+    })
 
 
 def _has_evidence_snippets(finding: Any) -> bool:
@@ -93,13 +141,13 @@ def validate_finding(
     aligned_snippet_ids: List[str] = []
     missing_support_reasons: List[str] = []
 
-    # Check snippet alignment
+    # Check snippet alignment (only flag missing refs when chunks were provided)
     if has_snippet_id and snippet_id in chunk_by_id:
         aligned_snippet_ids.append(snippet_id)
-    elif has_snippet_id and snippet_id not in chunk_by_id:
+    elif has_snippet_id and snippet_id not in chunk_by_id and chunks is not None:
         missing_support_reasons.append("referenced_snippet_not_found_in_chunks")
 
-    # Check trace alignment
+    # Check trace alignment (only flag missing refs when traces were provided)
     trace_aligned = False
     if has_trace and trace_id in trace_by_id:
         trace = trace_by_id[trace_id]
@@ -109,7 +157,7 @@ def validate_finding(
                 trace_aligned = True
                 if tcid not in aligned_snippet_ids:
                     aligned_snippet_ids.append(tcid)
-    elif has_trace and trace_id not in trace_by_id:
+    elif has_trace and trace_id not in trace_by_id and traces is not None:
         missing_support_reasons.append("referenced_trace_not_found")
 
     # Compute evidence sufficiency
@@ -191,3 +239,182 @@ def build_evidence_validation_summary(results: List[EvidenceValidationResult]) -
         "insufficient_support_count": status_counts.get("insufficient_support", 0),
         "average_evidence_sufficiency": round(avg_sufficiency, 4),
     }
+
+
+def _source_from_finding(finding: Any, sources: Optional[List[Any]] = None) -> Optional[Any]:
+    """Look up a finding's source from the provided source list."""
+    if not sources:
+        return None
+    source_id = finding.source_id if hasattr(finding, "source_id") else finding.get("source_id", "")
+    if not source_id:
+        return None
+    for s in sources:
+        sid = s.source_id if hasattr(s, "source_id") else s.get("source_id", "")
+        if sid == source_id:
+            return s
+    return None
+
+
+def apply_evidence_gatekeeping(
+    finding: Any,
+    validation_result: EvidenceValidationResult,
+    source: Optional[Any] = None,
+    policy: Optional[EvidenceGatekeepingPolicy] = None,
+) -> EvidenceGatekeepingResult:
+    """Apply evidence gatekeeping policy to a single finding.
+
+    Returns a gatekeeping result indicating whether the finding is allowed,
+    downgraded, or blocked from executive summary and high-level outputs.
+    """
+    finding_id = validation_result.finding_id
+    policy = policy or EvidenceGatekeepingPolicy()
+
+    violations: List[str] = []
+
+    finding_type = finding.finding_type if hasattr(finding, "finding_type") else finding.get("finding_type", "")
+    is_high_stakes = finding_type in policy.high_stakes_finding_types
+
+    # 1. Check validation status gates
+    if validation_result.validation_status in policy.blocked_statuses:
+        violations.append(f"validation_status:{validation_result.validation_status}")
+
+    # 2. Check evidence count thresholds (per-type or global fallback)
+    min_evidence = policy.min_evidence_by_type.get(finding_type, policy.min_evidence_snippets)
+    min_aligned = policy.min_aligned_by_type.get(finding_type, policy.min_aligned_snippets)
+
+    evidence_snippets = _evidence_snippets_from_finding(finding)
+    if len(evidence_snippets) < min_evidence:
+        violations.append(f"insufficient_evidence_snippets:{len(evidence_snippets)}<{min_evidence}")
+
+    aligned_count = len(validation_result.aligned_snippet_ids)
+    if aligned_count < min_aligned:
+        violations.append(f"insufficient_aligned_snippets:{aligned_count}<{min_aligned}")
+
+    # 3. Check retrieval trace requirement
+    has_trace = _has_retrieval_trace(finding)
+
+    if policy.require_retrieval_trace and is_high_stakes and not has_trace:
+        violations.append("missing_retrieval_trace_for_high_stakes")
+
+    # 4. Check source-tier minimums
+    if source is not None:
+        trust_tier = source.trust_tier if hasattr(source, "trust_tier") else source.get("trust_tier", 3)
+        max_tier = policy.source_tier_maximums.get(finding_type)
+        if max_tier is not None and trust_tier > max_tier:
+            violations.append(f"source_tier_too_low:tier_{trust_tier}>max_{max_tier}")
+    elif is_high_stakes:
+        # High-stakes findings without a source are blocked
+        violations.append("missing_source_for_high_stakes")
+
+    # Determine gatekeeping status
+    has_blocking_violation = bool(policy.blocking_violations) and any(
+        any(v.startswith(bv) for bv in policy.blocking_violations)
+        for v in violations
+    )
+
+    # Block insufficient_support unconditionally
+    if validation_result.validation_status in policy.blocked_statuses:
+        status: Literal["allowed", "downgraded", "blocked"] = "blocked"
+    # Blocking violations (e.g. missing trace for high-stakes) always block
+    elif has_blocking_violation:
+        status = "blocked"
+    # Downgrade weak_support unconditionally; block if additional violations exist
+    elif validation_result.validation_status in policy.downgraded_statuses:
+        status = "blocked" if violations else "downgraded"
+    # Other findings with policy violations are downgraded
+    elif violations:
+        status = "downgraded"
+    else:
+        status = "allowed"
+
+    notes_parts: List[str] = []
+    notes_parts.append(f"Gatekeeping status: {status}")
+    if violations:
+        notes_parts.append(f"Violations: {', '.join(violations)}")
+    else:
+        notes_parts.append("All policy checks passed")
+
+    return EvidenceGatekeepingResult(
+        finding_id=finding_id,
+        gatekeeping_status=status,
+        policy_violations=violations,
+        gatekeeping_notes="; ".join(notes_parts),
+    )
+
+
+def apply_evidence_gatekeeping_to_findings(
+    findings: List[Any],
+    validation_results: List[EvidenceValidationResult],
+    sources: Optional[List[Any]] = None,
+    policy: Optional[EvidenceGatekeepingPolicy] = None,
+) -> List[EvidenceGatekeepingResult]:
+    """Apply evidence gatekeeping policy to a list of findings."""
+    validation_by_id = {v.finding_id: v for v in validation_results}
+    results: List[EvidenceGatekeepingResult] = []
+    for finding in findings:
+        finding_id = finding.finding_id if hasattr(finding, "finding_id") else finding.get("finding_id", "")
+        validation = validation_by_id.get(finding_id)
+        if validation is None:
+            validation = EvidenceValidationResult(
+                finding_id=finding_id,
+                validation_status="insufficient_support",
+                evidence_sufficiency=0.0,
+                aligned_snippet_ids=[],
+                missing_support_reasons=["no_validation_performed"],
+                validator_notes="Validation not performed for this finding",
+            )
+        source = _source_from_finding(finding, sources)
+        results.append(apply_evidence_gatekeeping(finding, validation, source=source, policy=policy))
+    return results
+
+
+def build_gatekeeping_summary(results: List[EvidenceGatekeepingResult]) -> Dict[str, Any]:
+    """Build a machine-readable summary of gatekeeping results."""
+    if not results:
+        return {
+            "finding_count": 0,
+            "allowed_count": 0,
+            "downgraded_count": 0,
+            "blocked_count": 0,
+        }
+
+    status_counts: Dict[str, int] = {"allowed": 0, "downgraded": 0, "blocked": 0}
+    for r in results:
+        status_counts[r.gatekeeping_status] = status_counts.get(r.gatekeeping_status, 0) + 1
+
+    return {
+        "finding_count": len(results),
+        "allowed_count": status_counts.get("allowed", 0),
+        "downgraded_count": status_counts.get("downgraded", 0),
+        "blocked_count": status_counts.get("blocked", 0),
+    }
+
+
+def filter_allowed_findings(
+    findings: List[Any],
+    gatekeeping_results: List[EvidenceGatekeepingResult],
+    include_downgraded: bool = False,
+) -> List[Any]:
+    """Filter findings to only those allowed (and optionally downgraded) by gatekeeping."""
+    allowed_ids = {
+        r.finding_id for r in gatekeeping_results
+        if r.gatekeeping_status == "allowed" or (include_downgraded and r.gatekeeping_status == "downgraded")
+    }
+    return [
+        f for f in findings
+        if (f.finding_id if hasattr(f, "finding_id") else f.get("finding_id", "")) in allowed_ids
+    ]
+
+
+__all__ = [
+    "EvidenceValidationResult",
+    "EvidenceGatekeepingResult",
+    "EvidenceGatekeepingPolicy",
+    "apply_evidence_gatekeeping",
+    "apply_evidence_gatekeeping_to_findings",
+    "build_evidence_validation_summary",
+    "build_gatekeeping_summary",
+    "filter_allowed_findings",
+    "validate_finding",
+    "validate_findings",
+]

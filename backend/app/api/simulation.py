@@ -13,15 +13,14 @@ from ..services.zep_entity_reader import ZepEntityReader
 from ..services.oasis_profile_generator import OasisProfileGenerator
 from ..services.simulation_manager import SimulationManager, SimulationStatus
 from ..services.simulation_runner import SimulationRunner, RunnerStatus
-from ..services.consumer.report_context import ConsumerReportContextBuilder, build_consumer_report_context
-from ..services.consumer.scoring import build_consumer_summary
-from ..services.consumer.brief_adapter import ConsumerBriefAdapter
+from ..services.consumer.api_guard import ConsumerApiGuard
 from ..services.consumer.intervention_manager import ConsumerInterventionManager
 from ..utils.logger import get_logger
 from ..utils.locale import t, get_locale, set_locale
 from ..models.project import ProjectManager
 from ..services.application.simulation_app_service import SimulationAppService
 from ..services.application.branch_app_service import BranchAppService
+from ..services.application.consumer_app_service import ConsumerAppService
 
 logger = get_logger('miroconsumer.api.simulation')
 
@@ -71,10 +70,10 @@ def _require_consumer_simulation(simulation_id: str):
     """
     manager = SimulationManager()
     state = manager.get_simulation(simulation_id)
-    if not state:
-        return None, (jsonify({"success": False, "error": "Simulation not found"}), 404)
-    if not state.consumer_mode:
-        return None, (jsonify({"success": False, "error": "Simulation is not a consumer_test simulation"}), 400)
+    ok, error = ConsumerApiGuard.check_consumer_simulation(state)
+    if not ok:
+        status = 404 if "not found" in error.lower() else 400
+        return None, (jsonify({"success": False, "error": error}), status)
     return state, None
 
 
@@ -823,134 +822,21 @@ def get_simulation_profiles_realtime(simulation_id: str):
 
 @simulation_bp.route('/<simulation_id>/consumer-summary', methods=['GET'])
 def get_consumer_summary(simulation_id: str):
-    """读取消费者传播快照并返回结构化摘要。"""
+    """读取消费者传播快照并返回结构化摘要。
+
+    Compatibility shim — delegates to ConsumerAppService.
+    Canonical route lives at /api/consumer/simulation/<simulation_id>/consumer-summary.
+    """
     try:
-        manager = SimulationManager()
-        state = manager.get_simulation(simulation_id)
-        if not state:
-            return jsonify({
-                "success": False,
-                "error": t('api.simulationNotFound', id=simulation_id)
-            }), 404
-
-        if not state.consumer_mode:
-            return jsonify({
-                "success": False,
-                "error": "consumer summary is only available for consumer_test simulations"
-            }), 400
-
-        rounds_path = os.path.join(Config.UPLOAD_FOLDER, 'simulations', simulation_id, 'consumer_rounds.jsonl')
-        builder = ConsumerReportContextBuilder()
-        snapshots = builder.load_events(rounds_path)
-        if not snapshots:
-            return jsonify({
-                "success": False,
-                "error": f"consumer round snapshots not found for simulation {simulation_id}"
-            }), 404
-
-        # Build Phase 1 context (backward compatible)
-        context = builder.build(snapshots)
-
-        # Extract propagation events from snapshots for Phase 2 enrichment
-        all_events = []
-        for snap in snapshots:
-            for event_data in snap.get("propagation_events", []):
-                all_events.append(event_data)
-
-        # Load research findings from consumer_config
-        research_findings = []
-        brief = None
-        consumer_config_path = os.path.join(Config.UPLOAD_FOLDER, 'simulations', simulation_id, 'consumer_config.json')
-        if os.path.exists(consumer_config_path):
-            import json
-            with open(consumer_config_path, "r", encoding="utf-8") as f:
-                consumer_config = json.load(f)
-            research_findings = consumer_config.get("research_findings", [])
-            brief_payload = consumer_config.get("consumer_brief") or {}
-            if brief_payload:
-                brief = ConsumerBriefAdapter.from_payload(brief_payload)
-
-        # Phase 4A: load project research snapshot for traces/chunks/sources if available
-        traces = []
-        chunks = []
-        sources = []
-        project = ProjectManager.get_project(state.project_id)
-        if project and project.project_type == 'consumer_test':
-            from app.services.consumer.project_research_persistence import load_persisted_snapshot
-            from app.services.consumer.models import ResearchSnapshot
-            snapshot = load_persisted_snapshot(project.project_id)
-            if brief is None and getattr(project, "consumer_brief", None):
-                brief = ConsumerBriefAdapter.from_payload(project.consumer_brief)
-            if snapshot:
-                traces = snapshot.retrieval_traces or []
-                chunks = snapshot.chunks or []
-                sources = snapshot.sources or []
-
-        # Merge Phase 2 fields when events are present
-        if all_events:
-            initial_labels = [s.get("attitude_label", "neutral") for s in snapshots if s.get("round_num") == 0]
-            # Use latest attitude per agent for final labels
-            latest_attitudes: Dict[str, str] = {}
-            for s in snapshots:
-                agent_id = s.get("agent_id", "")
-                if agent_id:
-                    latest_attitudes[agent_id] = s.get("attitude_label", "neutral")
-            final_labels = list(latest_attitudes.values())
-
-            phase2_summary = build_consumer_summary(
-                events=all_events,
-                findings=research_findings,
-                initial_labels=initial_labels,
-                final_labels=final_labels,
-                traces=traces,
-                chunks=chunks,
-                sources=sources,
-                task_type=(brief.task_type.value if brief is not None else None),
-                brief=brief,
-            )
-            phase2_context = build_consumer_report_context(
-                summary=phase2_summary,
-                findings=research_findings,
-                events=all_events,
-                traces=traces,
-                report_confidence=phase2_summary.report_confidence,
-                evidence_validation_summary=phase2_summary.evidence_validation_summary,
-            )
-
-            context["event_counts"] = phase2_summary.event_counts
-            context["top_risk_findings"] = phase2_summary.top_risk_findings
-            context["top_clarification_opportunities"] = phase2_summary.top_clarification_opportunities
-            context["causal_voc_quotes"] = phase2_summary.causal_voc_quotes
-            context["causal_chains"] = phase2_context["causal_chains"]
-            context["event_led_reversals"] = phase2_context["event_led_reversals"]
-            context["persona_group_signals"] = phase2_context["persona_group_signals"]
-            context["cascade_metrics"] = phase2_context.get("cascade_metrics", {})
-            context["task_type"] = phase2_context.get("task_type", "concept_test")
-            for key, default in (
-                ("top_packaging_hooks", []),
-                ("top_trust_objections", []),
-                ("top_confusion_triggers", []),
-                ("winning_variant", ""),
-                ("top_variant_deltas", []),
-                ("top_persona_divergences", []),
-                ("acceptable_price_points", []),
-                ("resisted_price_points", []),
-                ("top_price_objections", []),
-                ("price_context", ""),
-            ):
-                context[key] = phase2_context.get(key, default)
-            # Phase 4A confidence fields (consumer_test only)
-            if phase2_summary.report_confidence is not None:
-                context["report_confidence"] = phase2_summary.report_confidence
-            if phase2_summary.evidence_validation_summary is not None:
-                context["evidence_validation_summary"] = phase2_summary.evidence_validation_summary
-            if phase2_summary.finding_confidences:
-                context["finding_confidences"] = phase2_summary.finding_confidences
-
-        return jsonify({
-            "success": True,
-            "data": context
-        })
+        data = ConsumerAppService.get_consumer_summary(simulation_id)
+        return jsonify({"success": True, "data": data})
+    except ValueError as e:
+        msg = str(e).lower()
+        if "not found" in msg or "不存在" in msg:
+            return jsonify({"success": False, "error": str(e)}), 404
+        if "snapshots" in msg:
+            return jsonify({"success": False, "error": str(e)}), 404
+        return jsonify({"success": False, "error": str(e)}), 400
     except Exception as e:
         logger.error(f"获取消费者传播摘要失败: {str(e)}")
         return jsonify({

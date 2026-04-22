@@ -284,3 +284,156 @@ def test_extract_stable_signals_defaults_when_keys_missing():
     assert signals["misread_present"] is False
     assert signals["clarification_recovery_present"] is False
     assert signals["cascade_band"] == "contained"
+
+
+# Phase 5C: Evidence gatekeeping in benchmark replay tests
+
+def test_replay_benchmark_penalizes_blocked_findings(tmp_path):
+    root = str(tmp_path / "uploads")
+    benchmark = register_benchmark(
+        name="Replay Gatekeeping",
+        source_pack_lineage="pack_gate",
+        expected_signals={
+            "acceptance_band": "positive_lean",
+            "top_resonance_labels": ["Great taste"],
+            "top_risk_labels": ["Price too high"],
+            "misread_present": False,
+            "clarification_recovery_present": False,
+            "cascade_band": "contained",
+        },
+        upload_root=root,
+    )
+
+    report_context = {
+        "summary": {
+            "post_propagation_acceptance": {"positive": 0.7, "neutral": 0.2, "negative": 0.1},
+        },
+        "top_resonance_points": ["Great taste"],
+        "top_risk_points": ["Price too high"],
+        "top_misreads": [],
+        "top_clarification_opportunities": [],
+        "cascade_metrics": {
+            "narrative_takeover_score": 0.1,
+            "cross_community_event_count": 0,
+        },
+        # Phase 5C: evidence gatekeeping summary with blocked findings
+        "evidence_gatekeeping_summary": {
+            "finding_count": 4,
+            "allowed_count": 2,
+            "downgraded_count": 0,
+            "blocked_count": 2,
+        },
+    }
+
+    replay = replay_benchmark(
+        benchmark_id=benchmark["benchmark_id"],
+        report_context=report_context,
+        project_id="proj_gate",
+        simulation_id="sim_gate",
+        upload_root=root,
+    )
+
+    # Should still be aligned but with a penalty
+    assert "evidence_gatekeeping_summary" in replay
+    assert any(
+        "evidence_gatekeeping_blocked" in ds for ds in replay["drift_signals"]
+    )
+    # Score should be penalized: base aligned is 1.0, penalty for 2/4 blocked
+    assert replay["overall_score"] < 1.0
+
+
+def test_replay_benchmark_downgraded_findings_add_drift_signals(tmp_path):
+    root = str(tmp_path / "uploads")
+    benchmark = register_benchmark(
+        name="Replay Downgraded",
+        source_pack_lineage="pack_down",
+        expected_signals={
+            "acceptance_band": "positive_lean",
+            "top_resonance_labels": ["Great taste"],
+            "top_risk_labels": [],
+            "misread_present": False,
+            "clarification_recovery_present": False,
+            "cascade_band": "contained",
+        },
+        upload_root=root,
+    )
+
+    report_context = {
+        "summary": {
+            "post_propagation_acceptance": {"positive": 0.7, "neutral": 0.2, "negative": 0.1},
+        },
+        "top_resonance_points": ["Great taste"],
+        "top_risk_points": [],
+        "top_misreads": [],
+        "top_clarification_opportunities": [],
+        "cascade_metrics": {
+            "narrative_takeover_score": 0.1,
+            "cross_community_event_count": 0,
+        },
+        "evidence_gatekeeping_summary": {
+            "finding_count": 4,
+            "allowed_count": 2,
+            "downgraded_count": 2,
+            "blocked_count": 0,
+        },
+    }
+
+    replay = replay_benchmark(
+        benchmark_id=benchmark["benchmark_id"],
+        report_context=report_context,
+        project_id="proj_down",
+        simulation_id="sim_down",
+        upload_root=root,
+    )
+
+    assert any(
+        "evidence_gatekeeping_downgraded" in ds for ds in replay["drift_signals"]
+    )
+    assert "evidence_gatekeeping_summary" in replay
+
+
+def test_replay_benchmark_no_gatekeeping_summary_unchanged(tmp_path):
+    root = str(tmp_path / "uploads")
+    benchmark = register_benchmark(
+        name="Replay No Gatekeeping",
+        source_pack_lineage="pack_none",
+        expected_signals={
+            "acceptance_band": "positive_lean",
+            "top_resonance_labels": ["Great taste"],
+            "top_risk_labels": ["Price too high"],
+            "misread_present": False,
+            "clarification_recovery_present": False,
+            "cascade_band": "contained",
+        },
+        upload_root=root,
+    )
+
+    report_context = {
+        "summary": {
+            "post_propagation_acceptance": {"positive": 0.7, "neutral": 0.2, "negative": 0.1},
+        },
+        "top_resonance_points": ["Great taste"],
+        "top_risk_points": ["Price too high"],
+        "top_misreads": [],
+        "top_clarification_opportunities": [],
+        "cascade_metrics": {
+            "narrative_takeover_score": 0.1,
+            "cross_community_event_count": 0,
+        },
+        # No evidence_gatekeeping_summary
+    }
+
+    replay = replay_benchmark(
+        benchmark_id=benchmark["benchmark_id"],
+        report_context=report_context,
+        project_id="proj_none",
+        simulation_id="sim_none",
+        upload_root=root,
+    )
+
+    # Should be aligned with no gatekeeping-related drift signals
+    assert replay["alignment_status"] == "aligned"
+    assert not any(
+        "evidence_gatekeeping" in ds for ds in replay["drift_signals"]
+    )
+    assert "evidence_gatekeeping_summary" not in replay

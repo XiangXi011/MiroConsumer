@@ -30,7 +30,22 @@ export function buildOntologyFormData(payload = {}) {
     formData.append('consumer_brief', JSON.stringify(brief))
   }
 
+  if (payload.personaPackFile) {
+    formData.append('persona_pack_file', payload.personaPackFile)
+  }
+
   return formData
+}
+
+/**
+ * 获取可用的 persona packs 列表
+ * @returns {Promise}
+ */
+export function listPersonaPacks() {
+  return service({
+    url: '/api/graph/persona-packs',
+    method: 'get'
+  })
 }
 
 /**

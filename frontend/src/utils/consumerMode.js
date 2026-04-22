@@ -264,7 +264,7 @@ export function getInterventionDisplayText(interventionType, payload) {
 // ============== Comparison persistence (simulation-scoped, lightweight) ==============
 
 function _comparisonKey(simulationId) {
-  return `mirofish:consumer:comparison:${simulationId}`
+  return `miroconsumer:consumer:comparison:${simulationId}`
 }
 
 export function loadSelectedComparison(simulationId) {
@@ -304,7 +304,7 @@ export function clearSelectedComparison(simulationId) {
 // ============== Branch persistence (simulation-scoped, lightweight) ==============
 
 function _branchKey(simulationId) {
-  return `mirofish:consumer:branch:${simulationId}`
+  return `miroconsumer:consumer:branch:${simulationId}`
 }
 
 export function loadSelectedBranch(simulationId) {

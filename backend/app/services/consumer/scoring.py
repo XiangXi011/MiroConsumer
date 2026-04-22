@@ -150,6 +150,7 @@ class ConsumerPhase2Summary:
     finding_confidences: List[Dict[str, Any]] = field(default_factory=list)
     report_confidence: Optional[Dict[str, Any]] = None
     evidence_validation_summary: Optional[Dict[str, Any]] = None
+    evidence_gatekeeping_summary: Optional[Dict[str, Any]] = None
     task_type: str = ""
     # Task-aware fields (populated downstream when task_type is known)
     top_packaging_hooks: List[str] = field(default_factory=list)
@@ -190,6 +191,8 @@ class ConsumerPhase2Summary:
             result["report_confidence"] = self.report_confidence
         if self.evidence_validation_summary is not None:
             result["evidence_validation_summary"] = self.evidence_validation_summary
+        if self.evidence_gatekeeping_summary is not None:
+            result["evidence_gatekeeping_summary"] = self.evidence_gatekeeping_summary
         return result
 
 
@@ -418,6 +421,7 @@ def build_consumer_summary(
     finding_confidences: List[Dict[str, Any]] = []
     report_confidence: Optional[Dict[str, Any]] = None
     evidence_validation_summary: Optional[Dict[str, Any]] = None
+    evidence_gatekeeping_summary: Optional[Dict[str, Any]] = None
 
     if typed_findings:
         from .evidence_validator import validate_findings, build_evidence_validation_summary
@@ -468,6 +472,29 @@ def build_consumer_summary(
         report_confidence = build_confidence_summary(report_conf)
         finding_confidences = report_confidence.get("finding_confidence_summary", [])
 
+        # Phase 5C: apply evidence gatekeeping to block unsupported findings from executive summary
+        from .evidence_validator import (
+            apply_evidence_gatekeeping_to_findings,
+            build_gatekeeping_summary,
+        )
+        gatekeeping_results = apply_evidence_gatekeeping_to_findings(
+            typed_findings, validation_results, sources=typed_sources
+        )
+        evidence_gatekeeping_summary = build_gatekeeping_summary(gatekeeping_results)
+
+        allowed_finding_ids = {
+            g.finding_id for g in gatekeeping_results
+            if g.gatekeeping_status == "allowed"
+        }
+        top_risk_findings = [
+            f for f in top_risk_findings
+            if f["finding_id"] in allowed_finding_ids
+        ]
+        top_clarification_opportunities = [
+            f for f in top_clarification_opportunities
+            if f["finding_id"] in allowed_finding_ids
+        ]
+
     task_aware = _extract_task_aware_fields(typed_events, task_type=task_type, brief=brief)
 
     return ConsumerPhase2Summary(
@@ -482,6 +509,7 @@ def build_consumer_summary(
         finding_confidences=finding_confidences,
         report_confidence=report_confidence,
         evidence_validation_summary=evidence_validation_summary,
+        evidence_gatekeeping_summary=evidence_gatekeeping_summary,
         top_packaging_hooks=task_aware["top_packaging_hooks"],
         top_trust_objections=task_aware["top_trust_objections"],
         top_confusion_triggers=task_aware["top_confusion_triggers"],

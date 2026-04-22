@@ -74,7 +74,7 @@ def extract_stable_signals(report_context: Dict[str, Any]) -> Dict[str, Any]:
     top_clarifications = report_context.get("top_clarification_opportunities", []) or []
     cascade_metrics = report_context.get("cascade_metrics", {}) or {}
 
-    return {
+    signals: Dict[str, Any] = {
         "acceptance_band": _acceptance_band_from_acceptance(acceptance),
         "top_resonance_labels": list(top_resonance)[:5],
         "top_risk_labels": list(top_risk)[:5],
@@ -82,6 +82,21 @@ def extract_stable_signals(report_context: Dict[str, Any]) -> Dict[str, Any]:
         "clarification_recovery_present": len(top_clarifications) > 0,
         "cascade_band": _cascade_band_from_metrics(cascade_metrics),
     }
+
+    # Phase 5C: surface evidence quality from gatekeeping summary when available
+    gatekeeping_summary = report_context.get("evidence_gatekeeping_summary")
+    if gatekeeping_summary is not None:
+        blocked_count = gatekeeping_summary.get("blocked_count", 0)
+        downgraded_count = gatekeeping_summary.get("downgraded_count", 0)
+        if blocked_count > 0:
+            signals["evidence_quality_flag"] = "blocked_findings"
+        elif downgraded_count > 0:
+            signals["evidence_quality_flag"] = "downgraded_findings"
+        else:
+            signals["evidence_quality_flag"] = "clean"
+        signals["evidence_gatekeeping_summary"] = gatekeeping_summary
+
+    return signals
 
 
 def _jaccard_similarity(a: List[str], b: List[str]) -> float:
@@ -207,6 +222,10 @@ def replay_benchmark(
 ) -> Dict[str, Any]:
     """Replay a benchmark against the current report context.
 
+    Phase 5C: Down-weights or fails weak evidence by checking the report context's
+    evidence_gatekeeping_summary. If findings are blocked, drift signals are added
+    and the overall score is penalized.
+
     Args:
         benchmark_id: The benchmark to replay.
         report_context: Current simulation report context.
@@ -225,6 +244,53 @@ def replay_benchmark(
     actual_signals = extract_stable_signals(report_context)
     comparison = compare_replay_result(expected_signals, actual_signals)
 
+    # Phase 5C: Apply evidence gatekeeping penalties
+    drift_signals = list(comparison["drift_signals"])
+    overall_score = comparison["overall_score"]
+
+    gatekeeping_summary = report_context.get("evidence_gatekeeping_summary")
+    if gatekeeping_summary is not None:
+        blocked_count = gatekeeping_summary.get("blocked_count", 0)
+        downgraded_count = gatekeeping_summary.get("downgraded_count", 0)
+        total_count = gatekeeping_summary.get("finding_count", 0)
+
+        if blocked_count > 0 and total_count > 0:
+            ratio = blocked_count / total_count
+            drift_signals.append(
+                f"evidence_gatekeeping_blocked:{blocked_count}/{total_count} findings blocked"
+            )
+            # Penalize overall score: up to -0.3 for all blocked
+            penalty = min(0.3, 0.15 * ratio)
+            overall_score = max(0.0, overall_score - penalty)
+
+        if downgraded_count > 0 and total_count > 0:
+            ratio = downgraded_count / total_count
+            drift_signals.append(
+                f"evidence_gatekeeping_downgraded:{downgraded_count}/{total_count} findings downgraded"
+            )
+            penalty = min(0.15, 0.075 * ratio)
+            overall_score = max(0.0, overall_score - penalty)
+
+        # Re-evaluate alignment status after penalties
+        if overall_score >= 0.85 and len(drift_signals) == 0:
+            alignment_status = "aligned"
+        elif overall_score >= 0.5:
+            alignment_status = "partial"
+        else:
+            alignment_status = "drift"
+
+        summary = (
+            f"Replay alignment: {alignment_status} "
+            f"(score={round(overall_score, 2)}; "
+            f"acceptance={expected_signals.get('acceptance_band')}/{actual_signals.get('acceptance_band')}; "
+            f"resonance_overlap={round(comparison['metric_deltas'].get('resonance_overlap', 0.0), 2)}; "
+            f"risk_overlap={round(comparison['metric_deltas'].get('risk_overlap', 0.0), 2)}; "
+            f"cascade={expected_signals.get('cascade_band')}/{actual_signals.get('cascade_band')})"
+        )
+    else:
+        alignment_status = comparison["alignment_status"]
+        summary = comparison["summary"]
+
     replay_id = f"replay_{uuid.uuid4().hex[:12]}"
     replay_result = {
         "replay_id": replay_id,
@@ -234,12 +300,16 @@ def replay_benchmark(
         "replayed_at": _now_iso(),
         "expected_signals": expected_signals,
         "actual_signals": actual_signals,
-        "alignment_status": comparison["alignment_status"],
+        "alignment_status": alignment_status,
         "metric_deltas": comparison["metric_deltas"],
-        "drift_signals": comparison["drift_signals"],
-        "overall_score": comparison["overall_score"],
-        "replay_summary": comparison["summary"],
+        "drift_signals": drift_signals,
+        "overall_score": round(overall_score, 4),
+        "replay_summary": summary,
     }
+
+    # Phase 5C: include gatekeeping summary when available
+    if gatekeeping_summary is not None:
+        replay_result["evidence_gatekeeping_summary"] = gatekeeping_summary
 
     # Persist replay result
     replay_dir = _replay_runs_dir(upload_root)

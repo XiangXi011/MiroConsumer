@@ -17,6 +17,7 @@ from ...repositories.filesystem import (
     FilesystemReportRepository,
     FilesystemSimulationRepository,
 )
+from ...services.consumer.api_guard import ConsumerApiGuard
 from ...services.report_agent import ReportAgent, ReportStatus
 from ...utils.locale import t, get_locale, set_locale
 from ...utils.logger import get_logger
@@ -71,7 +72,7 @@ class ReportAppService:
         if not graph_id:
             raise ValueError(t("api.missingGraphIdEnsure"))
 
-        consumer_mode = (project.project_type == "consumer_test") or state.project_type == "consumer_test"
+        consumer_mode = ConsumerApiGuard.is_consumer_context(state=state, project=project)
 
         simulation_requirement = project.simulation_requirement or ""
         if not consumer_mode and not simulation_requirement:

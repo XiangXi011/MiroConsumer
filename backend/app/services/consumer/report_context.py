@@ -7,6 +7,11 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional
 
+from .evidence_validator import (
+    apply_evidence_gatekeeping_to_findings,
+    build_gatekeeping_summary,
+    filter_allowed_findings,
+)
 from .scoring import ConsumerPhase2Summary, ConsumerScoringService
 
 
@@ -382,6 +387,7 @@ def build_consumer_report_context(
     snapshot: Optional[Any] = None,
     report_confidence: Optional[Dict[str, Any]] = None,
     evidence_validation_summary: Optional[Dict[str, Any]] = None,
+    evidence_gatekeeping_results: Optional[List[Any]] = None,
 ) -> Dict[str, Any]:
     """Build structured report context with causal chains from events and findings.
 
@@ -415,15 +421,46 @@ def build_consumer_report_context(
         elif isinstance(f, dict):
             typed_findings.append(ResearchFinding(**f))
 
+    # Phase 5C: Apply evidence gatekeeping when snapshot/sources are available
+    gatekeeping_results: List[Any] = []
+    if evidence_gatekeeping_results is not None:
+        gatekeeping_results = evidence_gatekeeping_results
+    elif snapshot is not None and typed_findings:
+        from .evidence_validator import validate_findings
+        typed_traces_for_validation = []
+        if traces is not None:
+            for t in traces:
+                if hasattr(t, "model_dump"):
+                    typed_traces_for_validation.append(t)
+                elif isinstance(t, dict):
+                    from .models import RetrievalTrace
+                    typed_traces_for_validation.append(RetrievalTrace(**t))
+                else:
+                    typed_traces_for_validation.append(t)
+        validation_results = validate_findings(
+            typed_findings, traces=typed_traces_for_validation, chunks=snapshot.chunks
+        )
+        gatekeeping_results = apply_evidence_gatekeeping_to_findings(
+            typed_findings, validation_results, sources=snapshot.sources
+        )
+
     # Build causal chains: group events by trigger finding
     finding_events: Dict[str, List[str]] = {}
     for event in typed_events:
         for fid in event.trigger_finding_ids:
             finding_events.setdefault(fid, []).append(event.event_id)
 
+    # Phase 5C: Filter causal chains to only gatekept-allowed findings
+    allowed_finding_ids = {
+        g.finding_id for g in gatekeeping_results
+        if g.gatekeeping_status == "allowed"
+    } if gatekeeping_results else None
+
     causal_chains: List[Dict[str, Any]] = []
     for finding in typed_findings:
         if finding.finding_id in finding_events:
+            if allowed_finding_ids is not None and finding.finding_id not in allowed_finding_ids:
+                continue
             related_events = [e for e in typed_events if finding.finding_id in e.trigger_finding_ids]
             causal_chains.append({
                 "trigger_finding_ids": [finding.finding_id],
@@ -506,6 +543,18 @@ def build_consumer_report_context(
         context["report_confidence"] = report_confidence
     if evidence_validation_summary is not None:
         context["evidence_validation_summary"] = evidence_validation_summary
+
+    # Phase 5C: expose evidence gatekeeping summary
+    if gatekeeping_results:
+        context["evidence_gatekeeping_summary"] = build_gatekeeping_summary(gatekeeping_results)
+        # Mark enriched findings with gatekeeping status when available
+        if "enriched_findings" in context:
+            gatekeeping_by_id = {g.finding_id: g for g in gatekeeping_results}
+            for ef in context["enriched_findings"]:
+                gk = gatekeeping_by_id.get(ef.get("finding_id", ""))
+                if gk is not None:
+                    ef["gatekeeping_status"] = gk.gatekeeping_status
+                    ef["gatekeeping_violations"] = gk.policy_violations
 
     return context
 

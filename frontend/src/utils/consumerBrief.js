@@ -31,6 +31,10 @@ export function buildConsumerBrief(formData = {}) {
     enable_lane_b: Boolean(formData.consumerEnableLaneB),
   }
 
+  if (formData.personaPackSelection) {
+    brief.persona_pack_selection = formData.personaPackSelection
+  }
+
   // Task-specific fields
   if (taskType === 'concept_test') {
     brief.product_concept_assets = splitLines(formData.consumerConcept)

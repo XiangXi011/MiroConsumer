@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from ...repositories import BranchRepository, SimulationRepository
 from ...repositories.filesystem import FilesystemBranchRepository, FilesystemSimulationRepository
+from ...services.consumer.api_guard import ConsumerApiGuard
 from ...services.consumer.intervention_manager import InterventionType
 
 
@@ -25,10 +26,9 @@ class BranchAppService:
         Returns (state, None) on success, or (None, error_message) on failure.
         """
         state = cls._simulation_repo.get_simulation(simulation_id)
-        if not state:
-            return None, "Simulation not found"
-        if not state.consumer_mode:
-            return None, "Simulation is not a consumer_test simulation"
+        ok, error = ConsumerApiGuard.check_consumer_simulation(state)
+        if not ok:
+            return None, error
         return state, None
 
     @classmethod

@@ -17,6 +17,7 @@ from ..utils.logger import get_logger
 from ..utils.locale import t
 from ..services.application.report_app_service import ReportAppService
 from ..services.application.benchmark_app_service import BenchmarkAppService
+from ..services.consumer.api_guard import ConsumerApiGuard
 from ..services.consumer.asset_library import (
     export_asset,
     list_assets,
@@ -949,11 +950,10 @@ def export_research_asset():
             return jsonify({"success": False, "error": "simulation_id is required"}), 400
 
         project = ProjectManager.get_project(project_id)
-        if not project:
-            return jsonify({"success": False, "error": t('api.projectNotFound', id=project_id)}), 404
-
-        if project.project_type != 'consumer_test':
-            return jsonify({"success": False, "error": "Research assets are only available for consumer_test projects"}), 400
+        ok, error = ConsumerApiGuard.check_consumer_project(project)
+        if not ok:
+            status = 404 if "not found" in error.lower() else 400
+            return jsonify({"success": False, "error": error}), status
 
         manager = SimulationManager()
         state = manager.get_simulation(simulation_id)
@@ -1060,8 +1060,10 @@ def create_comparison_snapshot():
                 missing = left_simulation_id if not left_state else right_simulation_id
                 return jsonify({"success": False, "error": t('api.simulationNotFound', id=missing)}), 404
 
-            if not left_state.consumer_mode or not right_state.consumer_mode:
-                return jsonify({"success": False, "error": "Comparisons are only available for consumer_test simulations"}), 400
+            for st in (left_state, right_state):
+                ok, error = ConsumerApiGuard.check_consumer_simulation(st)
+                if not ok:
+                    return jsonify({"success": False, "error": error}), 400
 
             snapshot = create_comparison(
                 mode=mode,
@@ -1080,8 +1082,9 @@ def create_comparison_snapshot():
             if not state:
                 return jsonify({"success": False, "error": t('api.simulationNotFound', id=simulation_id)}), 404
 
-            if not state.consumer_mode:
-                return jsonify({"success": False, "error": "Comparisons are only available for consumer_test simulations"}), 400
+            ok, error = ConsumerApiGuard.check_consumer_simulation(state)
+            if not ok:
+                return jsonify({"success": False, "error": error}), 400
 
             snapshot = create_comparison(
                 mode=mode,
@@ -1101,8 +1104,10 @@ def create_comparison_snapshot():
                 missing = left_project_id if not left_project else right_project_id
                 return jsonify({"success": False, "error": t('api.projectNotFound', id=missing)}), 404
 
-            if left_project.project_type != 'consumer_test' or right_project.project_type != 'consumer_test':
-                return jsonify({"success": False, "error": "Comparisons are only available for consumer_test projects"}), 400
+            for proj in (left_project, right_project):
+                ok, error = ConsumerApiGuard.check_consumer_project(proj)
+                if not ok:
+                    return jsonify({"success": False, "error": error}), 400
 
             snapshot = create_comparison(
                 mode=mode,

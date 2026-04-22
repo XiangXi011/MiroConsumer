@@ -26,6 +26,8 @@ const createDefaultState = () => ({
   consumerBrief: null,
   researchMode: 'manual_only',
   enableLaneB: false,
+  personaPackSelection: null,
+  personaPackFile: null,
   isPending: false
 })
 
@@ -45,6 +47,8 @@ export function setPendingUpload(filesOrPayload, requirement) {
   state.consumerBrief = payload.consumerBrief || null
   state.researchMode = payload.researchMode || 'manual_only'
   state.enableLaneB = payload.enableLaneB || false
+  state.personaPackSelection = payload.personaPackSelection || null
+  state.personaPackFile = payload.personaPackFile || null
   state.isPending = true
 }
 
@@ -56,6 +60,8 @@ export function getPendingUpload() {
     consumerBrief: state.consumerBrief,
     researchMode: state.researchMode,
     enableLaneB: state.enableLaneB,
+    personaPackSelection: state.personaPackSelection,
+    personaPackFile: state.personaPackFile,
     isPending: state.isPending
   }
 }

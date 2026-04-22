@@ -23,6 +23,8 @@ test('setPendingUpload keeps legacy signature backward compatible', () => {
     consumerBrief: null,
     researchMode: 'manual_only',
     enableLaneB: false,
+    personaPackSelection: null,
+    personaPackFile: null,
     isPending: true,
   })
 })
@@ -51,6 +53,8 @@ test('setPendingUpload stores consumer payload and clearPendingUpload resets it'
     consumerBrief,
     researchMode: 'manual_only',
     enableLaneB: false,
+    personaPackSelection: null,
+    personaPackFile: null,
     isPending: true,
   })
 
@@ -63,6 +67,8 @@ test('setPendingUpload stores consumer payload and clearPendingUpload resets it'
     consumerBrief: null,
     researchMode: 'manual_only',
     enableLaneB: false,
+    personaPackSelection: null,
+    personaPackFile: null,
     isPending: false,
   })
 })

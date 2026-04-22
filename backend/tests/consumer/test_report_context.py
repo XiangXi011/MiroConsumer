@@ -18,6 +18,10 @@ from app.services.consumer.report_context import (
 from app.services.consumer.scoring import ConsumerScoringService
 from app.services.consumer.models import ConsumerBusinessBrief, ConsumerTaskType
 from app.services.consumer.scoring import build_consumer_summary
+from app.services.consumer.evidence_validator import (
+    EvidenceGatekeepingResult,
+    EvidenceValidationResult,
+)
 
 
 def test_build_consumer_report_context_without_traces():
@@ -358,3 +362,169 @@ def test_build_consumer_summary_and_context_surface_price_task_fields():
     assert context["task_type"] == "price_test"
     assert context["price_context"] == "subscription monthly"
     assert context["acceptable_price_points"] == ["$9.99", "$14.99"]
+
+
+# Phase 5C: Evidence gatekeeping in report context tests
+
+def test_build_consumer_report_context_filters_causal_chains_by_gatekeeping():
+    summary = ConsumerScoringService().summarize(
+        initial_labels=["positive", "neutral"],
+        final_labels=["positive", "negative"],
+    )
+    findings = [
+        ResearchFinding(
+            finding_id="f1",
+            finding_type="risk_signal",
+            summary="Safety concern",
+            visibility="Propagation_Only",
+            source_label="brief_background",
+            snippet_id="chk_1",
+            retrieval_trace_id="trace_1",
+        ),
+        ResearchFinding(
+            finding_id="f2",
+            finding_type="risk_signal",
+            summary="Weak concern",
+            visibility="Propagation_Only",
+            source_label="public_web",
+        ),
+    ]
+    events = [
+        {
+            "event_id": "ev_1",
+            "event_type": "risk_discovery",
+            "actor_id": "M01",
+            "target_ids": [],
+            "trigger_finding_ids": ["f1", "f2"],
+            "supporting_quote": "I don't trust that.",
+            "round_index": 1,
+        }
+    ]
+
+    gatekeeping_results = [
+        EvidenceGatekeepingResult(
+            finding_id="f1",
+            gatekeeping_status="allowed",
+            policy_violations=[],
+            gatekeeping_notes="allowed",
+        ),
+        EvidenceGatekeepingResult(
+            finding_id="f2",
+            gatekeeping_status="blocked",
+            policy_violations=["validation_status:insufficient_support"],
+            gatekeeping_notes="blocked",
+        ),
+    ]
+
+    context = build_consumer_report_context(
+        summary, findings, events, evidence_gatekeeping_results=gatekeeping_results
+    )
+
+    assert "evidence_gatekeeping_summary" in context
+    assert context["evidence_gatekeeping_summary"]["allowed_count"] == 1
+    assert context["evidence_gatekeeping_summary"]["blocked_count"] == 1
+
+    # Only f1 should appear in causal chains
+    assert len(context["causal_chains"]) == 1
+    assert context["causal_chains"][0]["trigger_finding_ids"] == ["f1"]
+
+
+def test_build_consumer_report_context_gatekeeps_via_snapshot():
+    summary = ConsumerScoringService().summarize(
+        initial_labels=["positive"],
+        final_labels=["negative"],
+    )
+    snapshot = ResearchSnapshot(
+        snapshot_id="snap_1",
+        project_id="proj_1",
+        created_at="2024-01-01T00:00:00+00:00",
+        sources=[
+            ResearchSource(
+                source_id="src_a",
+                lane="lane_a",
+                source_type="upload",
+                label="Brief",
+                uri="file://brief.pdf",
+                trust_tier=4,  # exceeds max tier of 2 for risk_signal
+            ),
+        ],
+        documents=[IngestedDocument(doc_id="doc_1", source_id="src_a", title="Brief")],
+        chunks=[
+            DocumentChunk(
+                chunk_id="chk_1",
+                doc_id="doc_1",
+                source_id="src_a",
+                text="Safety concern detail.",
+            ),
+        ],
+        findings=[
+            ResearchFinding(
+                finding_id="f1",
+                finding_type="risk_signal",
+                summary="Safety concern",
+                source_id="src_a",
+                snippet_id="chk_1",
+                retrieval_trace_id="trace_1",
+            ),
+        ],
+        retrieval_traces=[
+            RetrievalTrace(
+                trace_id="trace_1",
+                query="safety",
+                lane="lane_a",
+                chunk_ids=["chk_1"],
+            ),
+        ],
+    )
+    events = [
+        {
+            "event_id": "ev_1",
+            "event_type": "risk_discovery",
+            "actor_id": "M01",
+            "target_ids": [],
+            "trigger_finding_ids": ["f1"],
+            "supporting_quote": "I don't trust that.",
+            "round_index": 1,
+        }
+    ]
+
+    context = build_consumer_report_context(
+        summary, snapshot.findings, events, traces=snapshot.retrieval_traces, snapshot=snapshot
+    )
+
+    # f1 should be downgraded because trust_tier=4 > max=2 for risk_signal
+    assert "evidence_gatekeeping_summary" in context
+    gk_summary = context["evidence_gatekeeping_summary"]
+    assert gk_summary["finding_count"] == 1
+    assert gk_summary["downgraded_count"] == 1
+    assert gk_summary["allowed_count"] == 0
+
+    # Causal chains should be empty because the finding is downgraded
+    assert len(context["causal_chains"]) == 0
+
+    # Enriched findings should have gatekeeping status
+    assert "enriched_findings" in context
+    assert context["enriched_findings"][0]["gatekeeping_status"] == "downgraded"
+    violations = context["enriched_findings"][0]["gatekeeping_violations"]
+    assert any("source_tier_too_low" in v for v in violations)
+
+
+def test_build_consumer_report_context_without_gatekeeping_unchanged():
+    summary = ConsumerScoringService().summarize(
+        initial_labels=["positive", "neutral"],
+        final_labels=["positive", "negative"],
+    )
+    findings = [
+        ResearchFinding(
+            finding_id="f1",
+            finding_type="risk_signal",
+            summary="Safety concern",
+            visibility="Propagation_Only",
+            source_label="brief_background",
+        )
+    ]
+    events = []
+
+    context = build_consumer_report_context(summary, findings, events)
+    assert "evidence_gatekeeping_summary" not in context
+    assert len(context["causal_chains"]) == 0  # no events link to the finding

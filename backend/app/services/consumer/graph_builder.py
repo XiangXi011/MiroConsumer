@@ -8,7 +8,8 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Mapping, Optional
 
 from .models import ConsumerBusinessBrief, ConsumerTaskType, GraphVisibility, ResearchFinding
-from .persona_pack import load_default_persona_pack, map_persona_to_agent_traits
+from .persona_pack import map_persona_to_agent_traits
+from .persona_pack_registry import get_registry
 
 
 class ConsumerGraphBuilder:
@@ -24,7 +25,11 @@ class ConsumerGraphBuilder:
     ) -> Dict[str, Any]:
         created_at = datetime.now(timezone.utc).isoformat()
         graph_id = graph_id or f"consumer_{uuid.uuid4().hex[:12]}"
-        personas = list(persona_pack) if persona_pack is not None else load_default_persona_pack()
+        if persona_pack is not None:
+            personas = list(persona_pack)
+        else:
+            registry = get_registry()
+            personas = registry.resolve_selection(brief.persona_pack_selection)
 
         nodes: List[Dict[str, Any]] = []
         edges: List[Dict[str, Any]] = []

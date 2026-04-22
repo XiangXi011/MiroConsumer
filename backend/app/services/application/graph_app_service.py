@@ -7,6 +7,7 @@ Encapsulates route-level orchestration for graph build operations.
 import json
 import threading
 import traceback
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from ...config import Config
@@ -16,10 +17,11 @@ from ...repositories import ProjectRepository
 from ...repositories.filesystem import FilesystemProjectRepository
 from ...services.graph_builder import GraphBuilderService
 from ...services.text_processor import TextProcessor
-from ...services.consumer import ConsumerBriefAdapter, ConsumerGraphBuilder, load_default_persona_pack
+from ...services.consumer import ConsumerBriefAdapter, ConsumerGraphBuilder
 from ...services.consumer.document_ingest import DocumentIngestService
 from ...services.consumer.lane_b_provider import build_lane_b_provider
 from ...services.consumer.models import ResearchSourceLane, ResearchSourceType
+from ...services.consumer.persona_pack_registry import get_registry
 from ...services.consumer.project_research_persistence import persist_findings, persist_snapshot
 from ...services.consumer.research_ingest import (
     build_research_summary,
@@ -80,6 +82,10 @@ def _ingest_project_files_into_research_workspace(project_id: str, file_texts: l
         )
 
 
+def _project_persona_dir(project_id: str) -> Path:
+    return Path(Config.UPLOAD_FOLDER) / "projects" / project_id / "persona_packs"
+
+
 def _build_consumer_graph(project, text: str, project_repo: ProjectRepository):
     """Synchronous consumer graph build (domain logic)."""
     if not project.consumer_brief:
@@ -103,10 +109,15 @@ def _build_consumer_graph(project, text: str, project_repo: ProjectRepository):
         enable_lane_b=brief.enable_lane_b,
         lane_b_provider=lane_b_provider,
     )
+
+    # Resolve persona pack through registry (supports built-in and custom project packs)
+    registry = get_registry(project_persona_dir=_project_persona_dir(project.project_id))
+    personas = registry.resolve_selection(brief.persona_pack_selection)
+
     graph_payload = ConsumerGraphBuilder().build(
         brief=brief,
         background_text=text,
-        persona_pack=load_default_persona_pack(),
+        persona_pack=personas,
         graph_id=_consumer_graph_id(project.project_id),
         research_findings=research_findings,
     )
@@ -131,6 +142,11 @@ def _build_consumer_graph(project, text: str, project_repo: ProjectRepository):
 
     # Persist research context for downstream simulation/reporting
     source_quality_summary = build_source_quality_summary(snapshot.sources)
+
+    # Resolve pack metadata for context
+    pack_meta = registry.get_pack(brief.persona_pack_selection.pack_id)
+    pack_summary = pack_meta.to_summary() if pack_meta else {"pack_id": brief.persona_pack_selection.pack_id}
+
     project.consumer_context = {
         "research_mode": brief.research_mode,
         "enable_lane_b": brief.enable_lane_b,
@@ -157,6 +173,7 @@ def _build_consumer_graph(project, text: str, project_repo: ProjectRepository):
             "retrieval_trace_count": len(snapshot.retrieval_traces),
         },
         "source_quality_summary": source_quality_summary,
+        "persona_pack": pack_summary,
     }
     project_repo.save_project(project)
 

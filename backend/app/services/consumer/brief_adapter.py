@@ -3,6 +3,7 @@ from typing import Any, Mapping
 from .models import (
     ConsumerBusinessBrief,
     GraphVisibility,
+    PersonaPackSelection,
     _normalize_enable_lane_b,
     _normalize_graph_visibility,
     _normalize_price_context,
@@ -51,6 +52,13 @@ class ConsumerBriefAdapter:
         else:
             test_variants = []
 
+        persona_pack_raw = payload.get("persona_pack_selection")
+        persona_pack_selection = (
+            PersonaPackSelection(**persona_pack_raw)
+            if isinstance(persona_pack_raw, dict)
+            else PersonaPackSelection()
+        )
+
         return ConsumerBusinessBrief(
             task_type=task_type,
             product_concept_assets=product_concept_assets,
@@ -70,4 +78,5 @@ class ConsumerBriefAdapter:
             price_points=_normalize_string_list(payload.get("price_points"), "price_points"),
             test_variants=test_variants,
             price_context=_normalize_price_context(payload.get("price_context")),
+            persona_pack_selection=persona_pack_selection,
         )

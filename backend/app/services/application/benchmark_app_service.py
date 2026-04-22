@@ -12,6 +12,7 @@ from ...repositories.filesystem import (
     FilesystemProjectRepository,
     FilesystemSimulationRepository,
 )
+from ...services.consumer.api_guard import ConsumerApiGuard
 from ...services.consumer.asset_library import get_asset
 from ...utils.locale import t
 
@@ -50,10 +51,9 @@ class BenchmarkAppService:
         pack_project_id = asset_pack.get("project_id")
         if pack_project_id:
             project = cls._project_repo.get_project(pack_project_id)
-            if not project:
-                raise ValueError(t("api.projectNotFound", id=pack_project_id))
-            if project.project_type != "consumer_test":
-                raise ValueError("Benchmarks are only available for consumer_test projects")
+            ok, error = ConsumerApiGuard.check_consumer_project(project)
+            if not ok:
+                raise ValueError(error)
 
         return cls._benchmark_repo.register_benchmark(
             name=name,
@@ -90,16 +90,14 @@ class BenchmarkAppService:
 
         if project_id:
             project = cls._project_repo.get_project(project_id)
-            if not project:
-                raise ValueError(t("api.projectNotFound", id=project_id))
-            if project.project_type != "consumer_test":
-                raise ValueError("Benchmark replays are only available for consumer_test projects")
+            ok, error = ConsumerApiGuard.check_consumer_project(project)
+            if not ok:
+                raise ValueError(error)
         elif simulation_id:
             state = cls._simulation_repo.get_simulation(simulation_id)
-            if not state:
-                raise ValueError(t("api.simulationNotFound", id=simulation_id))
-            if not state.consumer_mode:
-                raise ValueError("Benchmark replays are only available for consumer_test simulations")
+            ok, error = ConsumerApiGuard.check_consumer_simulation(state)
+            if not ok:
+                raise ValueError(error)
         else:
             raise ValueError("project_id or simulation_id is required")
 
@@ -125,11 +123,15 @@ class BenchmarkAppService:
         replay_simulation_id = replay.get("simulation_id")
         if replay_project_id:
             project = cls._project_repo.get_project(replay_project_id)
-            if project and project.project_type != "consumer_test":
-                raise ValueError("Benchmark replay results are only available for consumer_test projects")
+            if project is not None:
+                ok, error = ConsumerApiGuard.check_consumer_project(project)
+                if not ok:
+                    raise ValueError(error)
         elif replay_simulation_id:
             state = cls._simulation_repo.get_simulation(replay_simulation_id)
-            if state and not state.consumer_mode:
-                raise ValueError("Benchmark replay results are only available for consumer_test simulations")
+            if state is not None:
+                ok, error = ConsumerApiGuard.check_consumer_simulation(state)
+                if not ok:
+                    raise ValueError(error)
 
         return replay

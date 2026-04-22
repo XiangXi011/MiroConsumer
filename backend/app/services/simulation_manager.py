@@ -8,6 +8,7 @@ import os
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from ..config import Config
@@ -16,7 +17,8 @@ from ..utils.locale import t
 from ..utils.logger import get_logger
 from .consumer.brief_adapter import ConsumerBriefAdapter
 from .consumer.models import ConsumerBusinessBrief, ConsumerTaskType
-from .consumer.persona_pack import load_default_persona_pack, map_persona_to_agent_traits
+from .consumer.persona_pack import map_persona_to_agent_traits
+from .consumer.persona_pack_registry import get_registry
 from .consumer.lane_b_provider import build_lane_b_provider
 from .consumer.project_research_persistence import persist_findings, persist_snapshot
 from .consumer.research_ingest import (
@@ -489,14 +491,19 @@ class SimulationManager:
             raise ValueError("consumer_test project missing consumer_brief")
 
         brief = ConsumerBriefAdapter.from_payload(project.consumer_brief)
-        persona_pack = load_default_persona_pack()
         sim_dir = self._get_simulation_dir(state.simulation_id)
+
+        # Resolve persona pack through registry (supports built-in and custom project packs)
+        project_persona_dir = Path(Config.UPLOAD_FOLDER) / "projects" / state.project_id / "persona_packs"
+        registry = get_registry(project_persona_dir=project_persona_dir)
+        persona_pack = registry.resolve_selection(brief.persona_pack_selection)
+        pack_meta = registry.get_pack(brief.persona_pack_selection.pack_id)
 
         state.project_type = project.project_type or "default"
         state.consumer_mode = True
         state.entity_types = ["AudienceSegment"]
         state.entities_count = len(persona_pack)
-        state.persona_pack_id = "default_persona_pack"
+        state.persona_pack_id = brief.persona_pack_selection.pack_id or "default_persona_pack"
         state.pinned_brief_summary = self._build_consumer_brief_summary(brief)
         state.enable_lane_b = brief.enable_lane_b
 
@@ -608,12 +615,14 @@ class SimulationManager:
         persist_findings(state.project_id, research_findings, upload_root=Config.UPLOAD_FOLDER)
         persist_snapshot(state.project_id, snapshot, upload_root=Config.UPLOAD_FOLDER)
 
+        pack_summary = pack_meta.to_summary() if pack_meta else {"pack_id": state.persona_pack_id}
         self._write_json(
             os.path.join(sim_dir, "consumer_config.json"),
             {
                 "project_type": state.project_type,
                 "consumer_mode": state.consumer_mode,
                 "persona_pack_id": state.persona_pack_id,
+                "persona_pack": pack_summary,
                 "pinned_brief_summary": state.pinned_brief_summary,
                 "profiles_count": state.profiles_count,
                 "consumer_brief": brief.to_summary(),
@@ -649,7 +658,8 @@ class SimulationManager:
         )
 
         state.config_generated = True
-        state.config_reasoning = "Generated from consumer brief and default persona pack."
+        pack_label = pack_meta.label if pack_meta else state.persona_pack_id
+        state.config_reasoning = f"Generated from consumer brief and persona pack '{pack_label}'."
         state.status = SimulationStatus.READY
         self._save_simulation_state(state)
 

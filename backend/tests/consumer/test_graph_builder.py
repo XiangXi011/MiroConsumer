@@ -216,3 +216,36 @@ def test_price_test_with_price_context_builds_graph():
     assert len(price_nodes) == 2
     assert any(node["name"] == "$9.99" for node in price_nodes)
     assert any(node["name"] == "$12.99" for node in price_nodes)
+
+
+def test_graph_builder_uses_registry_when_no_persona_pack_provided():
+    from app.services.consumer.models import PersonaPackSelection
+    brief = ConsumerBusinessBrief(
+        task_type=ConsumerTaskType.ConceptTest,
+        product_concept_assets=["Product A"],
+        research_goal="Test registry fallback",
+        persona_pack_selection=PersonaPackSelection(pack_id="default_persona_pack"),
+    )
+    graph = ConsumerGraphBuilder().build(
+        brief=brief,
+        graph_id="consumer_proj_registry_fallback",
+    )
+    # Should have persona segment nodes from the default pack
+    audience_nodes = [node for node in graph["nodes"] if "AudienceSegment" in node["labels"]]
+    assert len(audience_nodes) > 0
+
+
+def test_graph_builder_uses_brief_persona_pack_selection():
+    from app.services.consumer.models import PersonaPackSelection
+    brief = ConsumerBusinessBrief(
+        task_type=ConsumerTaskType.ConceptTest,
+        product_concept_assets=["Product A"],
+        research_goal="Test pack selection",
+        persona_pack_selection=PersonaPackSelection(pack_id="tech_early_adopters"),
+    )
+    graph = ConsumerGraphBuilder().build(
+        brief=brief,
+        graph_id="consumer_proj_tech_pack",
+    )
+    audience_nodes = [node for node in graph["nodes"] if "AudienceSegment" in node["labels"]]
+    assert len(audience_nodes) > 0

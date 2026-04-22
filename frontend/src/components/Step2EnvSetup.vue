@@ -5,7 +5,9 @@
         <span class="consumer-step-badge">{{ $t('consumer.badge') }}</span>
         <div class="consumer-step-copy">
           <strong>{{ $t('consumer.step2.bannerTitle') }}</strong>
-          <span v-if="personaPackId"> {{ $t('consumer.step2.bannerPersonaPack', { id: personaPackId }) }}</span>
+          <span v-if="personaPackMeta"> · {{ personaPackMeta.label }}
+            <span v-if="personaPackMeta.personaCount > 0">({{ personaPackMeta.personaCount }} personas)</span>
+          </span>
         </div>
       </div>
       <!-- Step 01: 模拟实例 -->
@@ -48,9 +50,14 @@
               <span class="info-label">{{ $t('consumer.projectMode') }}</span>
               <span class="info-value mono">{{ $t('consumer.projectModeValue') }}</span>
             </div>
-            <div v-if="isConsumerMode && personaPackId" class="info-row">
+            <div v-if="isConsumerMode && personaPackMeta" class="info-row">
               <span class="info-label">{{ $t('consumer.personaPack') }}</span>
-              <span class="info-value mono">{{ personaPackId }}</span>
+              <span class="info-value">
+                <span class="mono">{{ personaPackMeta.label }}</span>
+                <span v-if="personaPackMeta.personaCount > 0" class="pack-meta">({{ personaPackMeta.personaCount }} personas)</span>
+                <span v-if="personaPackMeta.source === 'custom'" class="pack-tag custom">Custom</span>
+                <span v-else-if="personaPackMeta.packClass" class="pack-tag">{{ personaPackMeta.packClass }}</span>
+              </span>
             </div>
           </div>
         </div>
@@ -794,6 +801,20 @@ const displayProfiles = computed(() => {
 const isConsumerMode = computed(() => isConsumerProject(props.projectData))
 
 const personaPackId = computed(() => consumerConfigMeta.value.persona_pack_id || '')
+
+const personaPackMeta = computed(() => {
+  const pack = props.projectData?.consumer_context?.persona_pack
+  if (!pack) return null
+  return {
+    packId: pack.pack_id || '',
+    label: pack.label || pack.pack_id || '',
+    description: pack.description || '',
+    packClass: pack.pack_class || '',
+    personaCount: pack.persona_count || 0,
+    tags: pack.tags || [],
+    source: pack.source || ''
+  }
+})
 
 const pinnedBriefSummary = computed(() => consumerConfigMeta.value.pinned_brief_summary || '')
 
@@ -2863,5 +2884,27 @@ onUnmounted(() => {
   color: #94A3B8;
   margin-top: 2px;
   text-align: center;
+}
+
+.pack-meta {
+  font-size: 0.75rem;
+  color: #94A3B8;
+  margin-left: 6px;
+}
+
+.pack-tag {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #F1F5F9;
+  color: #475569;
+  margin-left: 6px;
+}
+
+.pack-tag.custom {
+  background: #FEF3C7;
+  color: #D97706;
 }
 </style>

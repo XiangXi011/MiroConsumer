@@ -225,3 +225,26 @@ Phase 5 should still be executed in the existing workflow:
 5. docs and handoff sync
 
 This keeps the roadmap compatible with the current "Codex plans and accepts, Claude Code implements" execution model.
+
+## 11. Completion Update (2026-04-23)
+
+Phase 5 is now complete.
+
+Delivered closure outcomes:
+
+- product-facing identity now reads as `MiroConsumer` across the main repo and core workflow views
+- route/application-service split is in place, with thinner route orchestration and clearer service ownership
+- repository abstraction now includes `ProjectRepository`, `ConsumerStateRepository`, `SimulationRepository`, `BranchRepository`, `ReportRepository`, and `BenchmarkRepository`, all with filesystem-backed implementations
+- persona packs are now configurable assets with built-in and custom-uploaded selection paths
+- evidence governance now acts as a hard gate for high-level outputs rather than annotation-only scoring
+- consumer-specific API/state ownership is clearer via `app/api/consumer`, `ConsumerAppService`, `ConsumerApiGuard`, and `ConsumerSimulationStateAccessor`
+
+Verification evidence:
+
+- targeted backend acceptance: `166 passed`
+- full backend non-integration regression: `534 passed, 1 deselected`
+- targeted frontend tests: `92 passed`
+- frontend build: passed
+- Flask app smoke: `/api/consumer/simulation/<simulation_id>/consumer-summary` successfully registered
+
+With Phase 5 closed, the codebase is ready to move into the next capability wave rather than continue architecture catch-up.

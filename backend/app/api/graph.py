@@ -6,6 +6,7 @@
 import json
 import os
 import traceback
+from pathlib import Path
 from flask import request, jsonify
 
 from . import graph_bp
@@ -13,6 +14,7 @@ from ..config import Config
 from ..services.consumer import ConsumerBriefAdapter
 from ..services.consumer.document_ingest import DocumentIngestService
 from ..services.consumer.models import ResearchSourceLane, ResearchSourceType
+from ..services.consumer.persona_pack_registry import get_registry, PersonaPackClass, list_builtin_persona_packs
 from ..services.consumer.source_registry import SourceRegistry
 from ..services.ontology_generator import OntologyGenerator
 from ..services.graph_builder import GraphBuilderService
@@ -80,6 +82,24 @@ def allowed_file(filename: str) -> bool:
         return False
     ext = os.path.splitext(filename)[1].lower().lstrip('.')
     return ext in Config.ALLOWED_EXTENSIONS
+
+
+@graph_bp.route('/persona-packs', methods=['GET'])
+def list_persona_packs():
+    """
+    列出可用的内置 persona packs
+    """
+    try:
+        packs = list_builtin_persona_packs()
+        return jsonify({
+            "success": True,
+            "data": [p.to_summary() for p in packs]
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
 
 
 # ============== 项目管理接口 ==============
@@ -230,8 +250,43 @@ def generate_ontology():
         project = ProjectManager.create_project(name=project_name)
         project.simulation_requirement = simulation_requirement
         project.project_type = project_type
-        project.consumer_brief = consumer_brief
         logger.info(f"创建项目: {project.project_id}")
+
+        # 处理可选的自定义 persona pack 上传
+        persona_pack_file = request.files.get('persona_pack_file')
+        if persona_pack_file and persona_pack_file.filename:
+            if not persona_pack_file.filename.lower().endswith('.json'):
+                ProjectManager.delete_project(project.project_id)
+                return jsonify({
+                    "success": False,
+                    "error": "Persona pack file must be a JSON file (.json)"
+                }), 400
+            try:
+                raw_json = persona_pack_file.read().decode('utf-8')
+                project_persona_dir = Path(Config.UPLOAD_FOLDER) / "projects" / project.project_id / "persona_packs"
+                registry = get_registry(project_persona_dir=project_persona_dir)
+                pack_meta = registry.register_custom_pack(
+                    raw_json=raw_json,
+                    label=persona_pack_file.filename,
+                    description=f"Custom persona pack uploaded as {persona_pack_file.filename}",
+                    pack_class=PersonaPackClass.Custom,
+                )
+                if consumer_brief is None:
+                    consumer_brief = {}
+                consumer_brief["persona_pack_selection"] = {
+                    "pack_id": pack_meta.pack_id,
+                    "pack_class": PersonaPackClass.Custom.value,
+                    "custom_upload": True,
+                }
+                logger.info(f"Custom persona pack registered: {pack_meta.pack_id}")
+            except (ValueError, UnicodeDecodeError) as e:
+                ProjectManager.delete_project(project.project_id)
+                return jsonify({
+                    "success": False,
+                    "error": f"Invalid persona pack file: {e}"
+                }), 400
+
+        project.consumer_brief = consumer_brief
         
         # 保存文件并提取文本
         document_texts = []

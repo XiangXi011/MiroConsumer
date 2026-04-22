@@ -1,4 +1,13 @@
-from app.services.consumer.models import GraphVisibility, PropagationEvent, ResearchFinding
+from app.services.consumer.models import (
+    DocumentChunk,
+    GraphVisibility,
+    PropagationEvent,
+    ResearchFinding,
+    ResearchSource,
+    ResearchSourceLane,
+    ResearchSourceType,
+    RetrievalTrace,
+)
 from app.services.consumer.report_context import ConsumerReportContextBuilder, build_consumer_report_context
 from app.services.consumer.scoring import ConsumerScoringService, build_consumer_summary
 
@@ -93,7 +102,10 @@ def test_scoring_groups_events_into_causal_findings():
         ],
     )
 
-    assert summary.top_risk_findings[0]["finding_id"] == "r1"
+    # Phase 5C: unsupported findings are blocked from executive summary
+    assert summary.top_risk_findings == []
+    assert summary.evidence_gatekeeping_summary is not None
+    assert summary.evidence_gatekeeping_summary["blocked_count"] == 1
     assert summary.event_counts["risk_discovery"] == 1
 
 
@@ -129,6 +141,72 @@ def test_scoring_empty_events_returns_zero_counts():
     summary = build_consumer_summary(events=[], findings=[])
     assert summary.event_counts == {}
     assert summary.top_risk_findings == []
+
+
+def test_scoring_blocks_unsupported_risk_findings():
+    supported = ResearchFinding(
+        finding_id="r1",
+        finding_type="risk_signal",
+        summary="Sugar concern",
+        visibility=GraphVisibility.Restricted,
+        evidence_snippets=["snippet a", "snippet b"],
+        snippet_id="chk_1",
+        retrieval_trace_id="trace_1",
+        source_id="src_a",
+    )
+    unsupported = ResearchFinding(
+        finding_id="r2",
+        finding_type="risk_signal",
+        summary="Allergen concern",
+        visibility=GraphVisibility.Restricted,
+    )
+    summary = build_consumer_summary(
+        events=[
+            PropagationEvent(
+                event_id="e1",
+                event_type="risk_discovery",
+                actor_id="agent_1",
+                target_ids=["agent_2"],
+                trigger_finding_ids=["r1", "r2"],
+                supporting_quote="Wait, what sweetener is in this?",
+                round_index=2,
+            )
+        ],
+        findings=[supported, unsupported],
+        traces=[
+            RetrievalTrace(
+                trace_id="trace_1",
+                query="sugar",
+                lane=ResearchSourceLane.LaneA,
+                chunk_ids=["chk_1"],
+                scores=[0.9],
+            )
+        ],
+        chunks=[
+            DocumentChunk(
+                chunk_id="chk_1",
+                doc_id="doc_1",
+                source_id="src_a",
+                text="snippet a",
+            )
+        ],
+        sources=[
+            ResearchSource(
+                source_id="src_a",
+                lane=ResearchSourceLane.LaneA,
+                source_type=ResearchSourceType.Upload,
+                label="Brief",
+                trust_tier=1,
+            )
+        ],
+    )
+
+    # Only the supported finding survives gatekeeping
+    assert len(summary.top_risk_findings) == 1
+    assert summary.top_risk_findings[0]["finding_id"] == "r1"
+    assert summary.evidence_gatekeeping_summary is not None
+    assert summary.evidence_gatekeeping_summary["allowed_count"] == 1
+    assert summary.evidence_gatekeeping_summary["blocked_count"] == 1
 
 
 def test_report_context_keeps_trigger_finding_and_event_chain():
