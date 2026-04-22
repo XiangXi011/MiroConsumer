@@ -34,10 +34,28 @@
                   <span class="consumer-confidence-label">{{ $t('consumer.reportConfidence.scoreLabel') }}</span>
                   <span class="consumer-confidence-value mono">{{ Math.round((consumerReportConfidence.confidence_score || 0) * 100) }}%</span>
                 </div>
-                <div v-if="consumerReportConfidence.replay_alignment" class="consumer-confidence-card">
-                  <span class="consumer-confidence-label">{{ $t('consumer.reportConfidence.replayLabel') }}</span>
-                  <span class="consumer-confidence-value mono">{{ consumerReportConfidence.replay_alignment }}</span>
+              </div>
+            </div>
+
+            <!-- Replay Alignment Status -->
+            <div v-if="isConsumerMode && consumerReplayAlignment" class="consumer-confidence-strip">
+              <div class="consumer-confidence-header">{{ $t('consumer.replayAlignment.title') }}</div>
+              <div class="consumer-confidence-grid">
+                <div class="consumer-confidence-card">
+                  <span class="consumer-confidence-label">{{ $t('consumer.replayAlignment.statusLabel') }}</span>
+                  <span class="consumer-confidence-value mono" :class="'replay-' + consumerReplayAlignment.status">{{ consumerReplayAlignment.status || 'not_replayed' }}</span>
                 </div>
+                <div v-if="consumerReplayAlignment.overall_score !== undefined && consumerReplayAlignment.overall_score !== null" class="consumer-confidence-card">
+                  <span class="consumer-confidence-label">{{ $t('consumer.replayAlignment.scoreLabel') }}</span>
+                  <span class="consumer-confidence-value mono">{{ Math.round((consumerReplayAlignment.overall_score || 0) * 100) }}%</span>
+                </div>
+                <div v-if="consumerReplayAlignment.drift_signals && consumerReplayAlignment.drift_signals.length > 0" class="consumer-confidence-card">
+                  <span class="consumer-confidence-label">{{ $t('consumer.replayAlignment.driftLabel') }}</span>
+                  <span class="consumer-confidence-value mono">{{ consumerReplayAlignment.drift_signals.length }}</span>
+                </div>
+              </div>
+              <div v-if="consumerReplayAlignment.replay_summary" class="consumer-replay-summary">
+                {{ consumerReplayAlignment.replay_summary }}
               </div>
             </div>
 
@@ -1345,6 +1363,11 @@ const consumerEnrichedTraces = computed(() => {
 const consumerReportConfidence = computed(() => {
   if (!isConsumerMode.value || !props.reportData?.report_context) return null
   return props.reportData.report_context.report_confidence || null
+})
+
+const consumerReplayAlignment = computed(() => {
+  if (!isConsumerMode.value || !props.reportData?.report_context) return null
+  return props.reportData.report_context.replay_alignment || null
 })
 
 const consumerEvidenceValidationSummary = computed(() => {
@@ -6854,6 +6877,27 @@ watch(() => props.reportId, (newId) => {
 .comparison-confidence-value {
   font-size: 13px;
   font-weight: 600;
+}
+
+/* Replay alignment status colors */
+.replay-aligned {
+  color: #047857;
+}
+.replay-partial {
+  color: #B45309;
+}
+.replay-drift {
+  color: #DC2626;
+}
+.replay-not_replayed {
+  color: #6B7280;
+}
+
+.consumer-replay-summary {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #6B7280;
+  line-height: 1.5;
 }
 </style>
 

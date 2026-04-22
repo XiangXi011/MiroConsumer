@@ -1985,7 +1985,46 @@ class ReportAgent:
                 context, research_findings, retrieval_traces, persisted_snapshot
             )
 
+        # Phase 4A: include latest replay alignment for this simulation if available
+        context["replay_alignment"] = self._load_latest_replay_alignment()
+
         return context
+
+    def _load_latest_replay_alignment(self) -> Dict[str, Any]:
+        """Load the latest replay result for this simulation, if any."""
+        replay_dir = os.path.join(Config.UPLOAD_FOLDER, "benchmarks", "replay_runs")
+        if not os.path.exists(replay_dir):
+            return {"status": "not_replayed", "replay_id": None, "benchmark_id": None}
+
+        latest_replay: Optional[Dict[str, Any]] = None
+        latest_at = ""
+        for filename in os.listdir(replay_dir):
+            if not filename.startswith("replay_") or not filename.endswith(".json"):
+                continue
+            path = os.path.join(replay_dir, filename)
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if data.get("simulation_id") != self.simulation_id:
+                    continue
+                replayed_at = data.get("replayed_at", "")
+                if replayed_at > latest_at:
+                    latest_at = replayed_at
+                    latest_replay = data
+            except Exception:
+                continue
+
+        if latest_replay is None:
+            return {"status": "not_replayed", "replay_id": None, "benchmark_id": None}
+
+        return {
+            "status": latest_replay.get("alignment_status", "unknown"),
+            "replay_id": latest_replay.get("replay_id"),
+            "benchmark_id": latest_replay.get("benchmark_id"),
+            "overall_score": latest_replay.get("overall_score", 0.0),
+            "drift_signals": latest_replay.get("drift_signals", []),
+            "replay_summary": latest_replay.get("replay_summary", ""),
+        }
 
     def _build_consumer_outline(self, context: Dict[str, Any]) -> ReportOutline:
         summary = context["summary"]

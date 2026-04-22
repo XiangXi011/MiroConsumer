@@ -105,3 +105,45 @@ export const listComparisons = (projectId) => {
 export const getComparison = (comparisonId) => {
   return service.get(`/api/report/comparisons/${comparisonId}`)
 }
+
+// ============== Benchmark API ==============
+
+/**
+ * Register a benchmark case
+ * @param {Object} data - { name, source_pack_lineage, expected_signals, simulation_context? }
+ */
+export const registerBenchmark = (data) => {
+  return service.post('/api/report/benchmarks/register', data)
+}
+
+/**
+ * List all registered benchmarks
+ */
+export const listBenchmarks = () => {
+  return service.get('/api/report/benchmarks')
+}
+
+/**
+ * Get a single benchmark
+ * @param {string} benchmarkId
+ */
+export const getBenchmark = (benchmarkId) => {
+  return service.get(`/api/report/benchmarks/${benchmarkId}`)
+}
+
+/**
+ * Replay a benchmark against current report context
+ * @param {string} benchmarkId
+ * @param {Object} data - { report_context, project_id?, simulation_id? }
+ */
+export const replayBenchmark = (benchmarkId, data) => {
+  return service.post(`/api/report/benchmarks/${benchmarkId}/replay`, data)
+}
+
+/**
+ * Get a single replay result
+ * @param {string} replayId
+ */
+export const getReplayResult = (replayId) => {
+  return service.get(`/api/report/benchmark-replays/${replayId}`)
+}

@@ -26,6 +26,15 @@ from ..services.consumer.comparison_engine import (
     list_comparisons,
     get_comparison,
 )
+from ..services.consumer.benchmark_registry import (
+    register_benchmark,
+    list_benchmarks,
+    get_benchmark,
+)
+from ..services.consumer.benchmark_replay import (
+    replay_benchmark,
+    get_replay_result,
+)
 
 logger = get_logger('mirofish.api.report')
 
@@ -1290,4 +1299,142 @@ def get_comparison_snapshot(comparison_id: str):
 
     except Exception as e:
         logger.error(f"获取对比快照失败: {str(e)}")
+        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+
+
+# ============== 基准测试接口 ==============
+
+@report_bp.route('/benchmarks/register', methods=['POST'])
+def register_benchmark_route():
+    """
+    Register a new benchmark case.
+
+    请求 (JSON):
+        {
+            "name": "Benchmark name",
+            "source_pack_lineage": "asset_pack_xxx",
+            "expected_signals": {
+                "acceptance_band": "positive_lean",
+                "top_resonance_labels": [...],
+                "top_risk_labels": [...],
+                "misread_present": false,
+                "clarification_recovery_present": false,
+                "cascade_band": "contained"
+            },
+            "simulation_context": { ... }  // optional
+        }
+
+    返回:
+        { "success": true, "data": benchmark }
+    """
+    try:
+        data = request.get_json() or {}
+        name = data.get("name")
+        source_pack_lineage = data.get("source_pack_lineage")
+        expected_signals = data.get("expected_signals")
+
+        if not name:
+            return jsonify({"success": False, "error": "name is required"}), 400
+        if not source_pack_lineage:
+            return jsonify({"success": False, "error": "source_pack_lineage is required"}), 400
+        if not expected_signals:
+            return jsonify({"success": False, "error": "expected_signals is required"}), 400
+
+        benchmark = register_benchmark(
+            name=name,
+            source_pack_lineage=source_pack_lineage,
+            expected_signals=expected_signals,
+            simulation_context=data.get("simulation_context"),
+        )
+        return jsonify({"success": True, "data": benchmark})
+    except Exception as e:
+        logger.error(f"注册基准测试失败: {str(e)}")
+        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+
+
+@report_bp.route('/benchmarks', methods=['GET'])
+def list_benchmarks_route():
+    """
+    List all registered benchmarks.
+
+    返回:
+        { "success": true, "data": { "items": benchmark[] } }
+    """
+    try:
+        items = list_benchmarks()
+        return jsonify({"success": True, "data": {"items": items}})
+    except Exception as e:
+        logger.error(f"列出基准测试失败: {str(e)}")
+        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+
+
+@report_bp.route('/benchmarks/<benchmark_id>', methods=['GET'])
+def get_benchmark_route(benchmark_id: str):
+    """
+    Get a single benchmark by ID.
+
+    返回:
+        { "success": true, "data": benchmark }
+    """
+    try:
+        benchmark = get_benchmark(benchmark_id)
+        if not benchmark:
+            return jsonify({"success": False, "error": f"Benchmark not found: {benchmark_id}"}), 404
+        return jsonify({"success": True, "data": benchmark})
+    except Exception as e:
+        logger.error(f"获取基准测试失败: {str(e)}")
+        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+
+
+@report_bp.route('/benchmarks/<benchmark_id>/replay', methods=['POST'])
+def replay_benchmark_route(benchmark_id: str):
+    """
+    Replay a benchmark against the current simulation report context.
+
+    请求 (JSON):
+        {
+            "report_context": { ... },
+            "project_id": "proj_xxx",      // optional
+            "simulation_id": "sim_xxx"     // optional
+        }
+
+    返回:
+        { "success": true, "data": replayResult }
+    """
+    try:
+        data = request.get_json() or {}
+        report_context = data.get("report_context")
+
+        if not report_context:
+            return jsonify({"success": False, "error": "report_context is required"}), 400
+
+        replay = replay_benchmark(
+            benchmark_id=benchmark_id,
+            report_context=report_context,
+            project_id=data.get("project_id"),
+            simulation_id=data.get("simulation_id"),
+        )
+        return jsonify({"success": True, "data": replay})
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 404
+    except Exception as e:
+        logger.error(f"回放基准测试失败: {str(e)}")
+        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+
+
+@report_bp.route('/benchmark-replays/<replay_id>', methods=['GET'])
+def get_replay_result_route(replay_id: str):
+    """
+    Get a single replay result by ID.
+
+    返回:
+        { "success": true, "data": replayResult }
+    """
+    try:
+        replay = get_replay_result(replay_id)
+        if not replay:
+            return jsonify({"success": False, "error": f"Replay not found: {replay_id}"}), 404
+        return jsonify({"success": True, "data": replay})
+    except Exception as e:
+        logger.error(f"获取回放结果失败: {str(e)}")
         return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
