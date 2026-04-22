@@ -16,6 +16,16 @@ from ..models.project import ProjectManager
 from ..models.task import TaskManager, TaskStatus
 from ..utils.logger import get_logger
 from ..utils.locale import t, get_locale, set_locale
+from ..services.consumer.asset_library import (
+    export_asset,
+    list_assets,
+    get_asset,
+)
+from ..services.consumer.comparison_engine import (
+    create_comparison,
+    list_comparisons,
+    get_comparison,
+)
 
 logger = get_logger('mirofish.api.report')
 
@@ -1024,3 +1034,250 @@ def get_graph_statistics_tool():
             "error": str(e),
             "traceback": traceback.format_exc()
         }), 500
+
+
+# ============== 研究资产接口 ==============
+
+@report_bp.route('/research-assets/export', methods=['POST'])
+def export_research_asset():
+    """
+    Export a research asset pack from a consumer simulation.
+
+    请求（JSON）:
+        {
+            "project_id": "proj_xxxx",
+            "simulation_id": "sim_xxxx",
+            "branch_id"?: "branch_xxxx",
+            "name"?: "My Asset"
+        }
+
+    返回:
+        { "success": true, "data": assetPack }
+    """
+    try:
+        data = request.get_json() or {}
+        project_id = data.get('project_id')
+        simulation_id = data.get('simulation_id')
+        branch_id = data.get('branch_id')
+        name = data.get('name')
+
+        if not project_id:
+            return jsonify({"success": False, "error": "project_id is required"}), 400
+        if not simulation_id:
+            return jsonify({"success": False, "error": "simulation_id is required"}), 400
+
+        project = ProjectManager.get_project(project_id)
+        if not project:
+            return jsonify({"success": False, "error": t('api.projectNotFound', id=project_id)}), 404
+
+        if project.project_type != 'consumer_test':
+            return jsonify({"success": False, "error": "Research assets are only available for consumer_test projects"}), 400
+
+        manager = SimulationManager()
+        state = manager.get_simulation(simulation_id)
+        if not state:
+            return jsonify({"success": False, "error": t('api.simulationNotFound', id=simulation_id)}), 404
+
+        if state.project_id != project_id:
+            return jsonify({"success": False, "error": "Simulation does not belong to project"}), 400
+
+        asset_pack = export_asset(
+            project_id=project_id,
+            simulation_id=simulation_id,
+            branch_id=branch_id,
+            name=name,
+        )
+        return jsonify({"success": True, "data": asset_pack})
+
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        logger.error(f"导出研究资产失败: {str(e)}")
+        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+
+
+@report_bp.route('/research-assets', methods=['GET'])
+def list_research_assets():
+    """
+    List research asset packs for a project.
+
+    Query参数:
+        project_id: 项目ID（必填）
+
+    返回:
+        { "success": true, "data": { "items": assetPack[] } }
+    """
+    try:
+        project_id = request.args.get('project_id')
+        if not project_id:
+            return jsonify({"success": False, "error": "project_id is required"}), 400
+
+        project = ProjectManager.get_project(project_id)
+        if not project:
+            return jsonify({"success": False, "error": t('api.projectNotFound', id=project_id)}), 404
+
+        items = list_assets(project_id)
+        return jsonify({"success": True, "data": {"items": items}})
+
+    except Exception as e:
+        logger.error(f"列出研究资产失败: {str(e)}")
+        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+
+
+@report_bp.route('/research-assets/<asset_id>', methods=['GET'])
+def get_research_asset(asset_id: str):
+    """
+    Get a single research asset pack.
+
+    返回:
+        { "success": true, "data": assetPack }
+    """
+    try:
+        asset_pack = get_asset(asset_id)
+        if not asset_pack:
+            return jsonify({"success": False, "error": f"Asset not found: {asset_id}"}), 404
+        return jsonify({"success": True, "data": asset_pack})
+
+    except Exception as e:
+        logger.error(f"获取研究资产失败: {str(e)}")
+        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+
+
+# ============== 对比快照接口 ==============
+
+@report_bp.route('/compare', methods=['POST'])
+def create_comparison_snapshot():
+    """
+    Create a persisted comparison snapshot.
+
+    Supports three modes:
+    a) run_vs_run: { mode, left_simulation_id, right_simulation_id }
+    b) branch_vs_base: { mode, simulation_id, branch_id }
+    c) project_vs_project: { mode, left_project_id, right_project_id }
+
+    返回:
+        { "success": true, "data": comparisonSnapshot }
+    """
+    try:
+        data = request.get_json() or {}
+        mode = data.get('mode')
+
+        if not mode:
+            return jsonify({"success": False, "error": "mode is required"}), 400
+
+        if mode == 'run_vs_run':
+            left_simulation_id = data.get('left_simulation_id')
+            right_simulation_id = data.get('right_simulation_id')
+            if not left_simulation_id or not right_simulation_id:
+                return jsonify({"success": False, "error": "left_simulation_id and right_simulation_id are required"}), 400
+
+            manager = SimulationManager()
+            left_state = manager.get_simulation(left_simulation_id)
+            right_state = manager.get_simulation(right_simulation_id)
+            if not left_state or not right_state:
+                missing = left_simulation_id if not left_state else right_simulation_id
+                return jsonify({"success": False, "error": t('api.simulationNotFound', id=missing)}), 404
+
+            if not left_state.consumer_mode or not right_state.consumer_mode:
+                return jsonify({"success": False, "error": "Comparisons are only available for consumer_test simulations"}), 400
+
+            snapshot = create_comparison(
+                mode=mode,
+                left_simulation_id=left_simulation_id,
+                right_simulation_id=right_simulation_id,
+            )
+
+        elif mode == 'branch_vs_base':
+            simulation_id = data.get('simulation_id')
+            branch_id = data.get('branch_id')
+            if not simulation_id or not branch_id:
+                return jsonify({"success": False, "error": "simulation_id and branch_id are required"}), 400
+
+            manager = SimulationManager()
+            state = manager.get_simulation(simulation_id)
+            if not state:
+                return jsonify({"success": False, "error": t('api.simulationNotFound', id=simulation_id)}), 404
+
+            if not state.consumer_mode:
+                return jsonify({"success": False, "error": "Comparisons are only available for consumer_test simulations"}), 400
+
+            snapshot = create_comparison(
+                mode=mode,
+                simulation_id=simulation_id,
+                branch_id=branch_id,
+            )
+
+        elif mode == 'project_vs_project':
+            left_project_id = data.get('left_project_id')
+            right_project_id = data.get('right_project_id')
+            if not left_project_id or not right_project_id:
+                return jsonify({"success": False, "error": "left_project_id and right_project_id are required"}), 400
+
+            left_project = ProjectManager.get_project(left_project_id)
+            right_project = ProjectManager.get_project(right_project_id)
+            if not left_project or not right_project:
+                missing = left_project_id if not left_project else right_project_id
+                return jsonify({"success": False, "error": t('api.projectNotFound', id=missing)}), 404
+
+            if left_project.project_type != 'consumer_test' or right_project.project_type != 'consumer_test':
+                return jsonify({"success": False, "error": "Comparisons are only available for consumer_test projects"}), 400
+
+            snapshot = create_comparison(
+                mode=mode,
+                left_project_id=left_project_id,
+                right_project_id=right_project_id,
+            )
+
+        else:
+            return jsonify({"success": False, "error": f"Unsupported comparison mode: {mode}"}), 400
+
+        return jsonify({"success": True, "data": snapshot})
+
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        logger.error(f"创建对比快照失败: {str(e)}")
+        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+
+
+@report_bp.route('/comparisons', methods=['GET'])
+def list_comparison_snapshots():
+    """
+    List comparison snapshots.
+
+    Query参数:
+        project_id: 项目ID（必填）
+
+    返回:
+        { "success": true, "data": { "items": comparisonSnapshot[] } }
+    """
+    try:
+        project_id = request.args.get('project_id')
+        if not project_id:
+            return jsonify({"success": False, "error": "project_id is required"}), 400
+
+        items = list_comparisons(project_id)
+        return jsonify({"success": True, "data": {"items": items}})
+
+    except Exception as e:
+        logger.error(f"列出对比快照失败: {str(e)}")
+        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+
+
+@report_bp.route('/comparisons/<comparison_id>', methods=['GET'])
+def get_comparison_snapshot(comparison_id: str):
+    """
+    Get a single comparison snapshot.
+
+    返回:
+        { "success": true, "data": comparisonSnapshot }
+    """
+    try:
+        snapshot = get_comparison(comparison_id)
+        if not snapshot:
+            return jsonify({"success": False, "error": f"Comparison not found: {comparison_id}"}), 404
+        return jsonify({"success": True, "data": snapshot})
+
+    except Exception as e:
+        logger.error(f"获取对比快照失败: {str(e)}")
+        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
