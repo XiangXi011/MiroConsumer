@@ -6,8 +6,6 @@ Encapsulates route-level orchestration for simulation lifecycle operations.
 
 import json
 import os
-import threading
-import traceback
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ...config import Config
@@ -25,6 +23,7 @@ from ...services.simulation_runner import SimulationRunner
 from ...services.zep_entity_reader import ZepEntityReader
 from ...utils.locale import t, get_locale, set_locale
 from ...utils.logger import get_logger
+from .task_executor import TaskExecutor, ThreadTaskExecutor
 
 logger = get_logger("miroconsumer.app_service.simulation")
 
@@ -126,6 +125,7 @@ class SimulationAppService:
 
     _project_repo: ProjectRepository = FilesystemProjectRepository()
     _simulation_repo: SimulationRepository = FilesystemSimulationRepository()
+    _executor: TaskExecutor = ThreadTaskExecutor()
 
     @classmethod
     def create_simulation(cls, data: dict) -> dict:
@@ -343,8 +343,7 @@ class SimulationAppService:
                     state.error = str(e)
                     cls._simulation_repo.save_simulation(state)
 
-        thread = threading.Thread(target=run_prepare, daemon=True)
-        thread.start()
+        cls._executor.submit(run_prepare)
 
         return {
             "simulation_id": simulation_id,
@@ -452,3 +451,65 @@ class SimulationAppService:
             response_data["graph_id"] = graph_id
 
         return response_data
+
+    @classmethod
+    def get_prepare_status(
+        cls,
+        task_id: Optional[str],
+        simulation_id: Optional[str],
+    ) -> dict:
+        """Query prepare task progress or prepared state.
+
+        Returns a dict with the status payload. Raises ValueError when
+        neither task_id nor simulation_id is usable.
+        """
+        if simulation_id:
+            is_prepared, prepare_info = _check_simulation_prepared(simulation_id)
+            if is_prepared:
+                status_data = {
+                    "simulation_id": simulation_id,
+                    "status": "ready",
+                    "progress": 100,
+                    "message": t("api.alreadyPrepared"),
+                    "already_prepared": True,
+                    "prepare_info": prepare_info,
+                }
+                if prepare_info.get("prepare_manifest"):
+                    status_data["prepare_manifest"] = prepare_info["prepare_manifest"]
+                return status_data
+
+        if not task_id:
+            if simulation_id:
+                return {
+                    "simulation_id": simulation_id,
+                    "status": "not_started",
+                    "progress": 0,
+                    "message": t("api.notStartedPrepare"),
+                    "already_prepared": False,
+                }
+            raise ValueError(t("api.requireTaskOrSimId"))
+
+        task_manager = TaskManager()
+        task = task_manager.get_task(task_id)
+
+        if not task:
+            if simulation_id:
+                is_prepared, prepare_info = _check_simulation_prepared(simulation_id)
+                if is_prepared:
+                    status_data = {
+                        "simulation_id": simulation_id,
+                        "task_id": task_id,
+                        "status": "ready",
+                        "progress": 100,
+                        "message": t("api.taskCompletedPrepared"),
+                        "already_prepared": True,
+                        "prepare_info": prepare_info,
+                    }
+                    if prepare_info.get("prepare_manifest"):
+                        status_data["prepare_manifest"] = prepare_info["prepare_manifest"]
+                    return status_data
+            raise ValueError(t("api.taskNotFound", id=task_id))
+
+        task_dict = task.to_dict()
+        task_dict["already_prepared"] = False
+        return task_dict

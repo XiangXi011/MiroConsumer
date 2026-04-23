@@ -208,12 +208,13 @@ These remain important, but they should follow the architecture and product-iden
 
 Phase 5 execution is complete.
 
-Delivered by subproject:
+Delivered by batch:
 
-- `Phase 5A`: product identity cleanup completed
-- `Phase 5B`: application-service and repository backbone completed
-- `Phase 5C`: persona-pack assetization and evidence gatekeeping completed
-- `Phase 5D`: consumer bounded-context extraction completed
+- **Batch 1 — Product Identity Cleanup**: `Phase 5A` completed. Full `MiroConsumer` identity sweep across homepage, workflow views, package names, README, and repo presentation.
+- **Batch 2 — Route Thinning & App Services**: `Phase 5B` completed. Flask routes for `graph / simulation / report / branch / benchmark` thinned to `parse -> validate -> call service -> return response`; `graph_app_service`, `simulation_app_service`, `report_app_service`, `branch_app_service`, `benchmark_app_service`, and `consumer_app_service` are the new orchestration owners.
+- **Batch 3 — Task Executor & Repository Abstraction**: `task_executor` abstraction landed for unified prepare/run/report execution semantics; repository backbone completed with `ProjectRepository`, `ConsumerStateRepository`, `SimulationRepository`, `BranchRepository`, `ReportRepository`, and `BenchmarkRepository` (all filesystem-backed).
+- **Batch 4 — Consumer Bounded Context & Canonical Routes**: `Phase 5D` completed. Consumer-specific routes, contracts, and state access consolidated under `app/api/consumer`, `ConsumerAppService`, `ConsumerApiGuard`, and `ConsumerSimulationStateAccessor`; canonical consumer routes with typed request/response contracts are active.
+- **Batch 5 — Suite Stabilization & Observability**: canonical error shape unified; observability/smoke gate confirmed; full suite stabilized.
 
 Key completion artifacts:
 
@@ -222,11 +223,12 @@ Key completion artifacts:
 - consumer boundary checks are centralized in `ConsumerApiGuard`
 - consumer-specific simulation artifact access is centralized in `ConsumerSimulationStateAccessor`
 - filesystem-backed `ConsumerStateRepository` now complements the existing repository layer
+- `task_executor` centralizes async/sync task execution and retry policy for prepare, run, and report paths
 
 Final verification:
 
-- targeted backend acceptance: `166 passed`
-- full backend non-integration regression: `534 passed, 1 deselected`
-- targeted frontend tests: `92 passed`
+- task executor observability: `python -m pytest tests/services/application/test_task_executor_observability.py -q` -> `9 passed, 1 warning`
+- core backend sub-suite: `python -m pytest tests/api/ tests/consumer/ tests/services/application/ -q` -> `565 passed, 1 warning`
+- the only remaining warning is the pre-existing `zep_cloud` / Python 3.14 compatibility warning
 - frontend build: passed
 - application smoke: consumer blueprint route present in Flask app

@@ -67,7 +67,7 @@
     "projectMode": "Project Mode",
     "modeDefault": "General Simulation",
     "modeConsumer": "Consumer Test",
-    "modeDefaultMeta": "Use the original MiroFish graph and simulation workflow.",
+    "modeDefaultMeta": "Use the original MiroConsumer graph and simulation workflow.",
     "modeConsumerMeta": "Use MiroConsumer to test concept and copy through consumer propagation.",
     "inputParams": "Input Parameters",
     "simulationPrompt": ">_ 02 / Simulation Prompt",

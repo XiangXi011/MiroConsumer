@@ -77,6 +77,8 @@ class StubSimulationRepository(SimulationRepository):
     def __init__(self, simulations=None):
         self.simulations = simulations or {}
         self.manifest_reuses = 0
+        self.configs: Dict[str, Dict[str, Any]] = {}
+        self.consumer_configs: Dict[str, Dict[str, Any]] = {}
 
     def get_simulation(self, simulation_id: str) -> Optional[Any]:
         return self.simulations.get(simulation_id)
@@ -115,7 +117,7 @@ class StubSimulationRepository(SimulationRepository):
         return []
 
     def get_simulation_config(self, simulation_id: str) -> Optional[Dict[str, Any]]:
-        return None
+        return self.configs.get(simulation_id)
 
     def get_prepare_manifest(self, simulation_id: str) -> Optional[Dict[str, Any]]:
         return None
@@ -123,6 +125,18 @@ class StubSimulationRepository(SimulationRepository):
     def record_manifest_reuse(self, simulation_id: str) -> Optional[Dict[str, Any]]:
         self.manifest_reuses += 1
         return {"reuse_count": self.manifest_reuses}
+
+    def save_simulation_config(self, simulation_id: str, config: Dict[str, Any]) -> None:
+        self.configs[simulation_id] = config
+
+    def load_simulation_config(self, simulation_id: str) -> Optional[Dict[str, Any]]:
+        return self.configs.get(simulation_id)
+
+    def save_consumer_config(self, simulation_id: str, config: Dict[str, Any]) -> None:
+        self.consumer_configs[simulation_id] = config
+
+    def load_consumer_config(self, simulation_id: str) -> Optional[Dict[str, Any]]:
+        return self.consumer_configs.get(simulation_id)
 
 
 class StubBranchRepository(BranchRepository):
@@ -565,6 +579,99 @@ class TestBenchmarkAppServiceUsesRepositories:
             BenchmarkAppService._benchmark_repo = original_bench
 
 
+class TestBranchAppServiceResumeBranch:
+    def test_resume_branch_rejects_non_consumer_simulation(self):
+        sim_repo = StubSimulationRepository()
+        branch_repo = StubBranchRepository()
+
+        sim_repo.simulations["sim_default"] = SimulationState(
+            simulation_id="sim_default",
+            project_id="proj_default",
+            graph_id="g1",
+            consumer_mode=False,
+        )
+
+        original_sim = BranchAppService._simulation_repo
+        original_branch = BranchAppService._branch_repo
+        try:
+            BranchAppService._simulation_repo = sim_repo
+            BranchAppService._branch_repo = branch_repo
+
+            with pytest.raises(ValueError, match="consumer_test"):
+                BranchAppService.resume_branch("sim_default", "branch_1")
+        finally:
+            BranchAppService._simulation_repo = original_sim
+            BranchAppService._branch_repo = original_branch
+
+    def test_resume_branch_rejects_missing_branch(self):
+        sim_repo = StubSimulationRepository()
+        branch_repo = StubBranchRepository()
+
+        sim_repo.simulations["sim_consumer"] = SimulationState(
+            simulation_id="sim_consumer",
+            project_id="proj_c",
+            graph_id="g1",
+            consumer_mode=True,
+        )
+
+        original_sim = BranchAppService._simulation_repo
+        original_branch = BranchAppService._branch_repo
+        try:
+            BranchAppService._simulation_repo = sim_repo
+            BranchAppService._branch_repo = branch_repo
+
+            with pytest.raises(ValueError, match="Branch not found"):
+                BranchAppService.resume_branch("sim_consumer", "no-such-branch")
+        finally:
+            BranchAppService._simulation_repo = original_sim
+            BranchAppService._branch_repo = original_branch
+
+    def test_resume_branch_rejects_already_running(self):
+        sim_repo = StubSimulationRepository()
+        branch_repo = StubBranchRepository()
+
+        sim_repo.simulations["sim_busy"] = SimulationState(
+            simulation_id="sim_busy",
+            project_id="proj_busy",
+            graph_id="g1",
+            consumer_mode=True,
+        )
+        branch = branch_repo.create_branch("sim_busy", "Busy", 1)
+        branch_repo.update_branch_run_status(
+            "sim_busy", branch.branch_id, {"status": "running"}
+        )
+
+        original_sim = BranchAppService._simulation_repo
+        original_branch = BranchAppService._branch_repo
+        try:
+            BranchAppService._simulation_repo = sim_repo
+            BranchAppService._branch_repo = branch_repo
+
+            with pytest.raises(ValueError, match="already running"):
+                BranchAppService.resume_branch("sim_busy", branch.branch_id)
+        finally:
+            BranchAppService._simulation_repo = original_sim
+            BranchAppService._branch_repo = original_branch
+
+
+class TestSimulationAppServiceGetPrepareStatus:
+    def test_get_prepare_status_requires_task_or_simulation_id(self):
+        sim_repo = StubSimulationRepository()
+        project_repo = StubProjectRepository()
+
+        original_project = SimulationAppService._project_repo
+        original_sim = SimulationAppService._simulation_repo
+        try:
+            SimulationAppService._project_repo = project_repo
+            SimulationAppService._simulation_repo = sim_repo
+
+            with pytest.raises(ValueError, match="task_id"):
+                SimulationAppService.get_prepare_status(task_id=None, simulation_id=None)
+        finally:
+            SimulationAppService._project_repo = original_project
+            SimulationAppService._simulation_repo = original_sim
+
+
 class TestGraphAppServiceUsesRepositories:
     def test_build_consumer_graph_sync_uses_project_repo(self):
         project_repo = StubProjectRepository()
@@ -613,3 +720,168 @@ class TestGraphAppServiceUsesRepositories:
             assert len(project_repo.saved) >= 1
         finally:
             GraphAppService._project_repo = original
+
+
+class TestSimulationAppServicePrepareUsesExecutor:
+    def test_prepare_simulation_submits_via_executor(self, monkeypatch):
+        from app.services.application import SimulationAppService
+        from app.services.application.task_executor import TaskExecutor
+
+        class CaptureExecutor(TaskExecutor):
+            def __init__(self):
+                self.submitted = []
+
+            def submit(self, fn, *args, trace_id=None, **kwargs):
+                self.submitted.append((fn, args, kwargs, trace_id))
+                return trace_id or "trace_fallback"
+
+        executor = CaptureExecutor()
+        project_repo = StubProjectRepository()
+        sim_repo = StubSimulationRepository()
+
+        project_repo.projects["proj_prep"] = Project(
+            project_id="proj_prep",
+            name="Prep Test",
+            status=ProjectStatus.CREATED,
+            created_at="2026-01-01T00:00:00",
+            updated_at="2026-01-01T00:00:00",
+            project_type="default",
+            graph_id="g1",
+            simulation_requirement="test req",
+        )
+        sim_repo.simulations["sim_prep"] = SimulationState(
+            simulation_id="sim_prep",
+            project_id="proj_prep",
+            graph_id="g1",
+        )
+
+        original_project = SimulationAppService._project_repo
+        original_sim = SimulationAppService._simulation_repo
+        original_exec = SimulationAppService._executor
+        try:
+            SimulationAppService._project_repo = project_repo
+            SimulationAppService._simulation_repo = sim_repo
+            SimulationAppService._executor = executor
+
+            result = SimulationAppService.prepare_simulation(
+                "sim_prep",
+                {"force_regenerate": True, "entity_types": None},
+            )
+            assert result["status"] == "preparing"
+            assert len(executor.submitted) == 1
+        finally:
+            SimulationAppService._project_repo = original_project
+            SimulationAppService._simulation_repo = original_sim
+            SimulationAppService._executor = original_exec
+
+
+class TestReportAppServiceGenerateUsesExecutor:
+    def test_generate_report_submits_via_executor(self, monkeypatch):
+        from app.services.application import ReportAppService
+        from app.services.application.task_executor import TaskExecutor
+
+        class CaptureExecutor(TaskExecutor):
+            def __init__(self):
+                self.submitted = []
+
+            def submit(self, fn, *args, trace_id=None, **kwargs):
+                self.submitted.append((fn, args, kwargs, trace_id))
+                return trace_id or "trace_fallback"
+
+        executor = CaptureExecutor()
+        project_repo = StubProjectRepository()
+        sim_repo = StubSimulationRepository()
+
+        project_repo.projects["proj_rep"] = Project(
+            project_id="proj_rep",
+            name="Rep Test",
+            status=ProjectStatus.CREATED,
+            created_at="2026-01-01T00:00:00",
+            updated_at="2026-01-01T00:00:00",
+            project_type="default",
+            graph_id="g1",
+            simulation_requirement="test req",
+        )
+        sim_repo.simulations["sim_rep"] = SimulationState(
+            simulation_id="sim_rep",
+            project_id="proj_rep",
+            graph_id="g1",
+        )
+
+        report_repo = StubReportRepository()
+
+        original_project = ReportAppService._project_repo
+        original_sim = ReportAppService._simulation_repo
+        original_report = ReportAppService._report_repo
+        original_exec = ReportAppService._executor
+        try:
+            ReportAppService._project_repo = project_repo
+            ReportAppService._simulation_repo = sim_repo
+            ReportAppService._report_repo = report_repo
+            ReportAppService._executor = executor
+
+            result = ReportAppService.generate_report("sim_rep")
+            assert result["status"] == "generating"
+            assert len(executor.submitted) == 1
+        finally:
+            ReportAppService._project_repo = original_project
+            ReportAppService._simulation_repo = original_sim
+            ReportAppService._report_repo = original_report
+            ReportAppService._executor = original_exec
+
+
+class TestBranchAppServiceResumeUsesExecutor:
+    def test_resume_branch_submits_via_executor(self, monkeypatch):
+        from app.services.application import BranchAppService
+        from app.services.application.task_executor import TaskExecutor
+
+        class CaptureExecutor(TaskExecutor):
+            def __init__(self):
+                self.submitted = []
+
+            def submit(self, fn, *args, trace_id=None, **kwargs):
+                self.submitted.append((fn, args, kwargs, trace_id))
+                return trace_id or "trace_fallback"
+
+        executor = CaptureExecutor()
+        sim_repo = StubSimulationRepository()
+        branch_repo = StubBranchRepository()
+
+        sim_repo.simulations["sim_branch"] = SimulationState(
+            simulation_id="sim_branch",
+            project_id="proj_branch",
+            graph_id="g1",
+            consumer_mode=True,
+        )
+        sim_repo.configs["sim_branch"] = {
+            "time_config": {"total_simulation_hours": 24, "minutes_per_round": 30}
+        }
+        branch = branch_repo.create_branch("sim_branch", "Test", 1)
+
+        original_sim = BranchAppService._simulation_repo
+        original_branch = BranchAppService._branch_repo
+        original_exec = BranchAppService._executor
+        try:
+            BranchAppService._simulation_repo = sim_repo
+            BranchAppService._branch_repo = branch_repo
+            BranchAppService._executor = executor
+
+            result = BranchAppService.resume_branch("sim_branch", branch.branch_id)
+            assert result["status"] == "running"
+            assert len(executor.submitted) == 1
+        finally:
+            BranchAppService._simulation_repo = original_sim
+            BranchAppService._branch_repo = original_branch
+            BranchAppService._executor = original_exec
+
+
+class TestStubSimulationRepositoryArtifactMethods:
+    def test_save_and_load_simulation_config(self):
+        repo = StubSimulationRepository()
+        repo.save_simulation_config("sim_1", {"key": "value"})
+        assert repo.load_simulation_config("sim_1") == {"key": "value"}
+
+    def test_save_and_load_consumer_config(self):
+        repo = StubSimulationRepository()
+        repo.save_consumer_config("sim_1", {"mode": "consumer"})
+        assert repo.load_consumer_config("sim_1") == {"mode": "consumer"}

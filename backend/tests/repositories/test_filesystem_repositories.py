@@ -94,7 +94,7 @@ class TestFilesystemProjectRepository:
 class TestFilesystemSimulationRepository:
     def test_round_trip_simulation(self, tmp_path, monkeypatch):
         sim_root = tmp_path / "simulations"
-        monkeypatch.setattr(SimulationManager, "SIMULATION_DATA_DIR", str(sim_root))
+        monkeypatch.setattr(Config, "OASIS_SIMULATION_DATA_DIR", str(sim_root))
 
         repo = FilesystemSimulationRepository()
         state = repo.create_simulation(
@@ -113,7 +113,7 @@ class TestFilesystemSimulationRepository:
 
     def test_save_updates_state(self, tmp_path, monkeypatch):
         sim_root = tmp_path / "simulations"
-        monkeypatch.setattr(SimulationManager, "SIMULATION_DATA_DIR", str(sim_root))
+        monkeypatch.setattr(Config, "OASIS_SIMULATION_DATA_DIR", str(sim_root))
 
         repo = FilesystemSimulationRepository()
         state = repo.create_simulation(project_id="proj_002", graph_id="graph_002")
@@ -125,7 +125,7 @@ class TestFilesystemSimulationRepository:
 
     def test_list_simulations_filters_by_project(self, tmp_path, monkeypatch):
         sim_root = tmp_path / "simulations"
-        monkeypatch.setattr(SimulationManager, "SIMULATION_DATA_DIR", str(sim_root))
+        monkeypatch.setattr(Config, "OASIS_SIMULATION_DATA_DIR", str(sim_root))
 
         repo = FilesystemSimulationRepository()
         s1 = repo.create_simulation(project_id="proj_a", graph_id="g1")
@@ -137,16 +137,51 @@ class TestFilesystemSimulationRepository:
 
     def test_delete_simulation(self, tmp_path, monkeypatch):
         sim_root = tmp_path / "simulations"
-        monkeypatch.setattr(SimulationManager, "SIMULATION_DATA_DIR", str(sim_root))
+        monkeypatch.setattr(Config, "OASIS_SIMULATION_DATA_DIR", str(sim_root))
 
         repo = FilesystemSimulationRepository()
         state = repo.create_simulation(project_id="proj_003", graph_id="g3")
 
         assert repo.delete_simulation(state.simulation_id) is True
-        # SimulationManager caches state in memory; deleting the dir does not
-        # clear the cache.  The repository seam is explicit; cache behavior is
-        # an implementation detail of SimulationManager deferred to later cleanup.
         assert not (sim_root / state.simulation_id).exists()
+
+    def test_save_and_load_simulation_config(self, tmp_path, monkeypatch):
+        sim_root = tmp_path / "simulations"
+        monkeypatch.setattr(Config, "OASIS_SIMULATION_DATA_DIR", str(sim_root))
+
+        repo = FilesystemSimulationRepository()
+        state = repo.create_simulation(project_id="proj_cfg", graph_id="g1")
+
+        repo.save_simulation_config(state.simulation_id, {"foo": "bar", "nested": {"a": 1}})
+        loaded = repo.load_simulation_config(state.simulation_id)
+
+        assert loaded == {"foo": "bar", "nested": {"a": 1}}
+
+    def test_load_simulation_config_returns_none_when_missing(self, tmp_path, monkeypatch):
+        sim_root = tmp_path / "simulations"
+        monkeypatch.setattr(Config, "OASIS_SIMULATION_DATA_DIR", str(sim_root))
+
+        repo = FilesystemSimulationRepository()
+        assert repo.load_simulation_config("nonexistent") is None
+
+    def test_save_and_load_consumer_config(self, tmp_path, monkeypatch):
+        sim_root = tmp_path / "simulations"
+        monkeypatch.setattr(Config, "OASIS_SIMULATION_DATA_DIR", str(sim_root))
+
+        repo = FilesystemSimulationRepository()
+        state = repo.create_simulation(project_id="proj_cc", graph_id="g1")
+
+        repo.save_consumer_config(state.simulation_id, {"mode": "consumer", "pack": "default"})
+        loaded = repo.load_consumer_config(state.simulation_id)
+
+        assert loaded == {"mode": "consumer", "pack": "default"}
+
+    def test_load_consumer_config_returns_none_when_missing(self, tmp_path, monkeypatch):
+        sim_root = tmp_path / "simulations"
+        monkeypatch.setattr(Config, "OASIS_SIMULATION_DATA_DIR", str(sim_root))
+
+        repo = FilesystemSimulationRepository()
+        assert repo.load_consumer_config("nonexistent") is None
 
 
 # ───────────────────────────────────────────────────────────────

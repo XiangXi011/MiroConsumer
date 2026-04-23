@@ -17,6 +17,7 @@ from ...repositories.filesystem import (
 from ...services.consumer.api_guard import ConsumerApiGuard
 from ...services.consumer.brief_adapter import ConsumerBriefAdapter
 from ...services.consumer.report_context import ConsumerReportContextBuilder, build_consumer_report_context
+from ...contracts.consumer_contracts import ConfidenceSummary, FindingConfidenceSummary
 from ...services.consumer.scoring import build_consumer_summary
 from ...services.simulation_manager import SimulationManager
 from ...utils.locale import t
@@ -142,7 +143,32 @@ class ConsumerAppService:
                 context[key] = phase2_context.get(key, default)
             # Phase 4A confidence fields (consumer_test only)
             if phase2_summary.report_confidence is not None:
-                context["report_confidence"] = phase2_summary.report_confidence
+                # Use typed contract to reduce ad-hoc dict handling
+                rc = phase2_summary.report_confidence
+                if isinstance(rc, dict):
+                    context["report_confidence"] = rc
+                else:
+                    conf = ConfidenceSummary(
+                        confidence_label=rc.confidence_label,
+                        confidence_score=rc.confidence_score,
+                        confidence_reasons=rc.confidence_reasons,
+                        support_summary=rc.support_summary,
+                        replay_alignment=rc.replay_alignment,
+                        finding_confidence_summary=[
+                            FindingConfidenceSummary(
+                                finding_id=fc.finding_id,
+                                confidence_label=fc.confidence_label,
+                                confidence_score=fc.confidence_score,
+                            )
+                            for fc in rc.finding_confidences
+                        ],
+                        low_confidence_findings=[
+                            fc.model_dump()
+                            for fc in rc.finding_confidences
+                            if fc.confidence_label in ("low", "unknown")
+                        ],
+                    )
+                    context["report_confidence"] = conf.model_dump()
             if phase2_summary.evidence_validation_summary is not None:
                 context["evidence_validation_summary"] = phase2_summary.evidence_validation_summary
             if phase2_summary.evidence_gatekeeping_summary is not None:

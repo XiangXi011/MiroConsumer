@@ -126,6 +126,22 @@ class SimulationRepository(ABC):
     def record_manifest_reuse(self, simulation_id: str) -> Optional[Dict[str, Any]]:
         """Increment manifest reuse count and return updated manifest."""
 
+    @abstractmethod
+    def save_simulation_config(self, simulation_id: str, config: Dict[str, Any]) -> None:
+        """Persist simulation_config.json."""
+
+    @abstractmethod
+    def load_simulation_config(self, simulation_id: str) -> Optional[Dict[str, Any]]:
+        """Load simulation_config.json or return None."""
+
+    @abstractmethod
+    def save_consumer_config(self, simulation_id: str, config: Dict[str, Any]) -> None:
+        """Persist consumer_config.json."""
+
+    @abstractmethod
+    def load_consumer_config(self, simulation_id: str) -> Optional[Dict[str, Any]]:
+        """Load consumer_config.json or return None."""
+
 
 class BranchRepository(ABC):
     """Abstract branch and intervention persistence."""

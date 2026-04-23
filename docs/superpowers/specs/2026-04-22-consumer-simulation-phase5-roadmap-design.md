@@ -230,20 +230,19 @@ This keeps the roadmap compatible with the current "Codex plans and accepts, Cla
 
 Phase 5 is now complete.
 
-Delivered closure outcomes:
+Delivered closure outcomes by batch:
 
-- product-facing identity now reads as `MiroConsumer` across the main repo and core workflow views
-- route/application-service split is in place, with thinner route orchestration and clearer service ownership
-- repository abstraction now includes `ProjectRepository`, `ConsumerStateRepository`, `SimulationRepository`, `BranchRepository`, `ReportRepository`, and `BenchmarkRepository`, all with filesystem-backed implementations
-- persona packs are now configurable assets with built-in and custom-uploaded selection paths
-- evidence governance now acts as a hard gate for high-level outputs rather than annotation-only scoring
-- consumer-specific API/state ownership is clearer via `app/api/consumer`, `ConsumerAppService`, `ConsumerApiGuard`, and `ConsumerSimulationStateAccessor`
+- **Batch 1 — Product Identity Cleanup**: product-facing identity now reads as `MiroConsumer` across the main repo and core workflow views; legacy `MiroFish` branding removed from primary surfaces.
+- **Batch 2 — Route Thinning & App Services**: route/application-service split is in place, with thinner route orchestration and clearer service ownership; `graph / simulation / report / branch / benchmark` routes delegate to dedicated app services.
+- **Batch 3 — Task Executor & Repository Abstraction**: `task_executor` provides unified execution/retry semantics for prepare, run, and report tasks; repository abstraction now includes `ProjectRepository`, `ConsumerStateRepository`, `SimulationRepository`, `BranchRepository`, `ReportRepository`, and `BenchmarkRepository`, all with filesystem-backed implementations.
+- **Batch 4 — Consumer Bounded Context & Canonical Routes**: consumer-specific API/state ownership is clearer via `app/api/consumer`, `ConsumerAppService`, `ConsumerApiGuard`, and `ConsumerSimulationStateAccessor`; canonical consumer routes and typed contracts are in place; legacy routes remain as compatibility shims.
+- **Batch 5 — Suite Stabilization & Observability**: canonical error response shape unified; observability/smoke gate verified; full suite stabilized to 565 passed with only the pre-existing `zep_cloud` / Python 3.14 compatibility warning remaining.
 
 Verification evidence:
 
-- targeted backend acceptance: `166 passed`
-- full backend non-integration regression: `534 passed, 1 deselected`
-- targeted frontend tests: `92 passed`
+- task executor observability: `python -m pytest tests/services/application/test_task_executor_observability.py -q` -> `9 passed, 1 warning`
+- core backend sub-suite: `python -m pytest tests/api/ tests/consumer/ tests/services/application/ -q` -> `565 passed, 1 warning`
+- the only remaining warning is the pre-existing `zep_cloud` / Python 3.14 compatibility warning
 - frontend build: passed
 - Flask app smoke: `/api/consumer/simulation/<simulation_id>/consumer-summary` successfully registered
 

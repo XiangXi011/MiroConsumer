@@ -4,12 +4,21 @@ Branch application service
 Thin wrapper around ConsumerInterventionManager for route-level orchestration.
 """
 
+import json
+import os
 from typing import Any, Dict, List, Optional, Tuple
 
+from ...config import Config
 from ...repositories import BranchRepository, SimulationRepository
 from ...repositories.filesystem import FilesystemBranchRepository, FilesystemSimulationRepository
 from ...services.consumer.api_guard import ConsumerApiGuard
 from ...services.consumer.intervention_manager import InterventionType
+from ...services.simulation_runner import SimulationRunner
+from ...utils.locale import get_locale, set_locale
+from ...utils.logger import get_logger
+from .task_executor import TaskExecutor, ThreadTaskExecutor
+
+logger = get_logger("miroconsumer.app_service.branch")
 
 
 class BranchAppService:
@@ -17,6 +26,7 @@ class BranchAppService:
 
     _simulation_repo: SimulationRepository = FilesystemSimulationRepository()
     _branch_repo: BranchRepository = FilesystemBranchRepository()
+    _executor: TaskExecutor = ThreadTaskExecutor()
 
     @classmethod
     def _require_consumer_simulation(cls, simulation_id: str) -> Tuple[Optional[Any], Optional[str]]:
@@ -141,4 +151,60 @@ class BranchAppService:
         return {
             **run_status,
             "branch_status": branch.status,
+        }
+
+    @classmethod
+    def resume_branch(
+        cls,
+        simulation_id: str,
+        branch_id: str,
+        max_rounds: Optional[int] = None,
+    ) -> dict:
+        """Run or resume a branch simulation (consumer_test only).
+
+        The branch runs independently of the base simulation run_state.
+        Output is persisted under branches/<branch_id>/rounds.jsonl.
+
+        Raises ValueError on validation failure or if branch is already running.
+        """
+        state, error = cls._require_consumer_simulation(simulation_id)
+        if error:
+            raise ValueError(error)
+
+        branch = cls._branch_repo.get_branch(simulation_id, branch_id)
+        if branch is None:
+            raise ValueError("Branch not found")
+
+        run_status = cls._branch_repo.get_branch_run_status(simulation_id, branch_id)
+        if run_status.get("status") == "running":
+            raise ValueError("Branch is already running")
+
+        config = cls._simulation_repo.load_simulation_config(simulation_id)
+        if not config:
+            raise ValueError("Simulation config not found")
+
+        time_config = config.get("time_config", {})
+        total_hours = time_config.get("total_simulation_hours", 72)
+        minutes_per_round = time_config.get("minutes_per_round", 30)
+        total_rounds = int(total_hours * 60 / minutes_per_round)
+        if max_rounds is not None and max_rounds > 0:
+            total_rounds = min(total_rounds, max_rounds)
+        config["total_rounds"] = total_rounds
+
+        cls._branch_repo.update_branch_status(simulation_id, branch_id, "running")
+
+        current_locale = get_locale()
+
+        def run_branch():
+            set_locale(current_locale)
+            SimulationRunner.run_branch_simulation(simulation_id, branch_id, config)
+
+        cls._executor.submit(run_branch)
+
+        return {
+            "simulation_id": simulation_id,
+            "branch_id": branch_id,
+            "status": "running",
+            "fork_round": branch.fork_round,
+            "total_rounds": total_rounds,
         }

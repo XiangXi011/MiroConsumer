@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="./static/image/MiroFish_logo_compressed.jpeg" alt="MiroConsumer Logo" width="68%"/>
+<img src="./static/image/MiroConsumer_logo_compressed.jpeg" alt="MiroConsumer Logo" width="68%"/>
 
 # MiroConsumer
 
@@ -22,7 +22,7 @@
 
 ## 什么是 MiroConsumer
 
-MiroConsumer 是一个建立在 MiroFish 架构之上的消费者传播测试产品。
+MiroConsumer 是一个 AI 驱动的消费者传播测试平台。
 
 它面向的问题不是“这句文案单独看起来好不好”，而是：
 
@@ -249,7 +249,7 @@ docker compose up -d
 
 ## 技术基础
 
-MiroConsumer 复用了 MiroFish 原有的主干能力：
+MiroConsumer 复用了原有的多 Agent 仿真主干能力：
 
 - 图谱构建
 - 仿真准备
@@ -263,4 +263,4 @@ MiroConsumer 复用了 MiroFish 原有的主干能力：
 
 仿真层建立在 **[OASIS (Open Agent Social Interaction Simulations)](https://github.com/camel-ai/oasis)** 之上。
 
-同时也感谢原始的 MiroFish 架构，它提供了图谱、仿真、报告和交互主骨架，使 MiroConsumer 可以在同一底座上快速演进成一个消费者传播测试产品。
+同时也感谢原始的仿真架构，它提供了图谱、仿真、报告和交互主骨架，使 MiroConsumer 可以在同一底座上快速演进成一个消费者传播测试产品。

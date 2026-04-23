@@ -11,6 +11,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
+from typing import TYPE_CHECKING
+
 from ..config import Config
 from ..models.project import ProjectManager
 from ..utils.locale import t
@@ -40,7 +42,10 @@ from .simulation_config_generator import (
 )
 from .zep_entity_reader import ZepEntityReader
 
-logger = get_logger("mirofish.simulation")
+if TYPE_CHECKING:
+    from ..repositories import SimulationRepository
+
+logger = get_logger("miroconsumer.simulation")
 
 
 class SimulationStatus(str, Enum):
@@ -142,9 +147,13 @@ class SimulationManager:
         "../../uploads/simulations",
     )
 
-    def __init__(self):
+    def __init__(self, repo: Optional["SimulationRepository"] = None):
         os.makedirs(self.SIMULATION_DATA_DIR, exist_ok=True)
         self._simulations: Dict[str, SimulationState] = {}
+        if repo is None:
+            from ..repositories.filesystem import FilesystemSimulationRepository
+            repo = FilesystemSimulationRepository()
+        self._repo = repo
 
     def _get_simulation_dir(self, simulation_id: str) -> str:
         sim_dir = os.path.join(self.SIMULATION_DATA_DIR, simulation_id)
@@ -152,55 +161,16 @@ class SimulationManager:
         return sim_dir
 
     def _save_simulation_state(self, state: SimulationState):
-        sim_dir = self._get_simulation_dir(state.simulation_id)
-        state_file = os.path.join(sim_dir, "state.json")
-
-        state.updated_at = datetime.now().isoformat()
-
-        with open(state_file, "w", encoding="utf-8") as f:
-            json.dump(state.to_dict(), f, ensure_ascii=False, indent=2)
-
+        self._repo.save_simulation(state)
         self._simulations[state.simulation_id] = state
 
     def _load_simulation_state(self, simulation_id: str) -> Optional[SimulationState]:
         if simulation_id in self._simulations:
             return self._simulations[simulation_id]
 
-        sim_dir = self._get_simulation_dir(simulation_id)
-        state_file = os.path.join(sim_dir, "state.json")
-
-        if not os.path.exists(state_file):
-            return None
-
-        with open(state_file, "r", encoding="utf-8") as f:
-            data = json.load(f)
-
-        state = SimulationState(
-            simulation_id=simulation_id,
-            project_id=data.get("project_id", ""),
-            graph_id=data.get("graph_id", ""),
-            project_type=data.get("project_type", "default"),
-            consumer_mode=data.get("consumer_mode", False),
-            enable_twitter=data.get("enable_twitter", True),
-            enable_reddit=data.get("enable_reddit", True),
-            status=SimulationStatus(data.get("status", "created")),
-            entities_count=data.get("entities_count", 0),
-            profiles_count=data.get("profiles_count", 0),
-            entity_types=data.get("entity_types", []),
-            config_generated=data.get("config_generated", False),
-            config_reasoning=data.get("config_reasoning", ""),
-            persona_pack_id=data.get("persona_pack_id", ""),
-            pinned_brief_summary=data.get("pinned_brief_summary", ""),
-            enable_lane_b=data.get("enable_lane_b", False),
-            current_round=data.get("current_round", 0),
-            twitter_status=data.get("twitter_status", "not_started"),
-            reddit_status=data.get("reddit_status", "not_started"),
-            created_at=data.get("created_at", datetime.now().isoformat()),
-            updated_at=data.get("updated_at", datetime.now().isoformat()),
-            error=data.get("error"),
-        )
-
-        self._simulations[state.simulation_id] = state
+        state = self._repo.get_simulation(simulation_id)
+        if state is not None:
+            self._simulations[simulation_id] = state
         return state
 
     def create_simulation(
@@ -211,25 +181,15 @@ class SimulationManager:
         enable_twitter: bool = True,
         enable_reddit: bool = True,
     ) -> SimulationState:
-        import uuid
-
-        simulation_id = f"sim_{uuid.uuid4().hex[:12]}"
-        normalized_project_type = project_type or "default"
-
-        state = SimulationState(
-            simulation_id=simulation_id,
+        state = self._repo.create_simulation(
             project_id=project_id,
             graph_id=graph_id,
-            project_type=normalized_project_type,
-            consumer_mode=(normalized_project_type == "consumer_test"),
+            project_type=project_type,
             enable_twitter=enable_twitter,
             enable_reddit=enable_reddit,
-            status=SimulationStatus.CREATED,
         )
-
-        self._save_simulation_state(state)
-        logger.info(f"创建模拟: {simulation_id}, project={project_id}, graph={graph_id}")
-
+        self._simulations[state.simulation_id] = state
+        logger.info(f"创建模拟: {state.simulation_id}, project={project_id}, graph={graph_id}")
         return state
 
     def prepare_simulation(
@@ -438,9 +398,10 @@ class SimulationManager:
                 total=3,
             )
 
-        config_path = os.path.join(sim_dir, "simulation_config.json")
-        with open(config_path, "w", encoding="utf-8") as f:
-            f.write(sim_params.to_json())
+        self._repo.save_simulation_config(
+            state.simulation_id,
+            sim_params.to_dict(),
+        )
 
         state.config_generated = True
         state.config_reasoning = sim_params.generation_reasoning
@@ -593,7 +554,7 @@ class SimulationManager:
             document_text=document_text,
             agent_configs=agent_configs,
         )
-        self._write_json(os.path.join(sim_dir, "simulation_config.json"), config_payload)
+        self._repo.save_simulation_config(state.simulation_id, config_payload)
         research_findings = resolve_research_findings(
             brief,
             provider=default_auto_research_provider,
@@ -616,8 +577,8 @@ class SimulationManager:
         persist_snapshot(state.project_id, snapshot, upload_root=Config.UPLOAD_FOLDER)
 
         pack_summary = pack_meta.to_summary() if pack_meta else {"pack_id": state.persona_pack_id}
-        self._write_json(
-            os.path.join(sim_dir, "consumer_config.json"),
+        self._repo.save_consumer_config(
+            state.simulation_id,
             {
                 "project_type": state.project_type,
                 "consumer_mode": state.consumer_mode,
@@ -833,18 +794,9 @@ class SimulationManager:
         return self._load_simulation_state(simulation_id)
 
     def list_simulations(self, project_id: Optional[str] = None) -> List[SimulationState]:
-        simulations = []
-
-        if os.path.exists(self.SIMULATION_DATA_DIR):
-            for sim_id in os.listdir(self.SIMULATION_DATA_DIR):
-                sim_path = os.path.join(self.SIMULATION_DATA_DIR, sim_id)
-                if sim_id.startswith(".") or not os.path.isdir(sim_path):
-                    continue
-
-                state = self._load_simulation_state(sim_id)
-                if state and (project_id is None or state.project_id == project_id):
-                    simulations.append(state)
-
+        simulations = self._repo.list_simulations(project_id)
+        for state in simulations:
+            self._simulations[state.simulation_id] = state
         return simulations
 
     def get_profiles(self, simulation_id: str, platform: str = "reddit") -> List[Dict[str, Any]]:
@@ -852,24 +804,10 @@ class SimulationManager:
         if not state:
             raise ValueError(f"模拟不存在: {simulation_id}")
 
-        sim_dir = self._get_simulation_dir(simulation_id)
-        profile_path = os.path.join(sim_dir, f"{platform}_profiles.json")
-
-        if not os.path.exists(profile_path):
-            return []
-
-        with open(profile_path, "r", encoding="utf-8") as f:
-            return json.load(f)
+        return self._repo.get_profiles(simulation_id, platform)
 
     def get_simulation_config(self, simulation_id: str) -> Optional[Dict[str, Any]]:
-        sim_dir = self._get_simulation_dir(simulation_id)
-        config_path = os.path.join(sim_dir, "simulation_config.json")
-
-        if not os.path.exists(config_path):
-            return None
-
-        with open(config_path, "r", encoding="utf-8") as f:
-            return json.load(f)
+        return self._repo.load_simulation_config(simulation_id)
 
     def get_prepare_manifest(self, simulation_id: str) -> Optional[Dict[str, Any]]:
         """Return the prepare manifest for a simulation, or None if absent."""

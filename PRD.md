@@ -1,20 +1,20 @@
-# 产品需求文档（PRD）：MiroFish 驱动的消费者传播测试
+# 产品需求文档（PRD）：MiroConsumer 消费者传播测试
 
 ## 1. 产品背景
 
-MiroFish 已具备完整的 `图谱构建 -> 仿真准备 -> 仿真运行 -> 报告生成 -> 深度交互` 主链路，但当前能力仍偏通用仿真。消费者项目则沉淀了 `BusinessBrief`、消费者画像、评分逻辑和研究报告结构，但核心评估方式仍偏静态、单轮、并发评审。
+MiroConsumer 已具备完整的 `图谱构建 -> 仿真准备 -> 仿真运行 -> 报告生成 -> 深度交互` 主链路，但当前能力仍偏通用仿真。消费者项目则沉淀了 `BusinessBrief`、消费者画像、评分逻辑和研究报告结构，但核心评估方式仍偏静态、单轮、并发评审。
 
-本项目的目标不是新增一套平行产品，也不是用消费者项目替换 MiroFish，而是：
+本项目的目标不是新增一套平行产品，也不是替换 MiroConsumer 通用仿真底座，而是：
 
-- 以 MiroFish 为主骨架
-- 将消费者项目中的领域能力迁入 MiroFish
+- 以 MiroConsumer 通用仿真底座为主骨架
+- 将消费者项目中的领域能力迁入 MiroConsumer
 - 先落地一个可执行的 Phase 1：`概念测试 + 文案测试 + 群体传播增强`
 
 ## 2. 当前版本定位
 
 当前版本定位为：
 
-> 一个由 MiroFish 驱动的、面向概念测试与文案测试的消费者传播仿真工作流。
+> 一个由 MiroConsumer 驱动的、面向概念测试与文案测试的消费者传播仿真工作流。
 
 它的价值不是再做一次静态打分，而是模拟消费者在“初见反应 -> 群体传播 -> 态度分化 -> 误读放大 -> 报告归因”中的连续变化。
 
@@ -55,9 +55,9 @@ MiroFish 已具备完整的 `图谱构建 -> 仿真准备 -> 仿真运行 -> 报
 
 ## 4. 架构原则
 
-### 4.1 MiroFish 为主
+### 4.1 MiroConsumer 通用底座为主
 
-MiroFish 继续保留并主导：
+MiroConsumer 通用仿真底座继续保留并主导：
 
 - `/api/graph -> /api/simulation -> /api/report` 主链路
 - Graph / GraphRAG 结构
@@ -78,7 +78,7 @@ MiroFish 继续保留并主导：
 
 - `project_type` 可选
 - 默认值为 `default`
-- 当前端不显式传入 `consumer_test` 时，系统必须完全走原版 MiroFish 逻辑
+- 当前端不显式传入 `consumer_test` 时，系统必须完全走原版通用仿真逻辑
 - 只有显式传入 `project_type=consumer_test` 时，才进入消费者测试分支
 
 ## 5. Phase 1 目标工作流
@@ -402,22 +402,24 @@ Phase 4B 在既有 `consumer_test` 主链路上扩展了 3 类新的消费者测
 - `json_object` 兼容性在不同模型或代理配置下仍可能波动
 - `packaging_test` 当前仍是基于文本/描述符的包装测试，不包含真实视觉理解
 - `price_test` 当前仍是价格感知与阈值测试，不是销量预测或外部定价数据建模
-- 全局产品身份仍残留部分 `MiroFish` 命名，仓库感知上还不够“独立产品化”
+- 全局产品身份已统一为 `MiroConsumer`，Phase 5 Closeout 已完成品牌清理
 - 当前 Flask route 层仍偏厚，随着功能继续增加，维护成本会上升
 - 文件系统持久化尚未被 repository 接口完全包裹，后续替换存储介质的成本偏高
 - persona pack 当前仍偏默认写死，不利于行业、品类、地域和客户自定义扩展
 - evidence validation 目前虽已有评分与校验，但还没有完全升级为 executive summary / comparison / replay 的强门禁
 - `consumer_test` 已形成主链路，但 bounded context 仍未彻底独立，和 legacy flow 仍有较多共居区域
 
-### 8.3 Phase 5 收口更新（2026-04-23）
+### 8.3 Phase 5 收口更新（2026-04-23）——已完成
 
-Phase 5 已完成，本轮的“产品化与架构收口”不再是待办，而是当前基线能力的一部分。
+Phase 5 已完成，本轮的”产品化与架构收口”不再是待办，而是当前基线能力的一部分。
 
-- `Phase 5A` 已完成：消费者产品主表面统一为 `MiroConsumer`，补齐了首页/流程页/运行页/报告页/交互页等可见品牌位，以及包名与仓库展示口径
-- `Phase 5B` 已完成：Flask route 进一步收敛到 application service，`graph / simulation / report / branch / benchmark` 的编排边界更加清晰
-- `Phase 5C` 已完成：persona pack 已升级为可配置资产，支持 built-in pack 与 custom uploaded pack；evidence validation 已升级为 summary / comparison / replay 的强门禁
-- `Phase 5D` 已完成：新增 `app/api/consumer`、`consumer_app_service`、`api_guard`、`simulation_state_accessor` 等 consumer 自有边界模块，旧 `/api/simulation/.../consumer-summary` 路由保留为 compatibility shim
-- repository 层现已包含 `ProjectRepository / ConsumerStateRepository / SimulationRepository / BranchRepository / ReportRepository / BenchmarkRepository` 的 filesystem-backed 实现
+按批次交付的收口结果：
+
+- **Batch 1**：完整 `MiroConsumer` 产品身份清理。消费者产品主表面统一为 `MiroConsumer`，补齐了首页/流程页/运行页/报告页/交互页等可见品牌位，以及包名与仓库展示口径。
+- **Batch 2**：simulation/report 路由瘦身与新的 app service 落地。Flask route 进一步收敛到 application service，`graph / simulation / report / branch / benchmark` 的编排边界更加清晰；route 层回归 `parse -> validate -> call service -> return response` 的薄壳模式。
+- **Batch 3**：task executor 抽象 + simulation artifacts 的 repository-first 推进。`task_executor` 统一封装了 prepare、run、report 等异步/同步任务的执行与重试语义；repository 层新增 `ProjectRepository / ConsumerStateRepository / SimulationRepository / BranchRepository / ReportRepository / BenchmarkRepository` 的 filesystem-backed 实现，文件系统持久化不再直接散落在 service 中。
+- **Batch 4**：consumer bounded-context 扩展 + canonical consumer 路由 + typed contracts。新增 `app/api/consumer`、`consumer_app_service`、`api_guard`、`simulation_state_accessor` 等 consumer 自有边界模块；旧 `/api/simulation/.../consumer-summary` 路由保留为 compatibility shim；canonical consumer routes 与 typed request/response contracts 已落地。
+- **Batch 5**：全套件稳定化 + canonical errors + observability/smoke gate。task executor observability 测试通过；canonical error response  shape 统一；smoke gate 确认 consumer blueprint 在 Flask 应用工厂中正确注册；全量回归达到 565 passed。
 
 Phase 5 完成后，前面列出的几项 Phase 4 末尾残留问题已被实质收口：
 
@@ -425,14 +427,14 @@ Phase 5 完成后，前面列出的几项 Phase 4 末尾残留问题已被实质
 - Flask route 厚度已继续下降，consumer-specific 编排不再主要散落在 route 中
 - 文件系统持久化已通过 repository 接口包裹到更清晰的边界
 - persona pack 不再是隐藏代码默认值，而是显式可选资产
-- evidence validation 已从“评分”升级为“门禁”
+- evidence validation 已从”评分”升级为”门禁”
 - `consumer_test` 已拥有更清晰的 bounded context 入口与状态访问边界
 
-Phase 5 最终验证结果：
+Phase 5 最终验证结果（2026-04-23）：
 
-- 后端定向验收：`166 passed`
-- 后端非集成全量回归：`534 passed, 1 deselected`
-- 前端定向测试：`92 passed`
+- task executor observability：`python -m pytest tests/services/application/test_task_executor_observability.py -q` -> `9 passed, 1 warning`
+- 后端核心子套件：`python -m pytest tests/api/ tests/consumer/ tests/services/application/ -q` -> `565 passed, 1 warning`
+- 唯一剩余 warning 为预存的 `zep_cloud` / Python 3.14 兼容性警告，不影响功能
 - 前端构建：`npm run build` 成功
 - Flask app smoke：`/api/consumer/simulation/<simulation_id>/consumer-summary` 已在应用工厂中成功注册
 
@@ -444,15 +446,21 @@ Phase 5 最终验证结果：
 - `Phase 4B`：完成测试覆盖面扩展，新增 `packaging_test`、`ab_test`、`price_test`
 - `Phase 4C`：完成效率与工程化升级，强化 prepare/runtime 路径、缓存、回退和稳定性
 
-### Phase 5（下一阶段）
+### Phase 5（已完成，2026-04-23）
 
-- `Phase 5A`：先完成产品身份收口，将全局 `MiroFish` 的消费者产品表面统一切为 `MiroConsumer`，包括包名、日志名、首页品牌名、GitHub 链接、README、截图与 docker/service 命名
-- `Phase 5B`：将 API route 层拆薄，新增 `graph_app_service`、`simulation_app_service`、`report_app_service`、`branch_app_service`、`benchmark_app_service`，让 route 只负责 parse / validate / call service / return response
-- `Phase 5C`：把文件持久化抽象成 repository 层，至少先建立 `ProjectRepository`、`SimulationRepository`、`BranchRepository`、`ReportRepository`、`BenchmarkRepository`，并由文件系统实现承接
-- `Phase 5D`：把 persona pack 升级为可配置资产体系，支持通用 pack、行业 pack、品类 pack、地域 pack 和自定义上传 pack
-- `Phase 5E`：把 evidence validation 从“评分”升级成“门禁”，加入 finding 最低证据门槛、source tier 最低要求、无支撑结论禁止进入 executive summary、weak evidence 在 comparison / replay 中降权或 fail
-- `Phase 5F`：继续把 `consumer_test` 主线彻底独立成 bounded context，向 `app/services/consumer/...`、`app/api/consumer/...`、consumer 自有 state / storage / report contracts 方向推进
-- 在这 6 项产品化与架构收口完成之后，再继续推进多模态包装测试、更大规模 runtime 优化和 research operating system 层能力
+Phase 5 六项目标已全部完成，按批次交付如下：
+
+- **Batch 1 — 产品身份收口**：全局消费者产品表面统一为 `MiroConsumer`，包括包名、日志名、首页品牌名、GitHub 链接、README、截图与 docker/service 命名
+- **Batch 2 — Route 拆薄与 App Service 落地**：API route 层收敛为薄壳，新增 `graph_app_service`、`simulation_app_service`、`report_app_service`、`branch_app_service`、`benchmark_app_service`、`consumer_app_service`，route 只负责 parse / validate / call service / return response
+- **Batch 3 — Task Executor 与 Repository 抽象**：`task_executor` 统一封装 prepare/run/report 执行与重试语义；文件持久化抽象为 `ProjectRepository`、`ConsumerStateRepository`、`SimulationRepository`、`BranchRepository`、`ReportRepository`、`BenchmarkRepository`，由文件系统实现承接
+- **Batch 4 — Consumer Bounded Context 与 Canonical Routes**：`consumer_test` 主线进一步独立为 bounded context，新增 `app/api/consumer`、`ConsumerAppService`、`ConsumerApiGuard`、`ConsumerSimulationStateAccessor`；canonical consumer 路由与 typed contracts 已落地
+- **Batch 5 — 全套件稳定化与 Observability**：canonical error shape 统一；task executor observability 验证通过；smoke gate 确认 consumer blueprint 注册正确；全量回归 565 passed，仅剩预存 `zep_cloud` / Python 3.14 兼容性警告
+
+Phase 5 收口完成后，下一阶段（Phase 6 或等效新路线图）可安全推进：
+
+- 多模态包装测试与创意 stimulus
+- 更大规模 runtime 优化与模型路由改进
+- category memory、benchmark library 扩充与 research operating system 特性
 
 ### 明确不纳入当前路线
 

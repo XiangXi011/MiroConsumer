@@ -13,9 +13,19 @@ This phase closed the product and architecture cleanup wave after Phase 4:
 - evidence validation as gatekeeping
 - clearer `consumer_test` bounded context
 
-## 2. What Landed
+## 2. Batch Summary
 
-### 2.1 Product Identity
+Phase 5 was delivered in 5 batches:
+
+- **Batch 1 — Product Identity Cleanup**: full `MiroConsumer` identity sweep across homepage, workflow views, package names, README, and repo presentation.
+- **Batch 2 — Route Thinning & App Services**: Flask routes for `graph / simulation / report / branch / benchmark` thinned to thin orchestration shells; `graph_app_service`, `simulation_app_service`, `report_app_service`, `branch_app_service`, `benchmark_app_service`, and `consumer_app_service` now own request-to-domain orchestration.
+- **Batch 3 — Task Executor & Repository Abstraction**: `task_executor` abstraction landed for unified prepare/run/report execution and retry semantics; repository backbone completed with `ProjectRepository`, `ConsumerStateRepository`, `SimulationRepository`, `BranchRepository`, `ReportRepository`, and `BenchmarkRepository` (all filesystem-backed).
+- **Batch 4 — Consumer Bounded Context & Canonical Routes**: `consumer_test` progressed toward a real bounded context via `app/api/consumer`, `ConsumerAppService`, `ConsumerApiGuard`, and `ConsumerSimulationStateAccessor`; canonical consumer routes and typed request/response contracts are active; legacy routes remain as compatibility shims.
+- **Batch 5 — Suite Stabilization & Observability**: canonical error response shape unified; task executor observability tests green; smoke gate verified consumer blueprint registration; full suite stabilized to 565 passed with only the pre-existing `zep_cloud` / Python 3.14 compatibility warning.
+
+## 3. What Landed
+
+### 3.1 Product Identity
 
 - core product-facing views now show `MiroConsumer`
 - root package and lockfile naming are aligned to `miroconsumer`
@@ -33,7 +43,7 @@ Primary touched surfaces:
 - `package.json`
 - `package-lock.json`
 
-### 2.2 Service and Repository Boundaries
+### 3.2 Service and Repository Boundaries
 
 - application-service orchestration now exists for graph, simulation, report, branch, benchmark, and consumer flows
 - repository abstractions now include:
@@ -56,7 +66,7 @@ Key files:
 - `backend/app/repositories/__init__.py`
 - `backend/app/repositories/filesystem.py`
 
-### 2.3 Persona Pack Assetization
+### 3.3 Persona Pack Assetization
 
 - persona packs are now explicit assets rather than hidden defaults
 - supported pack classes:
@@ -82,7 +92,7 @@ Key files:
 - `frontend/src/api/graph.js`
 - `frontend/src/components/Step2EnvSetup.vue`
 
-### 2.4 Evidence Gatekeeping
+### 3.4 Evidence Gatekeeping
 
 - evidence validation no longer stops at advisory scoring
 - findings now pass through hard gatekeeping before they can influence high-level outputs
@@ -97,7 +107,7 @@ Key files:
 - `backend/app/services/consumer/comparison_engine.py`
 - `backend/app/services/consumer/benchmark_replay.py`
 
-### 2.5 Consumer Bounded Context
+### 3.5 Consumer Bounded Context
 
 - canonical consumer route now exists at:
   - `/api/consumer/simulation/<simulation_id>/consumer-summary`
@@ -115,16 +125,15 @@ Key files:
 - `backend/app/services/consumer/api_guard.py`
 - `backend/app/services/consumer/simulation_state_accessor.py`
 
-## 3. Verification
+## 4. Verification
 
-Fresh verification run after integration:
+Fresh verification run after final Batch 5 stabilization:
 
-- targeted backend acceptance:
-  - `166 passed`
-- full backend non-integration regression:
-  - `534 passed, 1 deselected`
-- targeted frontend tests:
-  - `92 passed`
+- task executor observability:
+  - `python -m pytest tests/services/application/test_task_executor_observability.py -q` -> `9 passed, 1 warning`
+- core backend sub-suite (`api` + `consumer` + `services/application`):
+  - `python -m pytest tests/api/ tests/consumer/ tests/services/application/ -q` -> `565 passed, 1 warning`
+- the only remaining warning is the pre-existing `zep_cloud` / Python 3.14 compatibility warning
 - frontend build:
   - passed
 - Flask app smoke:
@@ -133,34 +142,30 @@ Fresh verification run after integration:
 Key commands used:
 
 ```powershell
-D:\project\MiroFish\.worktrees\consumer-simulation-phase1\backend\.venv\Scripts\python.exe -m pytest backend\tests\consumer\test_persona_pack_registry.py backend\tests\consumer\test_evidence_validator.py backend\tests\consumer\test_scoring.py backend\tests\consumer\test_benchmark_replay.py backend\tests\consumer\test_comparison_engine.py backend\tests\consumer\test_api_guard.py backend\tests\consumer\test_consumer_app_service.py backend\tests\consumer\test_simulation_state_accessor.py backend\tests\api\test_consumer_routes.py backend\tests\api\test_consumer_interventions.py -q
+python -m pytest tests/services/application/test_task_executor_observability.py -q
 ```
 
 ```powershell
-D:\project\MiroFish\.worktrees\consumer-simulation-phase1\backend\.venv\Scripts\python.exe -m pytest tests -q --ignore=tests\integration -k "not test_test_variants_takes_precedence_over_legacy_variants_in_model"
-```
-
-```powershell
-node --test frontend\tests\consumerMode.test.js frontend\tests\consumerBrief.test.js frontend\tests\pendingUpload.test.js
+python -m pytest tests/api/ tests/consumer/ tests/services/application/ -q
 ```
 
 ```powershell
 npm run build
 ```
 
-## 4. Compatibility Notes
+## 5. Compatibility Notes
 
 - existing frontend flows continue to use legacy route shapes where needed
 - the new consumer blueprint is additive, not a breaking replacement
 - filesystem persistence remains active; repository abstractions are a seam, not a storage migration
 
-## 5. Remaining Non-Blockers
+## 6. Remaining Non-Blockers
 
 - some legacy/internal `MiroFish` references still exist in non-primary surfaces, logs, comments, or historical docs; they are no longer the main product face
 - the large logo asset still keeps the historical filename `MiroFish_logo_left...`; this is cosmetic, not functional
 - build retains the pre-existing large-asset footprint in frontend output
 
-## 6. Next Step
+## 7. Next Step
 
 Phase 5 is the closure point for product/architecture cleanup.
 

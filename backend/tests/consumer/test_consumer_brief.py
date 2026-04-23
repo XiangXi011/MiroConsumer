@@ -188,12 +188,14 @@ def test_test_variants_takes_precedence_over_legacy_variants_in_model():
         product_concept_assets=[],
         test_variants=[
             TestVariant(variant_id="new1", label="New A", concept_assets=[], copy_material=[], claims=[]),
+            TestVariant(variant_id="new2", label="New B", concept_assets=[], copy_material=[], claims=[]),
         ],
         variants=["Legacy A", "Legacy B"],
         research_goal="Compare messaging",
     )
-    assert len(brief.test_variants) == 1
+    assert len(brief.test_variants) == 2
     assert brief.test_variants[0].label == "New A"
+    assert brief.test_variants[1].label == "New B"
 
 
 def test_brief_price_context_stored_and_summarized():

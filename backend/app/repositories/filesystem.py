@@ -7,11 +7,16 @@ so that later batches can swap in database-backed implementations without
 touching application service code.
 """
 
+import csv
+import json
+import os
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from ..config import Config
 from ..models.project import ProjectManager
-from ..services.simulation_manager import SimulationManager
 from ..services.report_agent import ReportManager
+from ..services.simulation_manager import SimulationState, SimulationStatus
 from ..services.consumer.intervention_manager import ConsumerInterventionManager
 from ..services.consumer.simulation_state_accessor import ConsumerSimulationStateAccessor
 from ..services.consumer import benchmark_registry, benchmark_replay
@@ -73,16 +78,59 @@ class FilesystemConsumerStateRepository(ConsumerStateRepository):
 
 
 class FilesystemSimulationRepository(SimulationRepository):
-    """Delegates to SimulationManager."""
+    """Filesystem-backed simulation persistence."""
 
-    def __init__(self) -> None:
-        self._manager = SimulationManager()
+    def _get_simulation_dir(self, simulation_id: str) -> str:
+        sim_dir = os.path.join(Config.OASIS_SIMULATION_DATA_DIR, simulation_id)
+        os.makedirs(sim_dir, exist_ok=True)
+        return sim_dir
+
+    def _load_state_dict(self, simulation_id: str) -> Optional[Dict[str, Any]]:
+        sim_dir = self._get_simulation_dir(simulation_id)
+        state_file = os.path.join(sim_dir, "state.json")
+        if not os.path.exists(state_file):
+            return None
+        with open(state_file, "r", encoding="utf-8") as f:
+            return json.load(f)
+
+    def _state_from_dict(self, simulation_id: str, data: Dict[str, Any]) -> SimulationState:
+        return SimulationState(
+            simulation_id=simulation_id,
+            project_id=data.get("project_id", ""),
+            graph_id=data.get("graph_id", ""),
+            project_type=data.get("project_type", "default"),
+            consumer_mode=data.get("consumer_mode", False),
+            enable_twitter=data.get("enable_twitter", True),
+            enable_reddit=data.get("enable_reddit", True),
+            status=SimulationStatus(data.get("status", "created")),
+            entities_count=data.get("entities_count", 0),
+            profiles_count=data.get("profiles_count", 0),
+            entity_types=data.get("entity_types", []),
+            config_generated=data.get("config_generated", False),
+            config_reasoning=data.get("config_reasoning", ""),
+            persona_pack_id=data.get("persona_pack_id", ""),
+            pinned_brief_summary=data.get("pinned_brief_summary", ""),
+            enable_lane_b=data.get("enable_lane_b", False),
+            current_round=data.get("current_round", 0),
+            twitter_status=data.get("twitter_status", "not_started"),
+            reddit_status=data.get("reddit_status", "not_started"),
+            created_at=data.get("created_at", datetime.now().isoformat()),
+            updated_at=data.get("updated_at", datetime.now().isoformat()),
+            error=data.get("error"),
+        )
 
     def get_simulation(self, simulation_id: str) -> Optional[Any]:
-        return self._manager.get_simulation(simulation_id)
+        data = self._load_state_dict(simulation_id)
+        if data is None:
+            return None
+        return self._state_from_dict(simulation_id, data)
 
     def save_simulation(self, state: Any) -> None:
-        self._manager._save_simulation_state(state)
+        sim_dir = self._get_simulation_dir(state.simulation_id)
+        state_file = os.path.join(sim_dir, "state.json")
+        state.updated_at = datetime.now().isoformat()
+        with open(state_file, "w", encoding="utf-8") as f:
+            json.dump(state.to_dict(), f, ensure_ascii=False, indent=2)
 
     def create_simulation(
         self,
@@ -92,38 +140,96 @@ class FilesystemSimulationRepository(SimulationRepository):
         enable_twitter: bool = True,
         enable_reddit: bool = True,
     ) -> Any:
-        return self._manager.create_simulation(
+        import uuid
+
+        simulation_id = f"sim_{uuid.uuid4().hex[:12]}"
+        normalized_project_type = project_type or "default"
+        state = SimulationState(
+            simulation_id=simulation_id,
             project_id=project_id,
             graph_id=graph_id,
-            project_type=project_type,
+            project_type=normalized_project_type,
+            consumer_mode=(normalized_project_type == "consumer_test"),
             enable_twitter=enable_twitter,
             enable_reddit=enable_reddit,
+            status=SimulationStatus.CREATED,
         )
+        self.save_simulation(state)
+        return state
 
     def list_simulations(self, project_id: Optional[str] = None) -> List[Any]:
-        return self._manager.list_simulations(project_id)
+        simulations = []
+        if os.path.exists(Config.OASIS_SIMULATION_DATA_DIR):
+            for sim_id in os.listdir(Config.OASIS_SIMULATION_DATA_DIR):
+                sim_path = os.path.join(Config.OASIS_SIMULATION_DATA_DIR, sim_id)
+                if sim_id.startswith(".") or not os.path.isdir(sim_path):
+                    continue
+                state = self.get_simulation(sim_id)
+                if state and (project_id is None or state.project_id == project_id):
+                    simulations.append(state)
+        return simulations
 
     def delete_simulation(self, simulation_id: str) -> bool:
-        import os
         import shutil
 
-        sim_dir = self._manager._get_simulation_dir(simulation_id)
+        sim_dir = self._get_simulation_dir(simulation_id)
         if os.path.exists(sim_dir):
             shutil.rmtree(sim_dir)
             return True
         return False
 
     def get_profiles(self, simulation_id: str, platform: str = "reddit") -> List[Dict[str, Any]]:
-        return self._manager.get_profiles(simulation_id, platform)
+        sim_dir = self._get_simulation_dir(simulation_id)
+        profile_path = os.path.join(sim_dir, f"{platform}_profiles.json")
+        if not os.path.exists(profile_path):
+            return []
+        with open(profile_path, "r", encoding="utf-8") as f:
+            return json.load(f)
 
     def get_simulation_config(self, simulation_id: str) -> Optional[Dict[str, Any]]:
-        return self._manager.get_simulation_config(simulation_id)
+        return self.load_simulation_config(simulation_id)
 
     def get_prepare_manifest(self, simulation_id: str) -> Optional[Dict[str, Any]]:
-        return self._manager.get_prepare_manifest(simulation_id)
+        from ..services.prepare_manifest import read_manifest
+
+        sim_dir = self._get_simulation_dir(simulation_id)
+        manifest = read_manifest(sim_dir)
+        return manifest.to_dict() if manifest else None
 
     def record_manifest_reuse(self, simulation_id: str) -> Optional[Dict[str, Any]]:
-        return self._manager.record_manifest_reuse(simulation_id)
+        from ..services.prepare_manifest import touch_reuse
+
+        sim_dir = self._get_simulation_dir(simulation_id)
+        manifest = touch_reuse(sim_dir)
+        return manifest.to_dict() if manifest else None
+
+    def save_simulation_config(self, simulation_id: str, config: Dict[str, Any]) -> None:
+        sim_dir = self._get_simulation_dir(simulation_id)
+        config_path = os.path.join(sim_dir, "simulation_config.json")
+        with open(config_path, "w", encoding="utf-8") as f:
+            json.dump(config, f, ensure_ascii=False, indent=2)
+
+    def load_simulation_config(self, simulation_id: str) -> Optional[Dict[str, Any]]:
+        sim_dir = self._get_simulation_dir(simulation_id)
+        config_path = os.path.join(sim_dir, "simulation_config.json")
+        if not os.path.exists(config_path):
+            return None
+        with open(config_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+
+    def save_consumer_config(self, simulation_id: str, config: Dict[str, Any]) -> None:
+        sim_dir = self._get_simulation_dir(simulation_id)
+        config_path = os.path.join(sim_dir, "consumer_config.json")
+        with open(config_path, "w", encoding="utf-8") as f:
+            json.dump(config, f, ensure_ascii=False, indent=2)
+
+    def load_consumer_config(self, simulation_id: str) -> Optional[Dict[str, Any]]:
+        sim_dir = self._get_simulation_dir(simulation_id)
+        config_path = os.path.join(sim_dir, "consumer_config.json")
+        if not os.path.exists(config_path):
+            return None
+        with open(config_path, "r", encoding="utf-8") as f:
+            return json.load(f)
 
 
 class FilesystemBranchRepository(BranchRepository):

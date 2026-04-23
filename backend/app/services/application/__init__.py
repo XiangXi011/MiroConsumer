@@ -10,6 +10,9 @@ from .simulation_app_service import SimulationAppService
 from .report_app_service import ReportAppService
 from .branch_app_service import BranchAppService
 from .benchmark_app_service import BenchmarkAppService
+from .research_asset_app_service import ResearchAssetAppService
+from .comparison_app_service import ComparisonAppService
+from .task_executor import TaskExecutor, ThreadTaskExecutor
 
 __all__ = [
     "GraphAppService",
@@ -17,4 +20,8 @@ __all__ = [
     "ReportAppService",
     "BranchAppService",
     "BenchmarkAppService",
+    "ResearchAssetAppService",
+    "ComparisonAppService",
+    "TaskExecutor",
+    "ThreadTaskExecutor",
 ]

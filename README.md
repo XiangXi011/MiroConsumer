@@ -21,7 +21,7 @@ Instead of collecting only static persona ratings, it models **first impression,
 
 ## What Is MiroConsumer
 
-MiroConsumer is a consumer propagation testing product built on top of the MiroFish architecture.
+MiroConsumer is an AI-powered consumer propagation testing platform.
 
 It is designed for teams who need to answer questions like:
 
@@ -248,7 +248,7 @@ Default ports:
 
 ## Technical Foundation
 
-MiroConsumer is built on the existing MiroFish execution backbone:
+MiroConsumer is built on a robust multi-agent simulation execution backbone:
 
 - graph construction
 - simulation preparation
@@ -262,4 +262,4 @@ The current product direction specializes that backbone for **consumer concept a
 
 The simulation layer builds on **[OASIS (Open Agent Social Interaction Simulations)](https://github.com/camel-ai/oasis)**.
 
-We also thank the original MiroFish architecture for providing the graph, simulation, report, and interaction backbone that powers this product direction.
+We also thank the original simulation architecture for providing the graph, simulation, report, and interaction backbone that powers this product direction.
