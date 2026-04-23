@@ -455,8 +455,9 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { chatWithReport, getReport, getAgentLog, getComparison } from '../api/report'
-import { interviewAgents, getSimulationProfilesRealtime, getBranchComparison } from '../api/simulation'
+import { chatWithReport, getReport, getAgentLog } from '../api/report'
+import { interviewAgents, getSimulationProfilesRealtime } from '../api/simulation'
+import { getComparison, getBranchComparison } from '../api/consumer'
 import {
   buildConsumerQuickPrompts,
   buildBranchAwarePrompts,

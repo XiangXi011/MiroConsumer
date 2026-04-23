@@ -67,11 +67,23 @@ export const getSimulationConfigRealtime = (simulationId) => {
   return service.get(`/api/simulation/${simulationId}/config/realtime`)
 }
 
+// Re-export consumer-specific wrappers from canonical consumer module
+export {
+  getConsumerSummary,
+  listBranches,
+  createBranch,
+  listInterventions,
+  addIntervention,
+  getBranchComparison,
+  runBranch,
+  getBranchStatus,
+} from './consumer'
+
 /**
- * 获取消费者传播摘要
+ * 获取消费者传播摘要（compat — prefer consumer.js）
  * @param {string} simulationId
  */
-export const getConsumerSummary = (simulationId) => {
+export const _getConsumerSummary_compat = (simulationId) => {
   return service.get(`/api/simulation/${simulationId}/consumer-summary`)
 }
 
@@ -193,70 +205,6 @@ export const getSimulationHistory = (limit = 20) => {
   return service.get('/api/simulation/history', { params: { limit } })
 }
 
-// ============== Branch / Intervention APIs (consumer_test only) ==============
-
-/**
- * 列出某模拟的所有分支
- * @param {string} simulationId
- */
-export const listBranches = (simulationId) => {
-  return service.get(`/api/simulation/${simulationId}/branches`)
-}
-
-/**
- * 创建分支
- * @param {string} simulationId
- * @param {Object} data - { name, fork_round, description?, parent_branch_id? }
- */
-export const createBranch = (simulationId, data) => {
-  return service.post(`/api/simulation/${simulationId}/branches`, data)
-}
-
-/**
- * 列出某模拟或某分支的干预
- * @param {string} simulationId
- * @param {string} branchId - 可选
- */
-export const listInterventions = (simulationId, branchId = null) => {
-  const params = branchId ? { branch_id: branchId } : {}
-  return service.get(`/api/simulation/${simulationId}/interventions`, { params })
-}
-
-/**
- * 为某分支添加干预
- * @param {string} simulationId
- * @param {string} branchId
- * @param {Object} data - { intervention_type, payload, target_round? }
- */
-export const addIntervention = (simulationId, branchId, data) => {
-  return service.post(`/api/simulation/${simulationId}/branches/${branchId}/interventions`, data)
-}
-
-/**
- * 获取分支对比上下文
- * @param {string} simulationId
- * @param {string} branchId
- */
-export const getBranchComparison = (simulationId, branchId) => {
-  return service.get(`/api/simulation/${simulationId}/branches/${branchId}/comparison`)
-}
-
-/**
- * 运行分支模拟
- * @param {string} simulationId
- * @param {string} branchId
- * @param {Object} data - { max_rounds? }
- */
-export const runBranch = (simulationId, branchId, data = {}) => {
-  return service.post(`/api/simulation/${simulationId}/branches/${branchId}/resume`, data)
-}
-
-/**
- * 获取分支运行状态
- * @param {string} simulationId
- * @param {string} branchId
- */
-export const getBranchStatus = (simulationId, branchId) => {
-  return service.get(`/api/simulation/${simulationId}/branches/${branchId}/status`)
-}
+// Branch / Intervention / Comparison / Research-asset APIs live in consumer.js
+// and are re-exported above for backward compatibility.
 

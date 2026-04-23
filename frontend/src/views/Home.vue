@@ -167,33 +167,6 @@
               </div>
             </div>
 
-            <div class="console-section">
-              <div class="console-header">
-                <span class="console-label">{{ $t('home.projectMode') }}</span>
-                <span class="console-meta">
-                  {{ formData.projectType === 'consumer_test' ? $t('home.modeConsumerMeta') : $t('home.modeDefaultMeta') }}
-                </span>
-              </div>
-              <div class="mode-switch">
-                <button
-                  class="mode-btn"
-                  :class="{ active: formData.projectType === 'default' }"
-                  @click="formData.projectType = 'default'"
-                  :disabled="loading"
-                >
-                  {{ $t('home.modeDefault') }}
-                </button>
-                <button
-                  class="mode-btn"
-                  :class="{ active: formData.projectType === 'consumer_test' }"
-                  @click="formData.projectType = 'consumer_test'"
-                  :disabled="loading"
-                >
-                  {{ $t('home.modeConsumer') }}
-                </button>
-              </div>
-            </div>
-
             <!-- 分割线 -->
             <div class="console-divider">
               <span>{{ $t('home.inputParams') }}</span>
@@ -216,7 +189,7 @@
               </div>
             </div>
 
-            <div v-if="formData.projectType === 'consumer_test'" class="console-section consumer-brief-section">
+            <div class="console-section consumer-brief-section">
               <div class="console-header">
                 <span class="console-label">{{ $t('home.consumerBriefLabel') }}</span>
                 <span class="console-meta">{{ $t('home.consumerBriefHint') }}</span>
@@ -503,7 +476,7 @@ const { t } = useI18n()
 
 // 表单数据
 const formData = ref({
-  projectType: 'default',
+  projectType: 'consumer_test',
   simulationRequirement: '',
   consumerTaskType: 'concept_test',
   consumerConcept: '',

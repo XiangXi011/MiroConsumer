@@ -19,7 +19,7 @@ test('setPendingUpload keeps legacy signature backward compatible', () => {
   assert.deepEqual(getPendingUpload(), {
     files,
     simulationRequirement: 'Run legacy simulation',
-    projectType: 'default',
+    projectType: 'consumer_test',
     consumerBrief: null,
     researchMode: 'manual_only',
     enableLaneB: false,
@@ -63,7 +63,7 @@ test('setPendingUpload stores consumer payload and clearPendingUpload resets it'
   assert.deepEqual(getPendingUpload(), {
     files: [],
     simulationRequirement: '',
-    projectType: 'default',
+    projectType: 'consumer_test',
     consumerBrief: null,
     researchMode: 'manual_only',
     enableLaneB: false,

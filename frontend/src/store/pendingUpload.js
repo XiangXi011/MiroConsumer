@@ -22,7 +22,7 @@ import { reactive } from 'vue'
 const createDefaultState = () => ({
   files: [],
   simulationRequirement: '',
-  projectType: 'default',
+  projectType: 'consumer_test',
   consumerBrief: null,
   researchMode: 'manual_only',
   enableLaneB: false,
@@ -43,7 +43,7 @@ export function setPendingUpload(filesOrPayload, requirement) {
 
   state.files = payload.files || []
   state.simulationRequirement = payload.simulationRequirement || ''
-  state.projectType = payload.projectType || 'default'
+  state.projectType = payload.projectType || 'consumer_test'
   state.consumerBrief = payload.consumerBrief || null
   state.researchMode = payload.researchMode || 'manual_only'
   state.enableLaneB = payload.enableLaneB || false

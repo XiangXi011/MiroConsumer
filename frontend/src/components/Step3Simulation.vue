@@ -444,6 +444,8 @@ import {
   stopSimulation,
   getRunStatus,
   getRunStatusDetail,
+} from '../api/simulation'
+import {
   getConsumerSummary,
   listBranches,
   createBranch,
@@ -451,7 +453,7 @@ import {
   addIntervention,
   runBranch,
   getBranchStatus,
-} from '../api/simulation'
+} from '../api/consumer'
 import { generateReport } from '../api/report'
 import {
   buildConsumerMetricCards,

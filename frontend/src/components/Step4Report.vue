@@ -1014,10 +1014,12 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import {
   getAgentLog, getConsoleLog,
+} from '../api/report'
+import {
   exportResearchAsset, listResearchAssets,
   compareResearchSnapshots, listComparisons, getComparison,
-} from '../api/report'
-import { getBranchComparison } from '../api/simulation'
+  getBranchComparison,
+} from '../api/consumer'
 import {
   buildConsumerMetricCards,
   formatCascadeMetrics,

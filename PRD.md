@@ -74,12 +74,17 @@ MiroConsumer 通用仿真底座继续保留并主导：
 - scoring / evidence / recommendation 结构
 - 消费者测试报告 schema
 
-### 4.3 向下兼容是硬约束
+### 4.3 Maintainer-Only: 内部兼容模式（`project_type=default`）
+
+> **以下内容仅面向项目维护者，不属于产品面向用户的功能。**
+>
+> `project_type=default` 是 MiroConsumer 的内部兼容模式，用于保证升级前的通用仿真链路在新版本中不受影响。它不是用户可见的产品模式。
 
 - `project_type` 可选
-- 默认值为 `default`
+- 内部兼容模式的值为 `default`
 - 当前端不显式传入 `consumer_test` 时，系统必须完全走原版通用仿真逻辑
 - 只有显式传入 `project_type=consumer_test` 时，才进入消费者测试分支
+- 该模式的回归验证属于工程门禁，不纳入产品面向用户的文档或功能说明
 
 ## 5. Phase 1 目标工作流
 
@@ -208,7 +213,7 @@ Phase 2 在 Phase 1 基线上增加了以下能力：
   - Report Context：事件加载与 summary 生成通过
   - VOC 保留：`resonance / risk / misread quotes` 通过
   - API：project list/detail、simulation list/history、`GET /{sim_id}/consumer-summary` 通过
-  - 向下兼容：默认 `project_type` 不受影响
+  - 向下兼容：内部兼容模式未受影响
   - Zep 集成：图谱构建与模拟准备通过
 
 - `consumer_test` Phase 2 模块验收：
@@ -229,7 +234,7 @@ Phase 2 在 Phase 1 基线上增加了以下能力：
   - 后端总回归：`backend/.venv/Scripts/python.exe -m pytest tests -q --ignore=tests/integration`，结果：`270 passed`
   - 前端总回归：`node --test frontend/tests/consumerMode.test.js frontend/tests/consumerBrief.test.js frontend/tests/pendingUpload.test.js`，结果：`61 passed`
   - 前端构建：`npm run build` 成功
-  - 向下兼容：`project_type=default` 回归仍为绿灯，未被 Phase 3 改动破坏
+  - 向下兼容：内部兼容模式回归仍为绿灯，未被 Phase 3 改动破坏
 
 结论：
 
@@ -273,7 +278,7 @@ Phase 4A 在 Phase 3 基线上增加了可信决策层，使系统不仅能回�
   - Benchmark Registry：注册、列表、读取通过
   - Benchmark Replay：回放执行、对齐比较、产物持久化通过
   - API：benchmark 路由 consumer_test 门控通过；非 consumer 项目正确拒绝通过
-  - 向后兼容：`project_type=default` 不受影响；无 Phase 4A 产物的旧 consumer 项目以 `unknown` / `not_scored` 回退加载
+  - 向后兼容：内部兼容模式未受影响；无 Phase 4A 产物的旧 consumer 项目以 `unknown` / `not_scored` 回退加载
 
 - **Phase 4A 回归结果（2026-04-22）：**
   - 后端 benchmark 模块测试：`17 passed`
