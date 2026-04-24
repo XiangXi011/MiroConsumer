@@ -33,3 +33,8 @@ git diff --check
 ```
 
 Expected: all tests pass, `git diff --check` clean, docs are ASCII-only.
+
+Actual Results:
+- pytest: 66 passed, 1 warning in 1.65s
+- git diff --check: clean (no output)
+- non-ASCII scan on docs: 0 non-ASCII matches on both files
