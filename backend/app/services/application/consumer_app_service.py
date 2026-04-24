@@ -8,9 +8,13 @@ own orchestration instead of leaking logic into general API routes.
 
 from typing import Any, Dict, List, Optional
 
-from ...models.project import ProjectManager
-from ...repositories import ConsumerStateRepository, SimulationRepository
+from ...repositories import (
+    ConsumerProjectResearchProvider,
+    ConsumerStateRepository,
+    SimulationRepository,
+)
 from ...repositories.filesystem import (
+    FilesystemConsumerProjectResearchProvider,
     FilesystemConsumerStateRepository,
     FilesystemSimulationRepository,
 )
@@ -31,6 +35,9 @@ class ConsumerAppService:
 
     _simulation_repo: SimulationRepository = FilesystemSimulationRepository()
     _consumer_state_repo: ConsumerStateRepository = FilesystemConsumerStateRepository()
+    _project_research_provider: ConsumerProjectResearchProvider = (
+        FilesystemConsumerProjectResearchProvider()
+    )
 
     @classmethod
     def get_consumer_summary(cls, simulation_id: str) -> Dict[str, Any]:
@@ -68,21 +75,17 @@ class ConsumerAppService:
         research_findings = accessor.load_research_findings(simulation_id)
         brief = accessor.load_brief(simulation_id)
 
-        # Phase 4A: load project research snapshot for traces/chunks/sources if available
+        # Phase 4A: load project research snapshot for traces/chunks/sources via provider
         traces: List[Any] = []
         chunks: List[Any] = []
         sources: List[Any] = []
-        project = ProjectManager.get_project(state.project_id)
-        if project and project.project_type == "consumer_test":
-            from ...services.consumer.project_research_persistence import load_persisted_snapshot
-
-            snapshot = load_persisted_snapshot(project.project_id)
-            if brief is None and getattr(project, "consumer_brief", None):
-                brief = ConsumerBriefAdapter.from_payload(project.consumer_brief)
-            if snapshot:
-                traces = snapshot.retrieval_traces or []
-                chunks = snapshot.chunks or []
-                sources = snapshot.sources or []
+        ctx = cls._project_research_provider.get_context(state.project_id)
+        if ctx.is_consumer_project:
+            if brief is None and ctx.brief_payload is not None:
+                brief = ConsumerBriefAdapter.from_payload(ctx.brief_payload)
+            traces = ctx.traces
+            chunks = ctx.chunks
+            sources = ctx.sources
 
         # Merge Phase 2 fields when events are present
         if all_events:

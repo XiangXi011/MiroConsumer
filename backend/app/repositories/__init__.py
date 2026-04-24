@@ -12,7 +12,36 @@ manager/repository duplication) is deferred to later batches.
 """
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
+
+
+@dataclass
+class ConsumerProjectResearchContext:
+    """Consumer project research data exposed to the application layer.
+
+    Contains only what ConsumerAppService needs to build a consumer summary.
+    Persistence details (snapshot IDs, file paths, etc.) are not exposed.
+    """
+
+    is_consumer_project: bool = False
+    brief_payload: Optional[Dict[str, Any]] = None
+    traces: List[Any] = field(default_factory=list)
+    chunks: List[Any] = field(default_factory=list)
+    sources: List[Any] = field(default_factory=list)
+
+
+class ConsumerProjectResearchProvider(ABC):
+    """Abstract provider for consumer project research context.
+
+    Decouples ConsumerAppService from ProjectManager and project research
+    persistence so that filesystem-backed or database-backed implementations
+    can be swapped without changing service logic.
+    """
+
+    @abstractmethod
+    def get_context(self, project_id: str) -> ConsumerProjectResearchContext:
+        """Return the research context for the given project ID."""
 
 
 class ProjectRepository(ABC):
@@ -310,7 +339,10 @@ class BenchmarkRepository(ABC):
 
 
 __all__ = [
+    "ConsumerProjectResearchContext",
+    "ConsumerProjectResearchProvider",
     "ProjectRepository",
+    "ConsumerStateRepository",
     "SimulationRepository",
     "BranchRepository",
     "ReportRepository",

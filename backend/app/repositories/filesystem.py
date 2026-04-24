@@ -21,6 +21,8 @@ from ..services.consumer.intervention_manager import ConsumerInterventionManager
 from ..services.consumer.simulation_state_accessor import ConsumerSimulationStateAccessor
 from ..services.consumer import benchmark_registry, benchmark_replay
 from . import (
+    ConsumerProjectResearchContext,
+    ConsumerProjectResearchProvider,
     ProjectRepository,
     ConsumerStateRepository,
     SimulationRepository,
@@ -75,6 +77,42 @@ class FilesystemConsumerStateRepository(ConsumerStateRepository):
 
     def load_research_findings(self, simulation_id: str) -> List[Dict[str, Any]]:
         return ConsumerSimulationStateAccessor.load_research_findings(simulation_id)
+
+
+class FilesystemConsumerProjectResearchProvider(ConsumerProjectResearchProvider):
+    """Filesystem-backed provider for consumer project research context.
+
+    Delegates to ProjectManager for project metadata and to
+    project_research_persistence for snapshot loading.  This is the
+    repository boundary: ConsumerAppService must not import either
+    directly.
+    """
+
+    def get_context(self, project_id: str) -> ConsumerProjectResearchContext:
+        project = ProjectManager.get_project(project_id)
+        if project is None or getattr(project, "project_type", None) != "consumer_test":
+            return ConsumerProjectResearchContext(is_consumer_project=False)
+
+        brief_payload = getattr(project, "consumer_brief", None)
+
+        from ..services.consumer.project_research_persistence import (
+            load_persisted_snapshot,
+        )
+
+        snapshot = load_persisted_snapshot(project_id)
+        if snapshot is None:
+            return ConsumerProjectResearchContext(
+                is_consumer_project=True,
+                brief_payload=brief_payload,
+            )
+
+        return ConsumerProjectResearchContext(
+            is_consumer_project=True,
+            brief_payload=brief_payload,
+            traces=snapshot.retrieval_traces or [],
+            chunks=snapshot.chunks or [],
+            sources=snapshot.sources or [],
+        )
 
 
 class FilesystemSimulationRepository(SimulationRepository):
@@ -405,6 +443,7 @@ class FilesystemBenchmarkRepository(BenchmarkRepository):
 __all__ = [
     "FilesystemProjectRepository",
     "FilesystemConsumerStateRepository",
+    "FilesystemConsumerProjectResearchProvider",
     "FilesystemSimulationRepository",
     "FilesystemBranchRepository",
     "FilesystemReportRepository",
