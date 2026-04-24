@@ -11,8 +11,12 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from app.services.consumer.models import ConsumerBusinessBrief, GraphVisibility
 from app.services.consumer.orchestrator import ConsumerSimulationOrchestrator
+from app.services.consumer.kernel_adapter import SimulationKernelResult
+from app.services.consumer.legacy_kernel import LegacySimulationKernel
 from app.services.consumer.persona_pack import (
     load_default_persona_pack,
     map_persona_to_agent_traits,
@@ -260,3 +264,150 @@ def test_snapshot_survives_json_roundtrip(tmp_path):
     assert loaded["attitude_label"] == snapshot["attitude_label"]
     assert loaded["bucket"] == snapshot["bucket"]
     assert loaded["engagement"] == snapshot["engagement"]
+
+
+# ===========================================================================
+# Task 2 — SimulationKernelResult validation
+# ===========================================================================
+
+
+class TestSimulationKernelResultValidation:
+    def test_valid_construction(self):
+        r = SimulationKernelResult(
+            attitude_label="positive", bucket="resonance", quote="ok", engagement=5,
+        )
+        assert r.engagement == 5
+
+    def test_invalid_attitude_label_raises(self):
+        with pytest.raises(ValueError, match="attitude_label"):
+            SimulationKernelResult(
+                attitude_label="excited", bucket="resonance", quote="q", engagement=5,
+            )
+
+    def test_invalid_bucket_raises(self):
+        with pytest.raises(ValueError, match="bucket"):
+            SimulationKernelResult(
+                attitude_label="positive", bucket="unknown", quote="q", engagement=5,
+            )
+
+    def test_engagement_zero_raises(self):
+        with pytest.raises(ValueError, match="engagement"):
+            SimulationKernelResult(
+                attitude_label="positive", bucket="resonance", quote="q", engagement=0,
+            )
+
+    def test_engagement_eleven_raises(self):
+        with pytest.raises(ValueError, match="engagement"):
+            SimulationKernelResult(
+                attitude_label="positive", bucket="resonance", quote="q", engagement=11,
+            )
+
+    def test_engagement_boundary_1_ok(self):
+        r = SimulationKernelResult(
+            attitude_label="neutral", bucket="question", quote="q", engagement=1,
+        )
+        assert r.engagement == 1
+
+    def test_engagement_boundary_10_ok(self):
+        r = SimulationKernelResult(
+            attitude_label="negative", bucket="risk", quote="q", engagement=10,
+        )
+        assert r.engagement == 10
+
+    def test_all_valid_buckets_accepted(self):
+        for b in ("resonance", "risk", "question", "misread"):
+            r = SimulationKernelResult(
+                attitude_label="neutral", bucket=b, quote="q", engagement=5,
+            )
+            assert r.bucket == b
+
+    def test_all_valid_attitudes_accepted(self):
+        for a in ("positive", "neutral", "negative"):
+            r = SimulationKernelResult(
+                attitude_label=a, bucket="question", quote="q", engagement=5,
+            )
+            assert r.attitude_label == a
+
+
+# ===========================================================================
+# Task 2 — LegacySimulationKernel behavior & parity
+# ===========================================================================
+
+
+class TestLegacySimulationKernelBehavior:
+    kernel = LegacySimulationKernel()
+    _base_traits = {"influence_weight": 0.5, "herd_tendency": "medium"}
+
+    def test_risk_nodes_yield_negative_risk(self):
+        nodes = [{"type": "RiskPoint", "text": "allergen concern"}]
+        r = self.kernel.generate_response(
+            round_num=1, agent_traits=self._base_traits, visible_nodes=nodes,
+        )
+        assert r.attitude_label == "negative"
+        assert r.bucket == "risk"
+
+    def test_round_ge1_high_herd_yields_positive_resonance(self):
+        nodes = [{"type": "TalkingPoint", "text": "price angle"}]
+        traits = {**self._base_traits, "herd_tendency": "high"}
+        r = self.kernel.generate_response(
+            round_num=1, agent_traits=traits, visible_nodes=nodes,
+        )
+        assert r.attitude_label == "positive"
+        assert r.bucket == "resonance"
+
+    def test_round_ge1_low_herd_yields_neutral_question(self):
+        nodes = [{"type": "TalkingPoint", "text": "price angle"}]
+        traits = {**self._base_traits, "herd_tendency": "low"}
+        r = self.kernel.generate_response(
+            round_num=1, agent_traits=traits, visible_nodes=nodes,
+        )
+        assert r.attitude_label == "neutral"
+        assert r.bucket == "question"
+
+    def test_initial_talking_nodes_yield_positive_resonance(self):
+        nodes = [{"type": "TalkingPoint", "text": "breakfast angle"}]
+        r = self.kernel.generate_response(
+            round_num=0, agent_traits=self._base_traits, visible_nodes=nodes,
+        )
+        assert r.attitude_label == "positive"
+        assert r.bucket == "resonance"
+
+    def test_empty_nodes_yield_neutral_question(self):
+        r = self.kernel.generate_response(
+            round_num=0, agent_traits=self._base_traits, visible_nodes=[],
+        )
+        assert r.attitude_label == "neutral"
+        assert r.bucket == "question"
+
+
+class TestLegacyKernelEngagementParity:
+    kernel = LegacySimulationKernel()
+
+    @pytest.mark.parametrize(
+        "influence_weight, round_num, expected",
+        [
+            (0.0, 0, 3),
+            (0.5, 0, 6),
+            (1.0, 0, 10),
+            (0.52, 0, 7),
+            (0.8, 0, 9),
+            (0.8, 3, 10),
+        ],
+    )
+    def test_compute_engagement_formula(self, influence_weight, round_num, expected):
+        assert self.kernel.compute_engagement(influence_weight, round_num) == expected
+
+    def test_generate_response_engagement_matches_compute(self):
+        nodes = [{"type": "TalkingPoint", "text": "topic"}]
+        traits = {"influence_weight": 0.6, "herd_tendency": "medium"}
+        r = self.kernel.generate_response(
+            round_num=2, agent_traits=traits, visible_nodes=nodes,
+        )
+        expected = self.kernel.compute_engagement(0.6, 2)
+        assert r.engagement == expected
+
+    def test_engagement_always_in_bounds(self):
+        for w in (0.0, 0.5, 1.0):
+            for rnd in range(5):
+                e = self.kernel.compute_engagement(w, rnd)
+                assert 1 <= e <= 10
