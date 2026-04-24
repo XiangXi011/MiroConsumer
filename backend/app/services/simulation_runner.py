@@ -22,9 +22,11 @@ from ..config import Config
 from ..models.project import ProjectManager
 from ..utils.logger import get_logger
 from ..utils.locale import get_locale, set_locale
+from .consumer.hybrid_kernel import HybridSimulationKernel
 from .consumer.models import ResearchFinding
 from .consumer.orchestrator import ConsumerSimulationOrchestrator
 from .consumer.persona_pack import load_default_persona_pack, map_persona_to_agent_traits
+from .consumer.propagation_state import PropagationState, create_initial_state
 from .zep_graph_memory_updater import ZepGraphMemoryManager
 from .simulation_ipc import SimulationIPCClient, CommandType, IPCResponse
 
@@ -541,7 +543,8 @@ class SimulationRunner:
             if os.path.exists(output_path):
                 os.remove(output_path)
 
-            orchestrator = ConsumerSimulationOrchestrator(output_path=output_path)
+            kernel = HybridSimulationKernel()
+            orchestrator = ConsumerSimulationOrchestrator(output_path=output_path, kernel=kernel)
             graph_nodes = graph_payload.get("nodes", [])
             personas = load_default_persona_pack()
             state.rounds = []
@@ -559,6 +562,7 @@ class SimulationRunner:
                     task_type = consumer_brief.get("task_type")
 
             previous_attitudes: Dict[str, str] = {}
+            agent_states: Dict[str, PropagationState] = {}
 
             for round_num in range(state.total_rounds):
                 round_summary = RoundSummary(
@@ -570,6 +574,9 @@ class SimulationRunner:
                 for index, persona in enumerate(personas):
                     agent_traits = map_persona_to_agent_traits(persona)
                     agent_id = agent_traits["persona_id"]
+                    if agent_id not in agent_states:
+                        agent_states[agent_id] = create_initial_state(agent_id)
+                    prior_state = agent_states[agent_id].to_prior_state_dict()
                     snapshot = orchestrator.build_round_snapshot(
                         round_num=round_num,
                         agent_traits={
@@ -582,6 +589,14 @@ class SimulationRunner:
                         agent_name=agent_traits["label"],
                         research_findings=research_findings,
                         task_type=task_type,
+                        prior_state=prior_state,
+                    )
+
+                    agent_states[agent_id].update(
+                        attitude_label=snapshot["attitude_label"],
+                        engagement=snapshot["engagement"],
+                        bucket=snapshot["bucket"],
+                        visible_nodes=snapshot.get("visible_nodes", []),
                     )
 
                     previous_attitude = previous_attitudes.get(agent_id)
@@ -705,7 +720,8 @@ class SimulationRunner:
                 or "Pinned BusinessBrief Summary: consumer brief unavailable"
             ).strip()
 
-            orchestrator = ConsumerSimulationOrchestrator(output_path=output_path)
+            kernel = HybridSimulationKernel()
+            orchestrator = ConsumerSimulationOrchestrator(output_path=output_path, kernel=kernel)
             graph_nodes = graph_payload.get("nodes", [])
             personas = load_default_persona_pack()
 
@@ -722,6 +738,7 @@ class SimulationRunner:
                     task_type = consumer_brief.get("task_type")
 
             previous_attitudes: Dict[str, str] = {}
+            agent_states: Dict[str, PropagationState] = {}
 
             # Fork semantics: seed pre-fork rounds from base simulation or parent branch
             if fork_round > 0:
@@ -752,6 +769,14 @@ class SimulationRunner:
                                 attitude = snap.get("attitude_label", "")
                                 if agent_id:
                                     previous_attitudes[agent_id] = attitude
+                                    if agent_id not in agent_states:
+                                        agent_states[agent_id] = create_initial_state(agent_id)
+                                    agent_states[agent_id].update(
+                                        attitude_label=attitude,
+                                        engagement=snap.get("engagement", 5),
+                                        bucket=snap.get("bucket", "question"),
+                                        visible_nodes=snap.get("visible_nodes", []),
+                                    )
 
             for round_num in range(fork_round, total_rounds):
                 round_summary = RoundSummary(
@@ -763,6 +788,9 @@ class SimulationRunner:
                 for index, persona in enumerate(personas):
                     agent_traits = map_persona_to_agent_traits(persona)
                     agent_id = agent_traits["persona_id"]
+                    if agent_id not in agent_states:
+                        agent_states[agent_id] = create_initial_state(agent_id)
+                    prior_state = agent_states[agent_id].to_prior_state_dict()
                     snapshot = orchestrator.build_round_snapshot(
                         round_num=round_num,
                         agent_traits={
@@ -775,6 +803,14 @@ class SimulationRunner:
                         agent_name=agent_traits["label"],
                         research_findings=research_findings,
                         task_type=task_type,
+                        prior_state=prior_state,
+                    )
+
+                    agent_states[agent_id].update(
+                        attitude_label=snapshot["attitude_label"],
+                        engagement=snapshot["engagement"],
+                        bucket=snapshot["bucket"],
+                        visible_nodes=snapshot.get("visible_nodes", []),
                     )
 
                     # Inject active interventions into the snapshot prompt

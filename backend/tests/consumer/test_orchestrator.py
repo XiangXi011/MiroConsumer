@@ -813,3 +813,151 @@ def test_branch_run_fork_from_parent_branch(tmp_path, monkeypatch):
     # Should generate round 1 (8 personas)
     round1 = [s for s in snapshots if s["round_num"] == 1]
     assert len(round1) == 8
+
+
+def test_branch_fork_state_initialization_carries_resonance_state(tmp_path, monkeypatch):
+    """Seeded resonance rounds should reconstruct agent state so that social
+    reinforcement count affects generated branch behavior.
+
+    M01 is seeded with 3 rounds of bucket='resonance' (social_reinforcement=3).
+    When the branch generates round 3 with non-risk visible nodes, M01's
+    medium herd tendency would normally yield neutral/question, but the
+    carried state flips it to positive/resonance.  M03 (also medium herd,
+    no seeded state) remains neutral/question, proving the state caused
+    the difference.
+    """
+    from app.config import Config
+    from app.services.consumer.intervention_manager import ConsumerInterventionManager
+
+    projects_dir = tmp_path / "uploads" / "projects"
+    simulations_dir = tmp_path / "uploads" / "simulations"
+    monkeypatch.setattr(ProjectManager, "PROJECTS_DIR", str(projects_dir))
+    monkeypatch.setattr(SimulationRunner, "RUN_STATE_DIR", str(simulations_dir))
+    monkeypatch.setattr(Config, "UPLOAD_FOLDER", str(tmp_path / "uploads"))
+    SimulationRunner._run_states.clear()
+    SimulationRunner._monitor_threads.clear()
+
+    class ImmediateThread:
+        def __init__(self, target=None, args=None, daemon=None):
+            self._target = target
+            self._args = args or ()
+            self.daemon = daemon
+
+        def start(self):
+            self._target(*self._args)
+
+    monkeypatch.setattr("app.services.simulation_runner.threading.Thread", ImmediateThread)
+
+    brief = ConsumerBusinessBrief(
+        task_type="concept_test",
+        product_concept_assets=["Yogurt pouch"],
+        copy_material=["Low sugar."],
+        claims=["Low sugar"],
+        target_audience=["Busy commuters"],
+        usage_scene=["Morning commute"],
+        research_goal="Test fork state carry.",
+    )
+    project = ProjectManager.create_project(name="Fork State Test")
+    project.project_type = "consumer_test"
+    project.graph_id = f"consumer_{project.project_id}"
+    project.consumer_brief = brief.to_summary()
+    ProjectManager.save_project(project)
+    # Use "Background." so no RiskPoint nodes are created in the graph
+    ProjectManager.save_consumer_graph_payload(
+        project.project_id,
+        ConsumerGraphBuilder().build(
+            brief=brief,
+            background_text="Background.",
+            graph_id=project.graph_id,
+        ),
+    )
+
+    sim_dir = simulations_dir / "sim_fork_state"
+    sim_dir.mkdir(parents=True, exist_ok=True)
+    (sim_dir / "simulation_config.json").write_text(
+        json.dumps(
+            {
+                "project_id": project.project_id,
+                "project_type": "consumer_test",
+                "consumer_mode": True,
+                "pinned_brief_summary": "Pinned BusinessBrief Summary: yogurt pouch",
+                "time_config": {"total_simulation_hours": 1, "minutes_per_round": 30},
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (sim_dir / "consumer_config.json").write_text(
+        json.dumps({"research_findings": []}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+    # Write 3 base rounds for M01 with resonance (builds social_reinforcement_count=3)
+    base_lines = []
+    for r in range(3):
+        base_lines.append(
+            json.dumps(
+                {
+                    "round_num": r,
+                    "agent_id": "M01",
+                    "attitude_label": "positive",
+                    "bucket": "resonance",
+                    "engagement": 5 + r,
+                    "visible_nodes": [
+                        {"type": "ProductConcept", "visibility": "Initial", "text": "yogurt pouch"}
+                    ],
+                }
+            )
+        )
+    base_rounds_path = sim_dir / "consumer_rounds.jsonl"
+    base_rounds_path.write_text("\n".join(base_lines) + "\n", encoding="utf-8")
+
+    # Create branch with fork_round=3
+    branches_dir = sim_dir / "branches"
+    int_mgr = ConsumerInterventionManager(branches_dir=str(branches_dir))
+    branch = int_mgr.create_branch("sim_fork_state", name="State Branch", fork_round=3)
+
+    config = {
+        "project_id": project.project_id,
+        "consumer_mode": True,
+        "pinned_brief_summary": "Pinned BusinessBrief Summary: yogurt pouch",
+        "time_config": {"total_simulation_hours": 1, "minutes_per_round": 30},
+        "total_rounds": 4,
+    }
+
+    SimulationRunner.run_branch_simulation("sim_fork_state", branch.branch_id, config)
+
+    child_rounds_path = branches_dir / branch.branch_id / "rounds.jsonl"
+    snapshot_lines = child_rounds_path.read_text(encoding="utf-8").splitlines()
+    snapshots = [json.loads(line) for line in snapshot_lines]
+
+    # Seeded rounds 0-2 for M01 should be present
+    round0 = [s for s in snapshots if s["round_num"] == 0]
+    assert len(round0) == 1
+    assert round0[0]["agent_id"] == "M01"
+    assert round0[0]["bucket"] == "resonance"
+
+    # Generated round 3 should have 8 snapshots (one per persona)
+    round3 = [s for s in snapshots if s["round_num"] == 3]
+    assert len(round3) == 8
+
+    # M01 (medium herd, 3 seeded resonance rounds) should flip to resonance
+    # because social_reinforcement_count=3 pushes neutral/question → positive/resonance
+    m01_snap = next(s for s in round3 if s["agent_id"] == "M01")
+    assert m01_snap["bucket"] == "resonance", (
+        f"M01 should carry resonance from seeded state, got bucket={m01_snap['bucket']!r}"
+    )
+
+    # M03 (also medium herd, no seeded state) should remain question,
+    # proving the state reconstruction (not herd tendency) caused M01's resonance.
+    m03_snap = next(s for s in round3 if s["agent_id"] == "M03")
+    assert m03_snap["bucket"] == "question", (
+        f"M03 without seeded state should be question, got bucket={m03_snap['bucket']!r}"
+    )
+
+    # At minimum: M01's generated round should differ from M03's, showing
+    # that prior state reconstruction did not start empty for M01.
+    assert m01_snap["attitude_label"] != m03_snap["attitude_label"], (
+        "M01 and M03 (both medium herd) should diverge because M01 carries seeded state"
+    )

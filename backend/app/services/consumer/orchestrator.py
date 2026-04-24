@@ -14,6 +14,8 @@ from .event_engine import (
     derive_trigger_from_findings,
 )
 from .intervention_manager import ConsumerIntervention
+from .legacy_kernel import LegacySimulationKernel
+from .kernel_adapter import SimulationKernelAdapter
 from .models import GraphVisibility, ResearchFinding
 from .persona_pack import can_access_deep_graph, load_default_persona_pack
 from .social_topology import (
@@ -30,9 +32,11 @@ class ConsumerSimulationOrchestrator:
         self,
         output_path: Optional[Path | str] = None,
         topology: Optional[SocialTopology] = None,
+        kernel: Optional[SimulationKernelAdapter] = None,
     ):
         self.output_path = Path(output_path) if output_path is not None else None
         self._topology = topology or build_social_topology()
+        self._kernel = kernel or LegacySimulationKernel()
 
     def build_round_prompt(
         self,
@@ -150,6 +154,7 @@ class ConsumerSimulationOrchestrator:
         agent_name: str,
         research_findings: Optional[Iterable[ResearchFinding]] = None,
         task_type: Optional[str] = None,
+        prior_state: Optional[Mapping[str, Any]] = None,
     ) -> Dict[str, Any]:
         normalized_nodes = self.filter_visible_graph_nodes(
             round_num=round_num,
@@ -173,9 +178,14 @@ class ConsumerSimulationOrchestrator:
             round_num=round_num,
             agent_traits=agent_traits,
             visible_nodes=normalized_nodes,
+            prior_state=prior_state,
         )
         influence_weight = float(agent_traits.get("influence_weight", 0.5))
-        engagement = max(1, min(10, int(round(3 + influence_weight * 7 + round_num))))
+        engagement = self._kernel.compute_engagement(
+            influence_weight=influence_weight,
+            round_num=round_num,
+            prior_state=prior_state,
+        )
         return {
             "round_num": round_num,
             "agent_id": agent_id,
@@ -290,46 +300,15 @@ class ConsumerSimulationOrchestrator:
         round_num: int,
         agent_traits: Mapping[str, Any],
         visible_nodes: List[Mapping[str, Any]],
+        prior_state: Optional[Mapping[str, Any]] = None,
     ) -> tuple[str, str, str]:
-        risk_nodes = [node for node in visible_nodes if node["type"] == "RiskPoint"]
-        talking_nodes = [node for node in visible_nodes if node["type"] != "RiskPoint"]
-
-        if risk_nodes:
-            risk_text = risk_nodes[0]["text"]
-            return (
-                "negative",
-                "risk",
-                f"I keep thinking about {risk_text}, so the claim starts to feel less trustworthy.",
-            )
-
-        if round_num >= 1 and talking_nodes:
-            topic_text = talking_nodes[0]["text"]
-            herd_tendency = str(agent_traits.get("herd_tendency", "medium")).strip().lower()
-            if herd_tendency == "high":
-                return (
-                    "positive",
-                    "resonance",
-                    f"People would probably keep sharing {topic_text}, and that makes the idea feel credible.",
-                )
-            return (
-                "neutral",
-                "question",
-                f"I keep seeing {topic_text}, but I still want more proof before I fully buy in.",
-            )
-
-        if talking_nodes:
-            topic_text = talking_nodes[0]["text"]
-            return (
-                "positive",
-                "resonance",
-                f"This actually sounds like a practical fix because of {topic_text}.",
-            )
-
-        return (
-            "neutral",
-            "question",
-            "I understand the pitch, but I need more concrete proof before reacting strongly.",
+        result = self._kernel.generate_response(
+            round_num=round_num,
+            agent_traits=agent_traits,
+            visible_nodes=visible_nodes,
+            prior_state=prior_state,
         )
+        return (result.attitude_label, result.bucket, result.quote)
 
 
 __all__ = ["ConsumerSimulationOrchestrator"]
