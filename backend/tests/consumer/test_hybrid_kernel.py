@@ -221,6 +221,102 @@ class TestPriorStateNoneParityWithLegacy:
         self._assert_parity(hybrid, legacy, 0, {"influence_weight": 0.5}, [])
 
 
+class TestThresholdCumulativeRisk:
+    """cumulative_risk_exposure >= 2 pushes non-risk base positive/neutral to negative/risk."""
+
+    @pytest.mark.parametrize(
+        "round_num,traits,nodes,expected_base_bucket",
+        [
+            # round 0, talking node → base positive/resonance
+            (0, {"influence_weight": 0.5}, [_TALKING_NODE], "resonance"),
+            # round 1, herd=medium → base neutral/question
+            (1, {"influence_weight": 0.5, "herd_tendency": "medium"}, [_TALKING_NODE], "question"),
+        ],
+    )
+    def test_risk_exposure_flips_to_negative_risk(
+        self, round_num: int, traits: dict, nodes: list, expected_base_bucket: str
+    ) -> None:
+        kernel = HybridSimulationKernel()
+        prior = _make_prior_state("agent-risk", cumulative_risk_exposure=2)
+        result = kernel.generate_response(round_num, traits, nodes, prior)
+        assert result.attitude_label == "negative"
+        assert result.bucket == "risk"
+
+    def test_risk_exposure_1_does_not_flip(self) -> None:
+        kernel = HybridSimulationKernel()
+        prior = _make_prior_state("agent-risk-low", cumulative_risk_exposure=1)
+        result = kernel.generate_response(0, {"influence_weight": 0.5}, [_TALKING_NODE], prior)
+        # exposure=1 is below threshold, base positive/resonance stays
+        assert result.attitude_label == "positive"
+        assert result.bucket == "resonance"
+
+
+class TestThresholdSocialReinforcement:
+    """social_reinforcement_count >= 3 pushes neutral/question base to positive/resonance."""
+
+    def test_social_reinforcement_flips_neutral_to_positive(self) -> None:
+        kernel = HybridSimulationKernel()
+        # round 1, herd=medium → base neutral/question
+        prior = _make_prior_state("agent-social", social_reinforcement_count=3)
+        result = kernel.generate_response(
+            1, {"influence_weight": 0.5, "herd_tendency": "medium"}, [_TALKING_NODE], prior
+        )
+        assert result.attitude_label == "positive"
+        assert result.bucket == "resonance"
+
+    def test_social_reinforcement_2_does_not_flip(self) -> None:
+        kernel = HybridSimulationKernel()
+        prior = _make_prior_state("agent-social-low", social_reinforcement_count=2)
+        result = kernel.generate_response(
+            1, {"influence_weight": 0.5, "herd_tendency": "medium"}, [_TALKING_NODE], prior
+        )
+        assert result.attitude_label == "neutral"
+        assert result.bucket == "question"
+
+
+class TestThresholdPropagationOnly:
+    """rounds_seen_propagation_only >= 3 converts neutral/question into neutral/misread."""
+
+    def test_propagation_only_flips_question_to_misread(self) -> None:
+        kernel = HybridSimulationKernel()
+        # round 1, herd=medium → base neutral/question
+        prior = _make_prior_state("agent-prop", rounds_seen_propagation_only=3)
+        result = kernel.generate_response(
+            1, {"influence_weight": 0.5, "herd_tendency": "medium"}, [_TALKING_NODE], prior
+        )
+        assert result.attitude_label == "neutral"
+        assert result.bucket == "misread"
+
+    def test_propagation_only_2_does_not_flip(self) -> None:
+        kernel = HybridSimulationKernel()
+        prior = _make_prior_state("agent-prop-low", rounds_seen_propagation_only=2)
+        result = kernel.generate_response(
+            1, {"influence_weight": 0.5, "herd_tendency": "medium"}, [_TALKING_NODE], prior
+        )
+        assert result.attitude_label == "neutral"
+        assert result.bucket == "question"
+
+
+class TestNoRiskPointAntiOverfit:
+    """No RiskPoint nodes with non-risk prior_state counters should not drift to negative."""
+
+    @pytest.mark.parametrize(
+        "overrides",
+        [
+            {"social_reinforcement_count": 5, "rounds_seen_propagation_only": 5},
+            {"social_reinforcement_count": 10, "rounds_seen_propagation_only": 10},
+        ],
+    )
+    def test_non_risk_counters_do_not_cause_negative_drift(self, overrides: dict) -> None:
+        kernel = HybridSimulationKernel()
+        prior = _make_prior_state("agent-nodrift", cumulative_risk_exposure=0, **overrides)
+        result = kernel.generate_response(0, {"influence_weight": 0.5}, [_TALKING_NODE], prior)
+        # round 0 with talking node → base positive/resonance, no risk exposure
+        assert result.attitude_label != "negative", (
+            f"Unexpected negative drift with overrides={overrides}"
+        )
+
+
 class TestSchemaValuesAndEngagementRange:
     """Output schema values are always valid and engagement stays in 1..10."""
 
