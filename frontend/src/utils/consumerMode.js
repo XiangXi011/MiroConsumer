@@ -30,6 +30,50 @@ export function getConsumerEventLabel(eventType, t = null) {
   return fallback
 }
 
+const STEP3_TOOLTIP_ACTIONS = {
+  twitter: ['POST', 'LIKE', 'REPOST', 'QUOTE', 'FOLLOW', 'IDLE'],
+  reddit: ['POST', 'COMMENT', 'LIKE', 'DISLIKE', 'SEARCH', 'TREND', 'FOLLOW', 'MUTE', 'REFRESH', 'IDLE'],
+}
+
+export function buildStep3StatusCards({ isConsumerMode, runStatus }) {
+  const rs = runStatus || {}
+
+  if (isConsumerMode) {
+    return [
+      {
+        platform: 'reddit',
+        label: 'Consumer Propagation Stream',
+        active: !!rs.reddit_running,
+        completed: !!rs.reddit_completed,
+        currentRound: rs.reddit_current_round || 0,
+        actionsCount: rs.reddit_actions_count || 0,
+        tooltipActions: STEP3_TOOLTIP_ACTIONS.reddit,
+      },
+    ]
+  }
+
+  return [
+    {
+      platform: 'twitter',
+      label: 'Info Plaza',
+      active: !!rs.twitter_running,
+      completed: !!rs.twitter_completed,
+      currentRound: rs.twitter_current_round || 0,
+      actionsCount: rs.twitter_actions_count || 0,
+      tooltipActions: STEP3_TOOLTIP_ACTIONS.twitter,
+    },
+    {
+      platform: 'reddit',
+      label: 'Topic Community',
+      active: !!rs.reddit_running,
+      completed: !!rs.reddit_completed,
+      currentRound: rs.reddit_current_round || 0,
+      actionsCount: rs.reddit_actions_count || 0,
+      tooltipActions: STEP3_TOOLTIP_ACTIONS.reddit,
+    },
+  ]
+}
+
 export function isConsumerProject(projectLike) {
   if (!projectLike || typeof projectLike !== 'object') {
     return false

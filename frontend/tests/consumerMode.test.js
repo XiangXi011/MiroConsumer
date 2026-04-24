@@ -6,6 +6,7 @@ import {
   buildConsumerQuickPrompts,
   buildTaskAwareConsumerQuickPrompts,
   buildSourceAwarePrompts,
+  buildStep3StatusCards,
   formatCascadeMetrics,
   buildCascadeAwarePrompts,
   buildComparisonAwarePrompts,
@@ -1002,4 +1003,91 @@ test('restorePersistedBranchSelectionAfterLoad does nothing when no persisted br
   })
 
   assert.equal(calls.length, 0, 'Expected no calls when no persisted branch')
+})
+
+// ============== Phase 6E: Step3 consumer-mode status cards ==============
+
+test('buildStep3StatusCards returns one reddit-backed card in consumer mode', () => {
+  const cards = buildStep3StatusCards({
+    isConsumerMode: true,
+    runStatus: {
+      reddit_running: true,
+      reddit_completed: false,
+      reddit_current_round: 3,
+      reddit_actions_count: 12,
+    },
+  })
+
+  assert.equal(cards.length, 1)
+  assert.equal(cards[0].platform, 'reddit')
+  assert.equal(cards[0].label, 'Consumer Propagation Stream')
+  assert.equal(cards[0].active, true)
+  assert.equal(cards[0].completed, false)
+  assert.equal(cards[0].currentRound, 3)
+  assert.equal(cards[0].actionsCount, 12)
+  assert.deepEqual(cards[0].tooltipActions, ['POST', 'COMMENT', 'LIKE', 'DISLIKE', 'SEARCH', 'TREND', 'FOLLOW', 'MUTE', 'REFRESH', 'IDLE'])
+})
+
+test('buildStep3StatusCards returns two platform cards in non-consumer mode with Info Plaza and Topic Community labels', () => {
+  const cards = buildStep3StatusCards({
+    isConsumerMode: false,
+    runStatus: {
+      twitter_running: true,
+      twitter_completed: false,
+      twitter_current_round: 2,
+      twitter_actions_count: 8,
+      reddit_running: true,
+      reddit_completed: true,
+      reddit_current_round: 5,
+      reddit_actions_count: 20,
+    },
+  })
+
+  assert.equal(cards.length, 2)
+  assert.equal(cards[0].platform, 'twitter')
+  assert.equal(cards[0].label, 'Info Plaza')
+  assert.equal(cards[0].active, true)
+  assert.equal(cards[0].completed, false)
+  assert.equal(cards[0].currentRound, 2)
+  assert.equal(cards[0].actionsCount, 8)
+  assert.deepEqual(cards[0].tooltipActions, ['POST', 'LIKE', 'REPOST', 'QUOTE', 'FOLLOW', 'IDLE'])
+
+  assert.equal(cards[1].platform, 'reddit')
+  assert.equal(cards[1].label, 'Topic Community')
+  assert.equal(cards[1].active, true)
+  assert.equal(cards[1].completed, true)
+  assert.equal(cards[1].currentRound, 5)
+  assert.equal(cards[1].actionsCount, 20)
+  assert.deepEqual(cards[1].tooltipActions, ['POST', 'COMMENT', 'LIKE', 'DISLIKE', 'SEARCH', 'TREND', 'FOLLOW', 'MUTE', 'REFRESH', 'IDLE'])
+})
+
+test('buildStep3StatusCards consumer mode card uses reddit_running/reddit_completed/reddit_current_round/reddit_actions_count', () => {
+  const cards = buildStep3StatusCards({
+    isConsumerMode: true,
+    runStatus: {
+      reddit_running: false,
+      reddit_completed: true,
+      reddit_current_round: 0,
+      reddit_actions_count: 0,
+    },
+  })
+
+  assert.equal(cards.length, 1)
+  assert.equal(cards[0].active, false)
+  assert.equal(cards[0].completed, true)
+  assert.equal(cards[0].currentRound, 0)
+  assert.equal(cards[0].actionsCount, 0)
+})
+
+test('buildStep3StatusCards handles null runStatus gracefully', () => {
+  const consumerCards = buildStep3StatusCards({ isConsumerMode: true, runStatus: null })
+  assert.equal(consumerCards.length, 1)
+  assert.equal(consumerCards[0].currentRound, 0)
+  assert.equal(consumerCards[0].actionsCount, 0)
+  assert.equal(consumerCards[0].active, false)
+
+  const normalCards = buildStep3StatusCards({ isConsumerMode: false, runStatus: null })
+  assert.equal(normalCards.length, 2)
+  assert.equal(normalCards[0].currentRound, 0)
+  assert.equal(normalCards[1].currentRound, 0)
 })
