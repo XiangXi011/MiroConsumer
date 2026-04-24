@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Fix the two core consumer simulation deficiencies — template-heavy output with near-zero quote diversity, and near-zero cross-round propagation dynamics — while preserving every existing consumer product contract, API surface, typed output, and test.
+**Goal:** Fix the two core consumer simulation deficiencies - template-heavy output with near-zero quote diversity, and near-zero cross-round propagation dynamics - while preserving every existing consumer product contract, API surface, typed output, and test.
 
 **Diagnosed Problems:**
 1. **Template-heavy output:** `_generate_response()` selects from ~4 hardcoded f-strings (`"I keep thinking about {x}..."`, `"People would probably keep sharing {x}..."`, etc.), producing near-identical quotes across agents and rounds.
@@ -45,10 +45,10 @@
 | Layer | Files | What Changes |
 |-------|-------|-------------|
 | Orchestrator facade | `consumer/orchestrator.py` | `build_round_snapshot()` calls the kernel adapter instead of `_generate_response()`. Method signature gains an optional `kernel` parameter defaulted to `None`, which resolves to `LegacySimulationKernel` (preserve-first safety). `build_round_snapshot()` also accepts an optional `prior_state` dict for round-to-round propagation context. |
-| Simulation runner consumer loops | `backend/app/services/simulation_runner.py` — `_run_consumer_simulation()`, `run_branch_simulation()` | The per-persona loop stays, but constructs a `HybridSimulationKernel` and maintains a `_consumer_agent_states` dict keyed by agent_id across rounds, passing prior state into each snapshot call. |
+| Simulation runner consumer loops | `backend/app/services/simulation_runner.py` - `_run_consumer_simulation()`, `run_branch_simulation()` | The per-persona loop stays, but constructs a `HybridSimulationKernel` and maintains a `_consumer_agent_states` dict keyed by agent_id across rounds, passing prior state into each snapshot call. |
 | Existing orchestrator tests | `backend/tests/consumer/test_orchestrator.py` | Must pass with the default kernel; snapshot contract unchanged. |
 | Contract tests | `backend/tests/contracts/test_consumer_contracts.py` | Must continue to pass; output shape invariant. |
-| Report agent consumer context | `backend/app/services/report_agent.py` — `_build_consumer_report_context()` | No changes needed if snapshot shape is preserved. Verified as safe by contract tests. |
+| Report agent consumer context | `backend/app/services/report_agent.py` - `_build_consumer_report_context()` | No changes needed if snapshot shape is preserved. Verified as safe by contract tests. |
 | Replay compatibility checks | existing replay tests | Must pass because `consumer_rounds.jsonl` schema is unchanged. |
 
 ### (3) Replace
@@ -56,7 +56,7 @@
 | Layer | Files | What Is Replaced |
 |-------|-------|-----------------|
 | Hardcoded `_generate_response` path | `consumer/orchestrator.py` lines 288-332 | The `if risk_nodes / if talking_nodes / if herd_tendency` rule block is replaced by a kernel adapter delegation. The method itself remains as thin pass-through. |
-| Deterministic quote templating | `consumer/orchestrator.py` — the ~4 f-string templates inside `_generate_response()` | `HybridSimulationKernel` uses persona traits, finding text, topology signals, and prior-round state to produce varied quotes within the same schema. |
+| Deterministic quote templating | `consumer/orchestrator.py` - the ~4 f-string templates inside `_generate_response()` | `HybridSimulationKernel` uses persona traits, finding text, topology signals, and prior-round state to produce varied quotes within the same schema. |
 | Deterministic engagement formula | `consumer/orchestrator.py` line 178 | `engagement = max(1, min(10, int(round(3 + influence_weight * 7 + round_num))))` is delegated through the kernel; hybrid kernel adjusts engagement based on cumulative exposure. |
 | Lack of persistent per-agent round state | `backend/app/services/simulation_runner.py` consumer paths | A `PropagationState` model tracks per-agent attitude history, engagement history, cumulative risk exposure, and social reinforcement count across rounds, fed into the hybrid kernel. |
 
@@ -75,20 +75,20 @@
 
 ### New Files
 
-- Create: `backend/app/services/consumer/kernel_adapter.py` — adapter ABC, `SimulationKernelResult`
-- Create: `backend/app/services/consumer/legacy_kernel.py` — `LegacySimulationKernel`: byte-for-byte preservation of current deterministic logic
-- Create: `backend/app/services/consumer/hybrid_kernel.py` — `HybridSimulationKernel`: preserve-first kernel that uses prior-round state, persona traits, finding diversity, and topology signals
-- Create: `backend/app/services/consumer/propagation_state.py` — `PropagationState` model: per-agent round-to-round state (attitude history, engagement history, cumulative risk exposure, social reinforcement count)
-- Create: `backend/tests/consumer/test_kernel_adapter.py` — adapter contract tests
-- Create: `backend/tests/consumer/test_hybrid_kernel.py` — hybrid kernel behavior tests (quote variety, attitude dynamics)
-- Create: `backend/tests/consumer/test_consumer_dynamics.py` — end-to-end dynamics tests (multi-round propagation, attitude movement under risk exposure)
+- Create: `backend/app/services/consumer/kernel_adapter.py` - adapter ABC, `SimulationKernelResult`
+- Create: `backend/app/services/consumer/legacy_kernel.py` - `LegacySimulationKernel`: byte-for-byte preservation of current deterministic logic
+- Create: `backend/app/services/consumer/hybrid_kernel.py` - `HybridSimulationKernel`: preserve-first kernel that uses prior-round state, persona traits, finding diversity, and topology signals
+- Create: `backend/app/services/consumer/propagation_state.py` - `PropagationState` model: per-agent round-to-round state (attitude history, engagement history, cumulative risk exposure, social reinforcement count)
+- Create: `backend/tests/consumer/test_kernel_adapter.py` - adapter contract tests
+- Create: `backend/tests/consumer/test_hybrid_kernel.py` - hybrid kernel behavior tests (quote variety, attitude dynamics)
+- Create: `backend/tests/consumer/test_consumer_dynamics.py` - end-to-end dynamics tests (multi-round propagation, attitude movement under risk exposure)
 
 ### Modified Files
 
-- Modify: `backend/app/services/consumer/orchestrator.py` — wire adapter into `__init__`, `build_round_snapshot()`, and engagement formula; add optional `prior_state` parameter
-- Modify: `backend/app/services/simulation_runner.py` — maintain `_consumer_agent_states` dict, construct `HybridSimulationKernel`, pass prior state into each snapshot call
-- Modify: `backend/tests/consumer/test_orchestrator.py` — ensure existing tests pass with the default kernel
-- Modify: `backend/app/services/consumer/__init__.py` — export new types
+- Modify: `backend/app/services/consumer/orchestrator.py` - wire adapter into `__init__`, `build_round_snapshot()`, and engagement formula; add optional `prior_state` parameter
+- Modify: `backend/app/services/simulation_runner.py` - maintain `_consumer_agent_states` dict, construct `HybridSimulationKernel`, pass prior state into each snapshot call
+- Modify: `backend/tests/consumer/test_orchestrator.py` - ensure existing tests pass with the default kernel
+- Modify: `backend/app/services/consumer/__init__.py` - export new types
 
 ---
 
@@ -98,7 +98,7 @@
 
 **Files:**
 - Create: `backend/tests/consumer/test_consumer_dynamics.py`
-- Create: `backend/tests/consumer/test_kernel_adapter.py` (partial — contract-only tests)
+- Create: `backend/tests/consumer/test_kernel_adapter.py` (partial - contract-only tests)
 
 - [ ] **Step 1: Write schema contract tests (should already pass)**
 
@@ -355,7 +355,7 @@ __all__ = [
 Create `backend/app/services/consumer/legacy_kernel.py`:
 
 ```python
-"""Legacy deterministic simulation kernel — byte-for-byte preservation.
+"""Legacy deterministic simulation kernel - byte-for-byte preservation.
 
 This kernel produces identical output to the pre-Phase6C
 ConsumerSimulationOrchestrator._generate_response() and engagement formula.
@@ -557,7 +557,7 @@ __all__ = ["PropagationState", "create_initial_state"]
 Create `backend/app/services/consumer/hybrid_kernel.py`:
 
 ```python
-"""Hybrid simulation kernel — preserve-first with dynamics.
+"""Hybrid simulation kernel - preserve-first with dynamics.
 
 Uses prior-round state, persona traits, finding diversity, and topology
 signals to produce varied quotes and meaningful attitude movement.
@@ -576,7 +576,7 @@ from .kernel_adapter import SimulationKernelAdapter, SimulationKernelResult
 _QUOTE_POOLS = {
     ("negative", "risk"): [
         "I keep thinking about {detail}, so the claim starts to feel less trustworthy.",
-        "The fact that {detail} keeps coming up worries me — it undermines confidence.",
+        "The fact that {detail} keeps coming up worries me - it undermines confidence.",
         "Every time I hear about {detail}, I trust this less.",
         "{detail} is a real problem. I can't ignore it after seeing it again.",
         "I'm increasingly concerned about {detail}. This doesn't add up.",
@@ -1117,7 +1117,7 @@ python -m pytest backend/tests/consumer/test_consumer_dynamics.py backend/tests/
 - Execute against `D:\project\MiroFish\.worktrees\phase5a-identity`, not the root `main` worktree
 - The Phase 6B plan is at `docs/superpowers/plans/2026-04-23-consumer-simulation-phase6b-workspace-modularization.md`
 - Do not modify frontend code, API routes, or persistence behavior
-- `LegacySimulationKernel` is a direct port of the existing `_generate_response()` logic — any behavioral difference is a bug
+- `LegacySimulationKernel` is a direct port of the existing `_generate_response()` logic - any behavioral difference is a bug
 - `HybridSimulationKernel` is not the orchestrator default: it is explicitly constructed by `simulation_runner` consumer and branch paths, preserving a safe legacy default at the facade while adding cross-round state, quote variety, and attitude dynamics only on the runner path
 - The adapter interface accepts `prior_state: Optional[Mapping[str, Any]]` so legacy callers that don't pass it get unchanged behavior
 - Phase6C improves consumer dynamics inside the current contract; a later phase can bridge to the full MiroFish native kernel through the adapter if the behavior proves stable
