@@ -324,6 +324,7 @@ import {
   buildBranchAwarePrompts,
   buildInterventionPayload,
   getInterventionDisplayText,
+  restorePersistedBranchSelectionAfterLoad,
 } from '../src/utils/consumerMode.js'
 
 test('loadSelectedBranch returns null in non-browser environment', () => {
@@ -886,4 +887,119 @@ test('Step4Report task-aware field mapping renders non-empty results for price_t
   assert.equal(objections.length, 1)
   assert.equal(objections[0].text, 'Too expensive for students')
   assert.equal(context, 'subscription monthly')
+})
+
+// ============== Phase 6E: Branch restore-state UX fix ==============
+
+test('restorePersistedBranchSelectionAfterLoad sets branch, loads interventions, fetches status, and starts polling when running', async () => {
+  const calls = []
+  const branches = [{ branch_id: 'b1', name: 'Alpha', fork_round: 0 }]
+
+  await restorePersistedBranchSelectionAfterLoad({
+    branches,
+    persistedBranchId: 'b1',
+    setSelectedBranchId: (id) => calls.push({ method: 'setSelectedBranchId', id }),
+    loadInterventions: async () => calls.push({ method: 'loadInterventions' }),
+    fetchBranchStatus: async () => {
+      calls.push({ method: 'fetchBranchStatus' })
+      return { status: 'running' }
+    },
+    startPolling: () => calls.push({ method: 'startPolling' }),
+    clearPersisted: () => calls.push({ method: 'clearPersisted' }),
+  })
+
+  assert.equal(calls.length, 4)
+  assert.deepEqual(calls[0], { method: 'setSelectedBranchId', id: 'b1' })
+  assert.deepEqual(calls[1], { method: 'loadInterventions' })
+  assert.deepEqual(calls[2], { method: 'fetchBranchStatus' })
+  assert.deepEqual(calls[3], { method: 'startPolling' })
+})
+
+test('restorePersistedBranchSelectionAfterLoad does not start polling when status is completed', async () => {
+  const calls = []
+  const branches = [{ branch_id: 'b1', name: 'Alpha', fork_round: 0 }]
+
+  await restorePersistedBranchSelectionAfterLoad({
+    branches,
+    persistedBranchId: 'b1',
+    setSelectedBranchId: (id) => calls.push({ method: 'setSelectedBranchId', id }),
+    loadInterventions: async () => calls.push({ method: 'loadInterventions' }),
+    fetchBranchStatus: async () => {
+      calls.push({ method: 'fetchBranchStatus' })
+      return { status: 'completed' }
+    },
+    startPolling: () => calls.push({ method: 'startPolling' }),
+    clearPersisted: () => calls.push({ method: 'clearPersisted' }),
+  })
+
+  assert.equal(calls.length, 3)
+  assert.deepEqual(calls[0], { method: 'setSelectedBranchId', id: 'b1' })
+  assert.deepEqual(calls[1], { method: 'loadInterventions' })
+  assert.deepEqual(calls[2], { method: 'fetchBranchStatus' })
+  assert.ok(!calls.some(c => c.method === 'startPolling'), 'Expected no polling start for completed status')
+})
+
+test('restorePersistedBranchSelectionAfterLoad does not start polling when status is idle', async () => {
+  const calls = []
+  const branches = [{ branch_id: 'b1', name: 'Alpha', fork_round: 0 }]
+
+  await restorePersistedBranchSelectionAfterLoad({
+    branches,
+    persistedBranchId: 'b1',
+    setSelectedBranchId: (id) => calls.push({ method: 'setSelectedBranchId', id }),
+    loadInterventions: async () => calls.push({ method: 'loadInterventions' }),
+    fetchBranchStatus: async () => {
+      calls.push({ method: 'fetchBranchStatus' })
+      return { status: 'idle' }
+    },
+    startPolling: () => calls.push({ method: 'startPolling' }),
+    clearPersisted: () => calls.push({ method: 'clearPersisted' }),
+  })
+
+  assert.equal(calls.length, 3)
+  assert.ok(!calls.some(c => c.method === 'startPolling'), 'Expected no polling start for idle status')
+})
+
+test('restorePersistedBranchSelectionAfterLoad clears persisted selection when branch is missing', async () => {
+  const calls = []
+  const branches = [{ branch_id: 'b1', name: 'Alpha', fork_round: 0 }]
+
+  await restorePersistedBranchSelectionAfterLoad({
+    branches,
+    persistedBranchId: 'missing_branch',
+    setSelectedBranchId: (id) => calls.push({ method: 'setSelectedBranchId', id }),
+    loadInterventions: async () => calls.push({ method: 'loadInterventions' }),
+    fetchBranchStatus: async () => {
+      calls.push({ method: 'fetchBranchStatus' })
+      return { status: 'idle' }
+    },
+    startPolling: () => calls.push({ method: 'startPolling' }),
+    clearPersisted: () => calls.push({ method: 'clearPersisted' }),
+  })
+
+  assert.equal(calls.length, 2)
+  assert.deepEqual(calls[0], { method: 'clearPersisted' })
+  assert.deepEqual(calls[1], { method: 'setSelectedBranchId', id: '' })
+  assert.ok(!calls.some(c => c.method === 'loadInterventions'), 'Expected no intervention load for missing branch')
+  assert.ok(!calls.some(c => c.method === 'fetchBranchStatus'), 'Expected no status fetch for missing branch')
+})
+
+test('restorePersistedBranchSelectionAfterLoad does nothing when no persisted branch', async () => {
+  const calls = []
+  const branches = [{ branch_id: 'b1', name: 'Alpha', fork_round: 0 }]
+
+  await restorePersistedBranchSelectionAfterLoad({
+    branches,
+    persistedBranchId: null,
+    setSelectedBranchId: (id) => calls.push({ method: 'setSelectedBranchId', id }),
+    loadInterventions: async () => calls.push({ method: 'loadInterventions' }),
+    fetchBranchStatus: async () => {
+      calls.push({ method: 'fetchBranchStatus' })
+      return { status: 'idle' }
+    },
+    startPolling: () => calls.push({ method: 'startPolling' }),
+    clearPersisted: () => calls.push({ method: 'clearPersisted' }),
+  })
+
+  assert.equal(calls.length, 0, 'Expected no calls when no persisted branch')
 })

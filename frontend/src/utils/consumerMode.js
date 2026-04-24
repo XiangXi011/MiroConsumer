@@ -303,6 +303,33 @@ export function clearSelectedComparison(simulationId) {
 
 // ============== Branch persistence (simulation-scoped, lightweight) ==============
 
+export async function restorePersistedBranchSelectionAfterLoad(options) {
+  const {
+    branches,
+    persistedBranchId,
+    setSelectedBranchId,
+    loadInterventions,
+    fetchBranchStatus,
+    startPolling,
+    clearPersisted,
+  } = options
+
+  if (!persistedBranchId) return
+
+  const exists = branches.some(b => b.branch_id === persistedBranchId)
+  if (exists) {
+    setSelectedBranchId(persistedBranchId)
+    await loadInterventions()
+    const status = await fetchBranchStatus()
+    if (status && status.status === 'running') {
+      startPolling()
+    }
+  } else {
+    clearPersisted()
+    setSelectedBranchId('')
+  }
+}
+
 function _branchKey(simulationId) {
   return `miroconsumer:consumer:branch:${simulationId}`
 }

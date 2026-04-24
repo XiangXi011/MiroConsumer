@@ -99,6 +99,7 @@ import {
   clearSelectedBranch,
   buildInterventionPayload,
   getInterventionDisplayText,
+  restorePersistedBranchSelectionAfterLoad,
 } from '../../utils/consumerMode'
 
 const props = defineProps({
@@ -133,14 +134,15 @@ const loadBranches = async () => {
     const res = await listBranches(props.simulationId)
     if (res.success && res.data) {
       branchState.branches.value = res.data.branches || []
-      const persisted = loadSelectedBranch(props.simulationId)
-      if (persisted && branchState.branches.value.some(b => b.branch_id === persisted)) {
-        branchState.selectedBranchId.value = persisted
-        await loadInterventions()
-      } else if (persisted) {
-        clearSelectedBranch(props.simulationId)
-        branchState.selectedBranchId.value = ''
-      }
+      await restorePersistedBranchSelectionAfterLoad({
+        branches: branchState.branches.value,
+        persistedBranchId: loadSelectedBranch(props.simulationId),
+        setSelectedBranchId: (id) => { branchState.selectedBranchId.value = id },
+        loadInterventions,
+        fetchBranchStatus,
+        startPolling: startBranchStatusPolling,
+        clearPersisted: () => clearSelectedBranch(props.simulationId),
+      })
     }
   } catch (err) {
     console.warn('loadBranches failed:', err)
@@ -258,6 +260,7 @@ const fetchBranchStatus = async () => {
           addLog(`Branch run failed: ${branchState.selectedBranch.value?.name}`)
         }
       }
+      return res.data
     }
   } catch (err) {
     console.warn('fetchBranchStatus failed:', err)
