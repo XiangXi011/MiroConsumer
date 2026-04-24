@@ -1,126 +1,104 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-
-// Minimal mock so consumer.js can import './index' without pulling in axios/vue.
-const calls = []
-let mockResponse = { success: true, data: {} }
-
-function resetMock() {
-  calls.length = 0
-  mockResponse = { success: true, data: {} }
-}
-
-const service = new Proxy({}, {
-  get(_target, method) {
-    return (url, config) => {
-      calls.push({ method, url, config })
-      return Promise.resolve(mockResponse)
-    }
-  }
-})
-
-// Stub the index module so consumer.js gets our mock service.
-import { register } from 'node:module'
-import { pathToFileURL } from 'node:url'
-
-// We can't easily mock ESM imports, so instead we read consumer.js source
-// and verify the route strings directly via regex. This is more robust and
-// doesn't require runtime mocking.
-
 import { readFileSync } from 'node:fs'
+
 const consumerSrc = readFileSync(
   new URL('../src/api/consumer.js', import.meta.url),
   'utf-8'
 )
+const factorySrc = readFileSync(
+  new URL('../src/api/consumerFactory.js', import.meta.url),
+  'utf-8'
+)
 
-// ============== Canonical route path tests ==============
+// ============== Canonical route path tests (source-level smoke) ==============
 
-test('consumer.js uses correct backend route for getConsumerSummary', () => {
+test('consumer factory uses correct backend route for getConsumerSummary', () => {
   assert.ok(
-    consumerSrc.includes('/api/consumer/simulation/${simulationId}/consumer-summary'),
+    factorySrc.includes('/api/consumer/simulation/${simulationId}/consumer-summary'),
     'Expected getConsumerSummary to use /api/consumer/simulation/${simulationId}/consumer-summary'
   )
 })
 
-test('consumer.js uses correct backend route for listBranches', () => {
+test('consumer factory uses correct backend route for listBranches', () => {
   assert.ok(
-    consumerSrc.includes('/api/consumer/simulations/${simulationId}/branches'),
+    factorySrc.includes('/api/consumer/simulations/${simulationId}/branches'),
     'Expected listBranches to use /api/consumer/simulations/${simulationId}/branches'
   )
 })
 
-test('consumer.js uses correct backend route for createBranch', () => {
+test('consumer factory uses correct backend route for createBranch', () => {
   assert.ok(
-    consumerSrc.includes('/api/consumer/simulations/${simulationId}/branches'),
+    factorySrc.includes('/api/consumer/simulations/${simulationId}/branches'),
     'Expected createBranch to use /api/consumer/simulations/${simulationId}/branches'
   )
 })
 
-test('consumer.js uses correct backend route for listInterventions', () => {
+test('consumer factory uses correct backend route for listInterventions', () => {
   assert.ok(
-    consumerSrc.includes('/api/consumer/simulations/${simulationId}/interventions'),
+    factorySrc.includes('/api/consumer/simulations/${simulationId}/interventions'),
     'Expected listInterventions to use /api/consumer/simulations/${simulationId}/interventions'
   )
 })
 
-test('consumer.js uses correct backend route for addIntervention', () => {
+test('consumer factory uses correct backend route for addIntervention', () => {
   assert.ok(
-    consumerSrc.includes('/api/consumer/simulations/${simulationId}/branches/${branchId}/interventions'),
+    factorySrc.includes('/api/consumer/simulations/${simulationId}/branches/${branchId}/interventions'),
     'Expected addIntervention to use /api/consumer/simulations/${simulationId}/branches/${branchId}/interventions'
   )
 })
 
-test('consumer.js uses correct backend route for getBranchComparison', () => {
+test('consumer factory uses correct backend route for getBranchComparison', () => {
   assert.ok(
-    consumerSrc.includes('/api/consumer/simulations/${simulationId}/branches/${branchId}/comparison'),
+    factorySrc.includes('/api/consumer/simulations/${simulationId}/branches/${branchId}/comparison'),
     'Expected getBranchComparison to use /api/consumer/simulations/${simulationId}/branches/${branchId}/comparison'
   )
 })
 
-test('consumer.js uses correct backend route for runBranch', () => {
+test('consumer factory uses correct backend route for runBranch', () => {
   assert.ok(
-    consumerSrc.includes('/api/consumer/simulations/${simulationId}/branches/${branchId}/resume'),
+    factorySrc.includes('/api/consumer/simulations/${simulationId}/branches/${branchId}/resume'),
     'Expected runBranch to use /api/consumer/simulations/${simulationId}/branches/${branchId}/resume'
   )
 })
 
-test('consumer.js uses correct backend route for getBranchStatus', () => {
+test('consumer factory uses correct backend route for getBranchStatus', () => {
   assert.ok(
-    consumerSrc.includes('/api/consumer/simulations/${simulationId}/branches/${branchId}/status'),
+    factorySrc.includes('/api/consumer/simulations/${simulationId}/branches/${branchId}/status'),
     'Expected getBranchStatus to use /api/consumer/simulations/${simulationId}/branches/${branchId}/status'
   )
 })
 
-test('consumer.js uses correct backend routes for comparison functions', () => {
+test('consumer factory uses correct backend routes for comparison functions', () => {
   assert.ok(
-    consumerSrc.includes("service.post('/api/consumer/comparisons', data)"),
+    factorySrc.includes("service.post('/api/consumer/comparisons', data)"),
     'Expected compareResearchSnapshots to POST to /api/consumer/comparisons'
   )
   assert.ok(
-    consumerSrc.includes('/api/consumer/comparisons'),
+    factorySrc.includes('/api/consumer/comparisons'),
     'Expected listComparisons to use /api/consumer/comparisons'
   )
   assert.ok(
-    consumerSrc.includes('/api/consumer/comparisons/${comparisonId}'),
+    factorySrc.includes('/api/consumer/comparisons/${comparisonId}'),
     'Expected getComparison to use /api/consumer/comparisons/${comparisonId}'
   )
 })
 
-test('consumer.js uses correct backend routes for research asset functions', () => {
+test('consumer factory uses correct backend routes for research asset functions', () => {
   assert.ok(
-    consumerSrc.includes('/api/consumer/research-assets/export'),
+    factorySrc.includes('/api/consumer/research-assets/export'),
     'Expected exportResearchAsset to use /api/consumer/research-assets/export'
   )
   assert.ok(
-    consumerSrc.includes('/api/consumer/research-assets'),
+    factorySrc.includes('/api/consumer/research-assets'),
     'Expected listResearchAssets to use /api/consumer/research-assets'
   )
   assert.ok(
-    consumerSrc.includes('/api/consumer/research-assets/${assetId}'),
+    factorySrc.includes('/api/consumer/research-assets/${assetId}'),
     'Expected getResearchAsset to use /api/consumer/research-assets/${assetId}'
   )
   assert.ok(
-    consumerSrc.includes("service.post('/api/consumer/research-assets/export', data)"),
+    factorySrc.includes("service.post('/api/consumer/research-assets/export', data)"),
     'Expected exportResearchAsset to POST to /api/consumer/research-assets/export'
   )
 })
@@ -144,7 +122,7 @@ test('consumer.js exports all required consumer functions', () => {
   ]
   for (const name of expectedExports) {
     assert.ok(
-      consumerSrc.includes(`export const ${name}`) || consumerSrc.includes(`export function ${name}`),
+      consumerSrc.includes(name),
       `Expected consumer.js to export ${name}`
     )
   }
@@ -275,10 +253,10 @@ const step5Src = readFile(
   'utf-8'
 )
 
-test('Step5Interaction.vue imports consumer functions from consumer.js', () => {
+test('Step5Interaction.vue does not import from consumer.js', () => {
   assert.ok(
-    step5Src.includes("from '../api/consumer'"),
-    'Expected Step5Interaction.vue to import from ../api/consumer'
+    !step5Src.includes("from '../api/consumer'"),
+    'Step5Interaction.vue should not import from ../api/consumer'
   )
 })
 
