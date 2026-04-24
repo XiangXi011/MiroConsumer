@@ -5,7 +5,16 @@ import pytest
 from app.repositories import ConsumerProjectResearchContext
 from app.repositories.filesystem import FilesystemConsumerProjectResearchProvider
 from app.models.project import ProjectManager
-from app.services.consumer.models import ResearchFinding, ResearchSnapshot, GraphVisibility
+from app.services.consumer.models import (
+    DocumentChunk,
+    GraphVisibility,
+    ResearchFinding,
+    ResearchSnapshot,
+    ResearchSource,
+    ResearchSourceLane,
+    ResearchSourceType,
+    RetrievalTrace,
+)
 from app.services.consumer.project_research_persistence import (
     persist_snapshot,
 )
@@ -57,9 +66,23 @@ def test_returns_consumer_context_with_brief_and_snapshot(tmp_path, monkeypatch)
         snapshot_id="snap_1",
         project_id=project.project_id,
         created_at="2026-04-24T10:00:00+00:00",
-        sources=[{"source_id": "s1"}],
+        sources=[
+            ResearchSource(
+                source_id="s1",
+                lane=ResearchSourceLane.LaneA,
+                source_type=ResearchSourceType.Upload,
+                label="Source 1",
+            )
+        ],
         documents=[],
-        chunks=[{"chunk_id": "c1"}],
+        chunks=[
+            DocumentChunk(
+                chunk_id="c1",
+                doc_id="d1",
+                source_id="s1",
+                text="chunk text",
+            )
+        ],
         findings=[
             ResearchFinding(
                 finding_id="f1",
@@ -68,7 +91,14 @@ def test_returns_consumer_context_with_brief_and_snapshot(tmp_path, monkeypatch)
                 visibility=GraphVisibility.Restricted,
             )
         ],
-        retrieval_traces=[{"trace_id": "t1"}],
+        retrieval_traces=[
+            RetrievalTrace(
+                trace_id="t1",
+                query="test query",
+                lane=ResearchSourceLane.LaneA,
+                chunk_ids=["c1"],
+            )
+        ],
         summary="Summary",
     )
     persist_snapshot(project.project_id, snapshot)
@@ -78,9 +108,12 @@ def test_returns_consumer_context_with_brief_and_snapshot(tmp_path, monkeypatch)
 
     assert ctx.is_consumer_project is True
     assert ctx.brief_payload == brief
-    assert ctx.traces == [{"trace_id": "t1"}]
-    assert ctx.chunks == [{"chunk_id": "c1"}]
-    assert ctx.sources == [{"source_id": "s1"}]
+    assert len(ctx.traces) == 1
+    assert ctx.traces[0].trace_id == "t1"
+    assert len(ctx.chunks) == 1
+    assert ctx.chunks[0].chunk_id == "c1"
+    assert len(ctx.sources) == 1
+    assert ctx.sources[0].source_id == "s1"
 
 
 def test_returns_consumer_context_without_snapshot_when_missing(

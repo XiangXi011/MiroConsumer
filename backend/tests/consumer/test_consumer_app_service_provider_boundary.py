@@ -10,6 +10,13 @@ from app.repositories import ConsumerProjectResearchContext, ConsumerProjectRese
 from app.services.application.consumer_app_service import ConsumerAppService
 from app.services.simulation_manager import SimulationManager
 from app.models.project import ProjectManager
+from app.services.consumer.models import (
+    DocumentChunk,
+    ResearchSource,
+    ResearchSourceLane,
+    ResearchSourceType,
+    RetrievalTrace,
+)
 
 
 def _brief_payload():
@@ -140,9 +147,30 @@ def test_consumer_app_service_uses_fake_provider_without_project_manager(
         ctx=ConsumerProjectResearchContext(
             is_consumer_project=True,
             brief_payload=_brief_payload(),
-            traces=[{"trace_id": "t1"}],
-            chunks=[{"chunk_id": "c1"}],
-            sources=[{"source_id": "s1"}],
+            traces=[
+                RetrievalTrace(
+                    trace_id="t1",
+                    query="test query",
+                    lane=ResearchSourceLane.LaneA,
+                    chunk_ids=["c1"],
+                )
+            ],
+            chunks=[
+                DocumentChunk(
+                    chunk_id="c1",
+                    doc_id="d1",
+                    source_id="s1",
+                    text="chunk text",
+                )
+            ],
+            sources=[
+                ResearchSource(
+                    source_id="s1",
+                    lane=ResearchSourceLane.LaneA,
+                    source_type=ResearchSourceType.Upload,
+                    label="Source 1",
+                )
+            ],
         )
     )
     original_provider = ConsumerAppService._project_research_provider
