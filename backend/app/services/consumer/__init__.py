@@ -7,6 +7,7 @@ from .orchestrator import ConsumerSimulationOrchestrator
 from .report_context import ConsumerReportContextBuilder
 from .kernel_adapter import SimulationKernelAdapter, SimulationKernelResult
 from .legacy_kernel import LegacySimulationKernel
+from .hybrid_kernel import HybridSimulationKernel
 from .persona_pack import (
     can_access_deep_graph,
     load_default_persona_pack,
@@ -50,6 +51,7 @@ __all__ = [
     "SimulationKernelAdapter",
     "SimulationKernelResult",
     "LegacySimulationKernel",
+    "HybridSimulationKernel",
     "ConsumerAttitudeSummary",
     "ConsumerEvidenceBundle",
     "ConsumerScoringService",

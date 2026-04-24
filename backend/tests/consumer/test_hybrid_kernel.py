@@ -1,9 +1,16 @@
-"""Unit tests for PropagationState round-to-round memory."""
+"""Unit tests for PropagationState and HybridSimulationKernel."""
 
 from __future__ import annotations
 
 import pytest
 
+from app.services.consumer.hybrid_kernel import HybridSimulationKernel
+from app.services.consumer.kernel_adapter import (
+    VALID_ATTITUDE_LABELS,
+    VALID_BUCKETS,
+    SimulationKernelResult,
+)
+from app.services.consumer.legacy_kernel import LegacySimulationKernel
 from app.services.consumer.propagation_state import (
     PropagationState,
     create_initial_state,
@@ -112,3 +119,142 @@ class TestToPriorStateDict:
         assert isinstance(d, dict)
         assert isinstance(d["attitude_history"], list)
         assert isinstance(d["engagement_history"], list)
+
+
+# ---------------------------------------------------------------------------
+# HybridSimulationKernel – core tests
+# ---------------------------------------------------------------------------
+
+_TALKING_NODE = {"type": "TalkingPoint", "visibility": "Initial", "text": "great taste"}
+_RISK_NODE = {"type": "RiskPoint", "visibility": "Initial", "text": "high sugar"}
+
+
+def _make_prior_state(agent_id: str, **overrides: object) -> dict:
+    """Build a minimal prior_state dict for the hybrid kernel."""
+    base = {
+        "agent_id": agent_id,
+        "attitude_history": [],
+        "engagement_history": [],
+        "cumulative_risk_exposure": 0,
+        "social_reinforcement_count": 0,
+        "last_bucket": "",
+        "rounds_seen_propagation_only": 0,
+    }
+    base.update(overrides)
+    return base
+
+
+class TestQuoteVarietyAcrossAgents:
+    """Different agent_id values in prior_state produce different quotes."""
+
+    def test_different_agents_different_quotes(self) -> None:
+        kernel = HybridSimulationKernel()
+        traits = {"influence_weight": 0.5}
+        prior_a = _make_prior_state("agent-alpha")
+        prior_b = _make_prior_state("agent-beta")
+        r_a = kernel.generate_response(1, traits, [_TALKING_NODE], prior_a)
+        r_b = kernel.generate_response(1, traits, [_TALKING_NODE], prior_b)
+        # At least one pair must differ across a sample of 3 agent ids
+        prior_c = _make_prior_state("agent-gamma")
+        r_c = kernel.generate_response(1, traits, [_TALKING_NODE], prior_c)
+        quotes = {r_a.quote, r_b.quote, r_c.quote}
+        assert len(quotes) > 1, "Expected different quotes across agents"
+
+
+class TestQuoteVariationAcrossRounds:
+    """Same agent but different round_num produces different quotes."""
+
+    def test_different_rounds_different_quotes(self) -> None:
+        kernel = HybridSimulationKernel()
+        traits = {"influence_weight": 0.5}
+        prior = _make_prior_state("agent-1")
+        quotes = set()
+        for rnd in range(5):
+            r = kernel.generate_response(rnd, traits, [_TALKING_NODE], prior)
+            quotes.add(r.quote)
+        assert len(quotes) > 1, "Expected quote variation across rounds"
+
+
+class TestPriorStateNoneParityWithLegacy:
+    """HybridSimulationKernel with prior_state=None matches LegacySimulationKernel."""
+
+    @pytest.fixture()
+    def hybrid(self) -> HybridSimulationKernel:
+        return HybridSimulationKernel()
+
+    @pytest.fixture()
+    def legacy(self) -> LegacySimulationKernel:
+        return LegacySimulationKernel()
+
+    def _assert_parity(
+        self,
+        hybrid: HybridSimulationKernel,
+        legacy: LegacySimulationKernel,
+        round_num: int,
+        traits: dict,
+        nodes: list,
+    ) -> None:
+        h = hybrid.generate_response(round_num, traits, nodes, prior_state=None)
+        l = legacy.generate_response(round_num, traits, nodes, prior_state=None)
+        assert h.attitude_label == l.attitude_label
+        assert h.bucket == l.bucket
+        assert h.quote == l.quote
+        assert h.engagement == l.engagement
+
+    def test_risk_only(self, hybrid: HybridSimulationKernel, legacy: LegacySimulationKernel) -> None:
+        self._assert_parity(hybrid, legacy, 0, {"influence_weight": 0.5}, [_RISK_NODE])
+
+    def test_round0_talking_node(self, hybrid: HybridSimulationKernel, legacy: LegacySimulationKernel) -> None:
+        self._assert_parity(hybrid, legacy, 0, {"influence_weight": 0.5}, [_TALKING_NODE])
+
+    def test_round1_herd_high(self, hybrid: HybridSimulationKernel, legacy: LegacySimulationKernel) -> None:
+        self._assert_parity(
+            hybrid, legacy, 1, {"influence_weight": 0.5, "herd_tendency": "high"}, [_TALKING_NODE]
+        )
+
+    def test_round1_herd_medium(self, hybrid: HybridSimulationKernel, legacy: LegacySimulationKernel) -> None:
+        self._assert_parity(
+            hybrid, legacy, 1, {"influence_weight": 0.5, "herd_tendency": "medium"}, [_TALKING_NODE]
+        )
+
+    def test_empty_visible_nodes(self, hybrid: HybridSimulationKernel, legacy: LegacySimulationKernel) -> None:
+        self._assert_parity(hybrid, legacy, 0, {"influence_weight": 0.5}, [])
+
+
+class TestSchemaValuesAndEngagementRange:
+    """Output schema values are always valid and engagement stays in 1..10."""
+
+    @pytest.mark.parametrize(
+        "round_num,traits,nodes",
+        [
+            (0, {"influence_weight": 0.0}, []),
+            (0, {"influence_weight": 1.0}, [_RISK_NODE]),
+            (1, {"influence_weight": 0.5, "herd_tendency": "high"}, [_TALKING_NODE]),
+            (5, {"influence_weight": 0.8}, [_TALKING_NODE]),
+            (0, {"influence_weight": 0.5}, [_TALKING_NODE]),
+        ],
+    )
+    def test_prior_state_none_schema(self, round_num: int, traits: dict, nodes: list) -> None:
+        kernel = HybridSimulationKernel()
+        result = kernel.generate_response(round_num, traits, nodes, prior_state=None)
+        assert result.attitude_label in VALID_ATTITUDE_LABELS
+        assert result.bucket in VALID_BUCKETS
+        assert 1 <= result.engagement <= 10
+
+    @pytest.mark.parametrize(
+        "overrides",
+        [
+            {"cumulative_risk_exposure": 5},
+            {"social_reinforcement_count": 6},
+            {"rounds_seen_propagation_only": 4},
+            {"cumulative_risk_exposure": 10, "social_reinforcement_count": 10},
+        ],
+    )
+    def test_prior_state_schema(self, overrides: dict) -> None:
+        kernel = HybridSimulationKernel()
+        traits = {"influence_weight": 0.5}
+        prior = _make_prior_state("agent-x", **overrides)
+        result = kernel.generate_response(1, traits, [_TALKING_NODE], prior)
+        assert result.attitude_label in VALID_ATTITUDE_LABELS
+        assert result.bucket in VALID_BUCKETS
+        assert 1 <= result.engagement <= 10
