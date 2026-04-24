@@ -1,4 +1,4 @@
-import service, { requestWithRetry } from './index'
+import service from './index'
 import { createConsumerApi } from './consumerFactory'
 
 export const {
