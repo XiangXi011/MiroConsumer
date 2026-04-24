@@ -216,6 +216,15 @@
             </div>
           </div>
 
+          <ComparisonSnapshotWorkspace
+            v-if="chatTarget === 'report_agent' && isConsumerMode"
+            :simulation-id="simulationId"
+            :is-consumer-mode="isConsumerMode"
+            :comparison-snapshot="comparisonSnapshot"
+            @update:branch-comparison="workspaceBranchComparison = $event"
+            @update:comparison-snapshot="workspaceComparisonSnapshot = $event"
+          />
+
           <div
             v-if="chatTarget === 'report_agent' && isConsumerMode && (consumerQuickPrompts.length > 0 || consumerVocHighlights.length > 0)"
             class="consumer-chat-brief"
@@ -457,7 +466,6 @@ import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { chatWithReport, getReport, getAgentLog } from '../api/report'
 import { interviewAgents, getSimulationProfilesRealtime } from '../api/simulation'
-import { getComparison, getBranchComparison } from '../api/consumer'
 import {
   buildConsumerQuickPrompts,
   buildBranchAwarePrompts,
@@ -465,10 +473,8 @@ import {
   buildComparisonAwarePrompts,
   isConsumerProject,
   pickTopVocQuotes,
-  loadSelectedBranch,
-  clearSelectedBranch,
-  loadSelectedComparison,
 } from '../utils/consumerMode'
+import ComparisonSnapshotWorkspace from './consumer/ComparisonSnapshotWorkspace.vue'
 
 const { t } = useI18n()
 
@@ -516,10 +522,10 @@ const isConsumerMode = computed(() => (
   isConsumerProject(props.reportData) || isConsumerProject(props.projectData)
 ))
 
-const branchComparisonRaw = ref(null)
-const comparisonSnapshotLocal = ref(null)
+const workspaceBranchComparison = ref(null)
+const workspaceComparisonSnapshot = ref(null)
 
-const effectiveComparisonSnapshot = computed(() => props.comparisonSnapshot || comparisonSnapshotLocal.value)
+const effectiveComparisonSnapshot = computed(() => props.comparisonSnapshot || workspaceComparisonSnapshot.value)
 
 const buildReplayAwarePrompts = (reportContext, tFn) => {
   const prompts = []
@@ -556,8 +562,8 @@ const consumerQuickPrompts = computed(() => {
   const basePrompts = props.reportData?.report_context
     ? buildConsumerQuickPrompts(props.reportData.report_context, t)
     : []
-  const branchPrompts = branchComparisonRaw.value
-    ? buildBranchAwarePrompts(branchComparisonRaw.value, t)
+  const branchPrompts = workspaceBranchComparison.value
+    ? buildBranchAwarePrompts(workspaceBranchComparison.value, t)
     : []
   const cascadePrompts = props.reportData?.report_context
     ? buildCascadeAwarePrompts(props.reportData.report_context, t)
@@ -616,62 +622,6 @@ const applyQuickPrompt = (prompt) => {
   })
 }
 
-const loadBranchComparison = async () => {
-  if (!props.simulationId || !isConsumerMode.value) {
-    branchComparisonRaw.value = null
-    return
-  }
-  const branchId = loadSelectedBranch(props.simulationId)
-  if (!branchId) {
-    branchComparisonRaw.value = null
-    return
-  }
-  try {
-    const res = await getBranchComparison(props.simulationId, branchId)
-    if (res.success && res.data) {
-      branchComparisonRaw.value = res.data
-    } else {
-      clearSelectedBranch(props.simulationId)
-      branchComparisonRaw.value = null
-    }
-  } catch (err) {
-    console.warn('loadBranchComparison failed:', err)
-    clearSelectedBranch(props.simulationId)
-    branchComparisonRaw.value = null
-  }
-}
-
-const loadComparisonSnapshot = async () => {
-  if (props.comparisonSnapshot) {
-    comparisonSnapshotLocal.value = null
-    return
-  }
-  if (!props.simulationId || !isConsumerMode.value) {
-    comparisonSnapshotLocal.value = null
-    return
-  }
-  const comparisonId = loadSelectedComparison(props.simulationId)
-  if (!comparisonId) {
-    comparisonSnapshotLocal.value = null
-    return
-  }
-  try {
-    const res = await getComparison(comparisonId)
-    if (res.success && res.data) {
-      comparisonSnapshotLocal.value = res.data
-    } else {
-      comparisonSnapshotLocal.value = null
-    }
-  } catch (err) {
-    console.warn('loadComparisonSnapshot failed:', err)
-    comparisonSnapshotLocal.value = null
-  }
-}
-
-watch(() => props.simulationId, () => {
-  loadBranchComparison()
-  loadComparisonSnapshot()
-})
 
 const toggleSectionCollapse = (idx) => {
   if (!generatedSections.value[idx + 1]) return
@@ -1145,8 +1095,6 @@ onMounted(() => {
   addLog(t('log.step5Init'))
   loadReportData()
   loadProfiles()
-  loadBranchComparison()
-  loadComparisonSnapshot()
   document.addEventListener('click', handleClickOutside)
 })
 
