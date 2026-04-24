@@ -39,6 +39,7 @@ from .confidence_scoring import (
     compute_finding_confidence,
     compute_report_confidence,
 )
+from .propagation_state import PropagationState, create_initial_state
 
 __all__ = [
     "ConsumerBusinessBrief",
@@ -76,4 +77,6 @@ __all__ = [
     "compute_comparison_confidence",
     "compute_finding_confidence",
     "compute_report_confidence",
+    "PropagationState",
+    "create_initial_state",
 ]
