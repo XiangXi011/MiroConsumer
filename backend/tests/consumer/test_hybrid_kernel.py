@@ -122,7 +122,7 @@ class TestToPriorStateDict:
 
 
 # ---------------------------------------------------------------------------
-# HybridSimulationKernel – core tests
+# HybridSimulationKernel - core tests
 # ---------------------------------------------------------------------------
 
 _TALKING_NODE = {"type": "TalkingPoint", "visibility": "Initial", "text": "great taste"}
@@ -227,9 +227,9 @@ class TestThresholdCumulativeRisk:
     @pytest.mark.parametrize(
         "round_num,traits,nodes,expected_base_bucket",
         [
-            # round 0, talking node → base positive/resonance
+            # round 0, talking node -> base positive/resonance
             (0, {"influence_weight": 0.5}, [_TALKING_NODE], "resonance"),
-            # round 1, herd=medium → base neutral/question
+            # round 1, herd=medium -> base neutral/question
             (1, {"influence_weight": 0.5, "herd_tendency": "medium"}, [_TALKING_NODE], "question"),
         ],
     )
@@ -256,7 +256,7 @@ class TestThresholdSocialReinforcement:
 
     def test_social_reinforcement_flips_neutral_to_positive(self) -> None:
         kernel = HybridSimulationKernel()
-        # round 1, herd=medium → base neutral/question
+        # round 1, herd=medium -> base neutral/question
         prior = _make_prior_state("agent-social", social_reinforcement_count=3)
         result = kernel.generate_response(
             1, {"influence_weight": 0.5, "herd_tendency": "medium"}, [_TALKING_NODE], prior
@@ -279,7 +279,7 @@ class TestThresholdPropagationOnly:
 
     def test_propagation_only_flips_question_to_misread(self) -> None:
         kernel = HybridSimulationKernel()
-        # round 1, herd=medium → base neutral/question
+        # round 1, herd=medium -> base neutral/question
         prior = _make_prior_state("agent-prop", rounds_seen_propagation_only=3)
         result = kernel.generate_response(
             1, {"influence_weight": 0.5, "herd_tendency": "medium"}, [_TALKING_NODE], prior
@@ -311,7 +311,7 @@ class TestNoRiskPointAntiOverfit:
         kernel = HybridSimulationKernel()
         prior = _make_prior_state("agent-nodrift", cumulative_risk_exposure=0, **overrides)
         result = kernel.generate_response(0, {"influence_weight": 0.5}, [_TALKING_NODE], prior)
-        # round 0 with talking node → base positive/resonance, no risk exposure
+        # round 0 with talking node -> base positive/resonance, no risk exposure
         assert result.attitude_label != "negative", (
             f"Unexpected negative drift with overrides={overrides}"
         )

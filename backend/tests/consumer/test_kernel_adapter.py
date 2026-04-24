@@ -3,7 +3,7 @@
 These tests freeze the snapshot shape, valid attitude/bucket/engagement
 domain, and persona pack integrity produced by ConsumerSimulationOrchestrator
 today.  The bucket contract reflects the *accepted* downstream vocabulary
-for consumer scoring, reporting, and event handling — not just values the
+for consumer scoring, reporting, and event handling - not just values the
 orchestrator emits today (which are mostly resonance/risk/question).
 """
 
@@ -103,7 +103,7 @@ def test_attitude_label_always_valid():
 
 # ---------------------------------------------------------------------------
 # Valid bucket values (accepted domain for downstream consumer scoring,
-# reporting, and event handling — includes 'misread' even though current
+# reporting, and event handling - includes 'misread' even though current
 # orchestrator paths mostly emit resonance/risk/question)
 # ---------------------------------------------------------------------------
 
@@ -267,7 +267,7 @@ def test_snapshot_survives_json_roundtrip(tmp_path):
 
 
 # ===========================================================================
-# Task 2 — SimulationKernelResult validation
+# Task 2 - SimulationKernelResult validation
 # ===========================================================================
 
 
@@ -330,7 +330,7 @@ class TestSimulationKernelResultValidation:
 
 
 # ===========================================================================
-# Task 2 — LegacySimulationKernel behavior & parity
+# Task 2 - LegacySimulationKernel behavior & parity
 # ===========================================================================
 
 

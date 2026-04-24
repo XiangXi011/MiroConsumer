@@ -14,7 +14,7 @@ from .kernel_adapter import SimulationKernelAdapter, SimulationKernelResult
 
 # ---------------------------------------------------------------------------
 # Small deterministic quote-template pools keyed by bucket.
-# Each pool has ≥3 variants; selection is seeded per (agent_id, round_num,
+# Each pool has >= 3 variants; selection is seeded per (agent_id, round_num,
 # bucket, hash-fragment-of-detail) to reduce inter-agent collisions.
 # ---------------------------------------------------------------------------
 
@@ -126,17 +126,17 @@ class HybridSimulationKernel(SimulationKernelAdapter):
             social_reinf = int(prior_state.get("social_reinforcement_count", 0))
             prop_only = int(prior_state.get("rounds_seen_propagation_only", 0))
 
-            # cumulative_risk_exposure >= 2: push neutral/positive → negative/risk
+            # cumulative_risk_exposure >= 2: push neutral/positive -> negative/risk
             if cumulative_risk >= 2 and attitude_label in ("neutral", "positive"):
                 attitude_label = "negative"
                 bucket = "risk"
 
-            # social_reinforcement_count >= 3: push neutral → positive/resonance
+            # social_reinforcement_count >= 3: push neutral -> positive/resonance
             if social_reinf >= 3 and attitude_label == "neutral":
                 attitude_label = "positive"
                 bucket = "resonance"
 
-            # rounds_seen_propagation_only >= 3: neutral/question → neutral/misread
+            # rounds_seen_propagation_only >= 3: neutral/question -> neutral/misread
             if prop_only >= 3 and attitude_label == "neutral" and bucket == "question":
                 bucket = "misread"
 
