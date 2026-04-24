@@ -2,7 +2,9 @@
 
 These tests freeze the snapshot shape, valid attitude/bucket/engagement
 domain, and persona pack integrity produced by ConsumerSimulationOrchestrator
-today. They should PASS against the current codebase.
+today.  The bucket contract reflects the *accepted* downstream vocabulary
+for consumer scoring, reporting, and event handling — not just values the
+orchestrator emits today (which are mostly resonance/risk/question).
 """
 
 from __future__ import annotations
@@ -96,10 +98,12 @@ def test_attitude_label_always_valid():
 
 
 # ---------------------------------------------------------------------------
-# Valid bucket values
+# Valid bucket values (accepted domain for downstream consumer scoring,
+# reporting, and event handling — includes 'misread' even though current
+# orchestrator paths mostly emit resonance/risk/question)
 # ---------------------------------------------------------------------------
 
-VALID_BUCKETS = frozenset({"resonance", "risk", "question"})
+VALID_BUCKETS = frozenset({"resonance", "risk", "question", "misread"})
 
 
 def test_bucket_always_valid():
