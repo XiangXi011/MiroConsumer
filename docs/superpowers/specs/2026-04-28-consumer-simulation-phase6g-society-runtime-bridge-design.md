@@ -11,6 +11,24 @@
 | 目标分支 | `codex/phase5-closure` |
 | 文档状态 | 审核基线 |
 
+## 阶段依赖图
+
+```text
+Phase 6F 消费者语义激活
+  -> Phase 6G 大规模消费者社会桥接
+  -> Phase 6H 多渠道消费者传播
+  -> Phase 6I 虚拟焦点小组
+  -> Phase 7 生产化
+```
+
+依赖规则固定为：
+
+- Phase 6G 必须依赖 Phase 6F 的 consumer event ontology。
+- Phase 6G 必须产出 unified role enum。
+- Phase 6H 必须依赖 Phase 6G 的 society runtime。
+- Phase 6I 必须依赖 Phase 6G 的 unified role enum。
+- Phase 7 必须依赖 Phase 6G 的 society schema 稳定版本。
+
 ## 2. 阶段目标
 
 Phase 6G 必须把 MiroFish 原生大规模 Agent 社会能力接入 MiroConsumer consumer 模式，并形成 `Consumer Society Runtime`。
@@ -109,7 +127,34 @@ metrics_aggregator.py
 report_adapter.py
 budget_manager.py
 state_store.py
+consumer_roles.py
 ```
+
+## 6.1 Unified Role Enum
+
+Phase 6G 是 consumer role enum 的唯一归属阶段。
+
+必须新增：
+
+```text
+backend/app/services/consumer/society/consumer_roles.py
+```
+
+必须定义：
+
+```python
+class ConsumerRole(str, Enum):
+    Advocate = "advocate"
+    Skeptic = "skeptic"
+    Misreader = "misreader"
+    Amplifier = "amplifier"
+    Lurker = "lurker"
+    PriceSensitive = "price_sensitive"
+    TrustRepairable = "trust_repairable"
+    Blocker = "blocker"
+```
+
+Phase 6F 禁止定义 role enum。Phase 6I 必须导入 `ConsumerRole`。Phase 6H 只能在 channel metrics 中引用 `ConsumerRole`。
 
 ## 7. 数据模型
 
@@ -144,18 +189,7 @@ shadow
 audit_sample
 ```
 
-`role` 取值固定为：
-
-```text
-advocate
-skeptic
-misreader
-amplifier
-lurker
-price_sensitive
-trust_repairable
-blocker
-```
+`role` 必须使用 `consumer_roles.ConsumerRole`。
 
 ### 7.2 ConsumerSocietyRunConfig
 
@@ -288,9 +322,11 @@ backend/app/services/consumer/society/society_runtime.py
 9. 写入 snapshots。
 10. 输出 report adapter context。
 
-Runtime 必须保持确定性：
+Runtime 必须实现 mock deterministic mode：
 
-- 同一输入、同一 seed、同一 mode，输出 snapshots 完全一致。
+- `SOCIETY_DETERMINISTIC_MODE=mock` 时，同一输入、同一 seed、同一 mode，输出 snapshots 完全一致。
+- 生产 LLM 模式不要求 byte-for-byte 一致。
+- 生产 LLM 模式必须保证结构字段、数值范围、事件类型集合、schema 版本一致。
 - 所有随机数必须来自统一 RNG。
 - 禁止使用全局随机状态。
 
@@ -331,7 +367,7 @@ backend/app/services/consumer/society/event_mapper.py
 - brief context
 - research findings
 
-输出必须符合 Phase 6F `consumer_event_type`。
+输出必须符合 Phase 6F `consumer_event_type`。Event mapper 必须导入 Phase 6F `event_ontology.py`，禁止重新定义 consumer event type。
 
 Event mapper 必须覆盖：
 
@@ -453,6 +489,29 @@ society_metrics.json
 
 ## 18. API 集成
 
+### 18.1 `start_simulation` 集成点
+
+必须修改：
+
+```text
+backend/app/services/application/simulation_app_service.py
+backend/app/services/simulation_runner.py
+backend/app/api/simulation.py
+```
+
+集成规则固定为：
+
+- `SimulationAppService.start_simulation()` 必须读取 `society_mode`、`society_seed`、`society_max_agents`、`society_audit_sample_size`。
+- `project_type != "consumer_test"` 时禁止启动 society runtime。
+- `society_mode="quick"` 时必须继续走现有 consumer runner，并额外输出 society summary 空壳字段。
+- `society_mode in ("standard", "large_society")` 时必须调用 `ConsumerSocietyRuntime.run()`.
+- `SimulationRunner._start_consumer_simulation()` 必须接收 society config。
+- Branch resume 必须复制 base run 的 society config。
+- Branch resume 必须写入独立 `run_id`。
+- Report context 必须通过 `society/report_adapter.py` 合并 society 字段。
+
+### 18.2 API payload
+
 必须扩展既有 simulation start payload。
 
 新增字段：
@@ -471,6 +530,7 @@ society_metrics.json
 - 缺少 `society_mode` 时固定使用 `quick`。
 - `ENABLE_SOCIETY_MODE=false` 时禁止启动 `standard` 和 `large_society`。
 - `society_max_agents` 超过 `MAX_SOCIETY_AGENTS` 时返回 400。
+- branch resume payload 缺少 society 字段时必须继承 base run society config。
 
 ## 19. 前端集成
 
@@ -525,6 +585,8 @@ frontend/tests/societyRunSummary.test.js
 
 - 同 seed population 一致。
 - 不同 seed population 不一致。
+- mock deterministic mode snapshots 一致。
+- production LLM mode 只校验 schema 与数值范围。
 - role 分布达标。
 - shadow agents 不调用 LLM。
 - budget 超限后规则层继续执行。

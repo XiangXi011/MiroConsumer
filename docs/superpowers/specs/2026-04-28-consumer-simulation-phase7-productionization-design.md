@@ -11,6 +11,27 @@
 | 目标分支 | `codex/phase5-closure` |
 | 文档状态 | 审核基线 |
 
+## 阶段依赖图
+
+```text
+Phase 6F 消费者语义激活
+  -> Phase 6G 大规模消费者社会桥接
+  -> Phase 6H 多渠道消费者传播
+  -> Phase 6I 虚拟焦点小组
+  -> Phase 7 生产化
+```
+
+依赖规则固定为：
+
+- Phase 7 必须依赖 Phase 6F 至 Phase 6I 的稳定 schema。
+- Phase 7 禁止修改 Phase 6F consumer research action response schema。
+- Phase 7 禁止修改 Phase 6F consumer event ontology。
+- Phase 7 禁止修改 Phase 6G unified role enum。
+- Phase 7 禁止修改 Phase 6G society snapshot schema。
+- Phase 7 禁止修改 Phase 6H channel event schema。
+- Phase 7 禁止修改 Phase 6I interview history schema。
+- Phase 7 只能为稳定 schema 增加 repository、queue、lock、deployment 实现。
+
 ## 2. 阶段目标
 
 Phase 7 必须把 MiroConsumer 从本地文件系统与进程内线程模型升级为生产部署架构。

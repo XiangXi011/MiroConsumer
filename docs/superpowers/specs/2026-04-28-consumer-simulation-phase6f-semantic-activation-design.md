@@ -11,18 +11,36 @@
 | 目标分支 | `codex/phase5-closure` |
 | 文档状态 | 审核基线 |
 
+## 阶段依赖图
+
+```text
+Phase 6F 消费者语义激活
+  -> Phase 6G 大规模消费者社会桥接
+  -> Phase 6H 多渠道消费者传播
+  -> Phase 6I 虚拟焦点小组
+  -> Phase 7 生产化
+```
+
+依赖规则固定为：
+
+- Phase 6F 是 Phase 6G、Phase 6H、Phase 6I、Phase 7 的 consumer action 与 event ontology 前置阶段。
+- Phase 6G 必须依赖 Phase 6F 的 event ontology。
+- Phase 6H 必须依赖 Phase 6G 的 society runtime 与 Phase 6F 的 event ontology。
+- Phase 6I 必须依赖 Phase 6F 的 action target context、Phase 6G 的 unified role enum、Phase 6H 的 channel context。
+- Phase 7 必须依赖 Phase 6F 至 Phase 6I 的稳定 schema。
+
 ## 2. 阶段目标
 
 Phase 6F 必须把 MiroConsumer 从“AI 消费者调研工具”升级为“基于 MiroFish 社会沙盘的消费者传播预演系统”的产品表达层。
 
 本阶段必须激活既有 MiroFish 能力，不得重写底层社会运行架构。
 
-本阶段完成后，用户必须在报告页和交互页直接使用以下消费者研究能力：
+本阶段完成后，用户必须在报告页直接使用以下消费者研究 action 入口：
 
 - 深挖消费者结论。
 - 查看传播路径。
 - 查看证据强度。
-- 追问代表性消费者。
+- 追问消费者。
 - 对比干预分支差异。
 
 ## 3. 产品定义
@@ -33,7 +51,7 @@ MiroConsumer 的产品定义固定为：
 
 产品表达必须遵守以下规则：
 
-- 必须使用“消费者传播预演”“消费者研究总监”“传播路径”“证据强度”“代表性消费者”“上市前 What-if 实验”。
+- 必须使用“消费者传播预演”“消费者研究总监”“传播路径”“证据强度”“消费者追问入口”“上市前 What-if 实验”。
 - 禁止把 consumer 模式描述为“AI persona 打分”。
 - 禁止把 consumer 报告描述为旧预测报告。
 - 禁止在用户界面暴露 `project_type=default`。
@@ -49,14 +67,11 @@ MiroConsumer 的产品定义固定为：
 2. ZepTools consumer 语义映射。
 3. Consumer research action 后端服务。
 4. Consumer research action 规范 API。
-5. Representative consumer 抽样服务。
-6. Consumer interview 规范 API。
-7. Virtual focus group 规范 API。
-8. Consumer event ontology 派生层。
-9. 报告页行动入口。
-10. 交互页消费者访谈入口。
-11. 报告审计工具标签语义替换。
-12. 后端与前端契约测试。
+5. Consumer event ontology 派生层。
+6. 报告页行动入口。
+7. 追问消费者 target context 契约。
+8. 报告审计工具标签语义替换。
+9. 后端与前端契约测试。
 
 ### 4.2 禁止纳入
 
@@ -73,6 +88,9 @@ MiroConsumer 的产品定义固定为：
 - 权限系统。
 - 团队协作系统。
 - 计费系统。
+- Representative consumer 抽样服务。
+- Consumer interview 执行服务。
+- Virtual focus group 执行服务。
 
 ## 5. 现有能力复用边界
 
@@ -85,10 +103,9 @@ MiroConsumer 的产品定义固定为：
 | `backend/app/services/zep_tools.py` | 作为消费者研究工具底座 |
 | `backend/app/services/report_agent.py` | 作为 Research Director Agent 承载体 |
 | `backend/app/services/consumer/report_context.py` | 作为 consumer report context 来源 |
-| `backend/app/api/simulation.py` interview routes | 作为 legacy live interview 底层 |
 | `backend/app/api/consumer.py` | 作为新增规范 API 挂载点 |
 | `frontend/src/components/Step4Report.vue` | 作为报告行动入口挂载点 |
-| `frontend/src/components/Step5Interaction.vue` | 作为访谈与焦点小组入口挂载点 |
+| `frontend/src/components/Step5Interaction.vue` | 作为 Phase 6I target context 接收页面 |
 
 ### 5.2 禁止重命名
 
@@ -122,7 +139,7 @@ backend/app/services/consumer/research_tool_semantics.py
 | `insight_forge` | `Consumer Insight Deep Dive` | `消费者洞察深挖` | 解释结论形成原因 |
 | `panorama_search` | `Propagation Path Explainer` | `传播路径解释器` | 解释扩散、阻断、误读、修复路径 |
 | `quick_search` | `Evidence Verifier` | `报告结论证据校验` | 校验结论证据支撑 |
-| `interview_agents` | `Virtual Consumer Interview` | `虚拟消费者深访` | 追问代表性消费者 |
+| `interview_agents` | `Virtual Consumer Interview` | `虚拟消费者深访` | Phase 6I 访谈执行能力 |
 | `get_all_nodes` | `Consumer Cognition Graph Nodes` | `消费者认知图谱节点` | 展示消费者认知图谱节点 |
 | `get_all_edges` | `Consumer Cognition Graph Edges` | `消费者认知图谱关系` | 展示消费者认知图谱关系 |
 
@@ -223,7 +240,7 @@ Action 与工具映射固定为：
 | `deep_dive_conclusion` | `ZepToolsService.insight_forge` |
 | `explain_propagation_path` | `ZepToolsService.panorama_search` |
 | `verify_evidence` | report context evidence lookup + `ZepToolsService.quick_search` |
-| `interview_consumers` | `ConsumerInterviewService.interview` |
+| `interview_consumers` | 返回 Phase 6I target context，不执行访谈 |
 | `compare_branch_delta` | `BranchAppService.get_branch_comparison` |
 
 统一响应必须包含：
@@ -250,6 +267,10 @@ Action 与工具映射固定为：
     "tool_name": "insight_forge",
     "consumer_tool_label": "消费者洞察深挖",
     "query": "..."
+  },
+  "handoff": {
+    "handoff_type": "",
+    "target_context": {}
   }
 }
 ```
@@ -307,126 +328,49 @@ HTTP 状态码固定为：
 | 409 | branch 对比请求遇到运行中分支 |
 | 500 | 工具执行异常 |
 
-### 6.5 Representative Consumer 抽样
+### 6.5 追问消费者 Handoff 契约
 
-必须新增文件：
+Phase 6F 必须只定义追问消费者入口与 target context，不得执行 interview，不得抽样 representative consumer，不得创建 focus group。
 
-```text
-backend/app/services/consumer/representative_sampler.py
-```
-
-必须定义消费者角色：
-
-```text
-advocate
-skeptic
-misreader
-price_sensitive
-high_propagation
-trust_recovered
-blocked_propagation
-```
-
-抽样输入必须来自：
-
-- consumer round snapshots
-- consumer config
-- simulation profiles
-- propagation events
-- attitude labels
-- quotes
-
-抽样输出固定为：
+`interview_consumers` action 响应固定为：
 
 ```json
 {
-  "agents": [
-    {
-      "agent_id": "agent_1",
-      "display_name": "...",
-      "role": "skeptic",
-      "segment": "...",
-      "attitude_start": "neutral",
-      "attitude_latest": "skeptical",
-      "key_quote": "...",
-      "round_index": 3,
-      "evidence": {
-        "event_ids": [],
-        "finding_ids": []
-      }
+  "action_type": "interview_consumers",
+  "simulation_id": "sim_xxx",
+  "target": {
+    "kind": "finding",
+    "id": "finding_xxx",
+    "text": "..."
+  },
+  "title": "追问消费者",
+  "summary": "已生成 Phase 6I 访谈上下文",
+  "details_markdown": "",
+  "evidence": {
+    "support_level": "simulation_only",
+    "source_count": 0,
+    "simulation_quote_count": 0,
+    "gatekeeping_status": "handoff"
+  },
+  "tool_trace": {
+    "tool_name": "",
+    "consumer_tool_label": "",
+    "query": ""
+  },
+  "handoff": {
+    "handoff_type": "phase6i_interview",
+    "target_context": {
+      "report_id": "report_xxx",
+      "section_index": 1,
+      "finding_id": "finding_xxx",
+      "claim": "...",
+      "branch_id": "branch_xxx"
     }
-  ]
+  }
 }
 ```
 
-空结果必须返回 `{"agents": []}`。
-
-### 6.6 Consumer Interview 服务
-
-必须新增文件：
-
-```text
-backend/app/services/application/consumer_interview_service.py
-```
-
-必须支持三种模式：
-
-| mode | 行为 |
-|---|---|
-| `snapshot` | 使用存储的 persona、profile、round history、quote 生成回答 |
-| `live` | 使用 `SimulationRunner.interview_agents_batch` |
-| `auto` | 先执行 live，live 不存在时执行 snapshot |
-
-`auto` 是默认值。
-
-服务必须暴露：
-
-```python
-ConsumerInterviewService.get_representative_agents(simulation_id: str, filters: dict) -> dict
-ConsumerInterviewService.interview(simulation_id: str, payload: dict) -> dict
-ConsumerInterviewService.focus_group(simulation_id: str, payload: dict) -> dict
-```
-
-Snapshot interview 必须使用存储上下文生成回答，不得调用 legacy live API。
-
-Live interview 必须复用既有 `SimulationRunner.interview_agents_batch`。
-
-### 6.7 Consumer Interview API
-
-必须新增路由：
-
-```http
-GET  /api/consumer/simulations/<simulation_id>/representative-agents
-POST /api/consumer/simulations/<simulation_id>/interviews
-POST /api/consumer/simulations/<simulation_id>/focus-groups
-```
-
-Interview 请求体固定为：
-
-```json
-{
-  "mode": "auto",
-  "roles": ["skeptic", "misreader"],
-  "agent_ids": [],
-  "topic": "...",
-  "questions": ["..."],
-  "max_agents": 4
-}
-```
-
-Focus group 请求体固定为：
-
-```json
-{
-  "mode": "auto",
-  "roles": ["advocate", "skeptic", "price_sensitive"],
-  "topic": "...",
-  "moderator_goal": "...",
-  "max_agents": 6
-}
-```
-
-### 6.8 Consumer Event Ontology
+### 6.6 Consumer Event Ontology
 
 必须新增文件：
 
@@ -488,9 +432,6 @@ frontend/src/api/consumer.js
 
 ```javascript
 runConsumerResearchAction(simulationId, data)
-getRepresentativeAgents(simulationId, params)
-interviewConsumers(simulationId, data)
-runFocusGroup(simulationId, data)
 ```
 
 所有新增函数必须调用 `/api/consumer/*`。
@@ -532,43 +473,19 @@ frontend/src/components/consumer/ConsumerInsightDrawer.vue
 - gatekeeping 状态
 - 工具追踪
 
-### 7.4 Representative Interview Panel
+### 7.4 Interview Handoff 前端契约
 
-必须新增：
+Phase 6F 必须在 `ConsumerInsightDrawer.vue` 中识别 `handoff.handoff_type="phase6i_interview"`。
 
-```text
-frontend/src/components/consumer/RepresentativeConsumerInterview.vue
-```
+识别后必须执行以下行为：
 
-必须支持：
+- 显示“进入消费者追问工作台”按钮。
+- 点击后跳转到 Step5。
+- 跳转时必须保存 `handoff.target_context`。
+- 不得渲染 interview 结果。
+- 不得渲染 focus group 结果。
 
-- 按角色筛选消费者。
-- 选择消费者。
-- 输入问题。
-- 使用固定 prompt 按钮。
-- 展示回答。
-- 展示 key quote。
-- 展示 attitude 变化。
-
-### 7.5 Virtual Focus Group Panel
-
-必须新增：
-
-```text
-frontend/src/components/consumer/VirtualFocusGroupPanel.vue
-```
-
-必须支持：
-
-- 选择角色组合。
-- 输入焦点小组主题。
-- 输入 moderator goal。
-- 展示共识。
-- 展示分歧。
-- 展示关键 quote。
-- 展示下一轮 What-if 实验。
-
-### 7.6 挂载点
+### 7.5 挂载点
 
 必须修改：
 
@@ -583,7 +500,7 @@ locales/zh.json
 挂载规则固定为：
 
 - `Step4Report.vue` 挂载 action bar 和 insight drawer。
-- `Step5Interaction.vue` 挂载 interview panel 和 focus group panel。
+- `Step5Interaction.vue` 接收并保存 Phase 6I target context。
 - consumer mode 工具日志必须显示 consumer label。
 - non-consumer mode 工具日志保持原显示。
 
@@ -595,21 +512,17 @@ locales/zh.json
 
 ```text
 backend/tests/consumer/test_event_ontology.py
-backend/tests/consumer/test_representative_sampler.py
 backend/tests/services/application/test_consumer_research_action_service.py
-backend/tests/services/application/test_consumer_interview_service.py
 backend/tests/api/test_consumer_research_actions.py
-backend/tests/api/test_consumer_interviews.py
 backend/tests/consumer/test_report_agent_consumer_prompts.py
 ```
 
 测试必须覆盖：
 
 - event bucket 到 consumer event type 的映射。
-- representative sampler 角色抽样。
 - research action 服务 action 映射。
 - evidence action 查找顺序。
-- interview auto fallback。
+- interview handoff response shape。
 - API 成功响应。
 - API 错误响应。
 - consumer prompt 禁止词。
@@ -621,8 +534,6 @@ backend/tests/consumer/test_report_agent_consumer_prompts.py
 
 ```text
 frontend/tests/consumerResearchActions.test.js
-frontend/tests/representativeConsumerInterview.test.js
-frontend/tests/virtualFocusGroup.test.js
 ```
 
 必须扩展：
@@ -636,8 +547,7 @@ frontend/tests/consumerApi.behavior.test.js
 - consumer API 路径。
 - action bar payload。
 - drawer evidence 渲染。
-- interview 请求体。
-- focus group 请求体。
+- interview handoff 跳转 payload。
 - consumer tool label 渲染。
 
 ## 9. 验收命令
@@ -646,9 +556,9 @@ frontend/tests/consumerApi.behavior.test.js
 
 ```bash
 cd backend
-python -m pytest tests/consumer/test_event_ontology.py tests/consumer/test_representative_sampler.py -q
-python -m pytest tests/services/application/test_consumer_research_action_service.py tests/services/application/test_consumer_interview_service.py -q
-python -m pytest tests/api/test_consumer_research_actions.py tests/api/test_consumer_interviews.py -q
+python -m pytest tests/consumer/test_event_ontology.py -q
+python -m pytest tests/services/application/test_consumer_research_action_service.py -q
+python -m pytest tests/api/test_consumer_research_actions.py -q
 python -m pytest tests/consumer/test_report_agent_consumer_prompts.py -q
 python -m pytest tests/ --tb=short -q
 ```
@@ -675,12 +585,11 @@ Phase 6F 退出必须同时满足：
 2. Default report 保持既有语义。
 3. Consumer report 展示五个行动入口。
 4. Research action API 返回统一响应。
-5. Representative consumer API 返回固定结构。
-6. Interview API 与 focus group API 存在。
-7. Consumer event ontology 进入 summary context。
-8. Report audit 显示 consumer 工具标签。
-9. 所有新增测试通过。
-10. 全量后端测试通过。
-11. 前端 node 测试通过。
-12. 前端 build 通过。
-13. `git diff --check` 无输出。
+5. `interview_consumers` action 返回 Phase 6I handoff。
+6. Consumer event ontology 进入 summary context。
+7. Report audit 显示 consumer 工具标签。
+8. 所有新增测试通过。
+9. 全量后端测试通过。
+10. 前端 node 测试通过。
+11. 前端 build 通过。
+12. `git diff --check` 无输出。

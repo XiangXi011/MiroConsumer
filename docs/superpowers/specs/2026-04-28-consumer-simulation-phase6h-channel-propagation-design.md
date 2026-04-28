@@ -11,6 +11,23 @@
 | 目标分支 | `codex/phase5-closure` |
 | 文档状态 | 审核基线 |
 
+## 阶段依赖图
+
+```text
+Phase 6F 消费者语义激活
+  -> Phase 6G 大规模消费者社会桥接
+  -> Phase 6H 多渠道消费者传播
+  -> Phase 6I 虚拟焦点小组
+  -> Phase 7 生产化
+```
+
+依赖规则固定为：
+
+- Phase 6H 必须依赖 Phase 6F 的 consumer event ontology。
+- Phase 6H 必须依赖 Phase 6G 的 society runtime、population、unified role enum。
+- Phase 6I 必须依赖 Phase 6H 的 channel context。
+- Phase 7 必须依赖 Phase 6H 的 channel schema 稳定版本。
+
 ## 2. 阶段目标
 
 Phase 6H 必须把 MiroFish 原生双平台运行思路升级为消费者渠道传播模型。
@@ -234,16 +251,43 @@ backend/app/services/consumer/society/channel_metrics.py
 
 ## 11. Channel Fit Scoring
 
-`fit_score` 公式固定为：
+必须新增配置文件：
+
+```text
+backend/app/services/consumer/society/channel_fit_weights.json
+```
+
+配置内容固定为：
+
+```json
+{
+  "resonance": 0.30,
+  "purchase_intent_delta": 0.25,
+  "trust_repair_factor": 0.15,
+  "misread_risk": -0.15,
+  "price_resistance": -0.10,
+  "evidence_demand": -0.05
+}
+```
+
+配置校验规则固定为：
+
+- 所有 key 必须存在。
+- 所有 value 必须为数字。
+- 正向权重总和必须等于 `0.70`。
+- 负向权重绝对值总和必须等于 `0.30`。
+- 校验失败必须抛出 `ValueError`。
+
+`fit_score` 公式固定为配置驱动：
 
 ```text
 fit_score =
-  resonance * 0.30
-  + purchase_intent_delta * 0.25
-  + trust_repair_factor * 0.15
-  - misread_risk * 0.15
-  - price_resistance * 0.10
-  - evidence_demand * 0.05
+  resonance * weights.resonance
+  + purchase_intent_delta * weights.purchase_intent_delta
+  + trust_repair_factor * weights.trust_repair_factor
+  + misread_risk * weights.misread_risk
+  + price_resistance * weights.price_resistance
+  + evidence_demand * weights.evidence_demand
 ```
 
 计算后必须 clamp 到 `0.0` 至 `1.0`。
@@ -430,7 +474,8 @@ frontend/tests/channelFitPanel.test.js
 - policy 数值范围校验。
 - agent 渠道分配达标。
 - cross-channel migration 条件触发。
-- fit_score 公式固定。
+- fit_score 使用配置权重。
+- channel fit weights 校验失败抛出 `ValueError`。
 - channel report context 字段齐全。
 - API 返回 channel summary。
 - 前端组件渲染固定指标。
@@ -469,7 +514,7 @@ Phase 6H 退出必须同时满足：
 3. Channel runtime 生成 channel event。
 4. Cross-channel migration 生成迁移事件。
 5. Channel metrics 输出固定字段。
-6. Channel fit score 使用固定公式。
+6. Channel fit score 使用配置权重。
 7. Report context 包含 channel 字段。
 8. API 返回 channel summary、channel events、propagation paths。
 9. 前端展示渠道热力图、传播时间线、传播路径图、渠道适配面板。

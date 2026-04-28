@@ -11,6 +11,24 @@
 | 目标分支 | `codex/phase5-closure` |
 | 文档状态 | 审核基线 |
 
+## 阶段依赖图
+
+```text
+Phase 6F 消费者语义激活
+  -> Phase 6G 大规模消费者社会桥接
+  -> Phase 6H 多渠道消费者传播
+  -> Phase 6I 虚拟焦点小组
+  -> Phase 7 生产化
+```
+
+依赖规则固定为：
+
+- Phase 6I 必须依赖 Phase 6F 的 `interview_consumers` target context。
+- Phase 6I 必须依赖 Phase 6F 的 consumer event ontology。
+- Phase 6I 必须依赖 Phase 6G 的 unified role enum、society agent state、society metrics。
+- Phase 6I 必须依赖 Phase 6H 的 channel context、channel metrics、propagation path。
+- Phase 7 必须依赖 Phase 6I 的 interview history schema 稳定版本。
+
 ## 2. 阶段目标
 
 Phase 6I 必须把 MiroConsumer 的深度交互能力产品化为“和消费者社会互动”。
@@ -87,6 +105,7 @@ evidence_binder.py
 summary_synthesizer.py
 disagreement_detector.py
 history_store.py
+representative_sampler.py
 ```
 
 ## 6. 数据模型
@@ -113,7 +132,7 @@ class RepresentativeConsumerCard:
     event_ids: list[str]
 ```
 
-`role` 取值必须与 Phase 6G role 枚举一致。
+`role` 必须使用 Phase 6G `ConsumerRole`。Phase 6I 禁止定义新的 role enum。
 
 ### 6.2 ConsumerInterviewRequest
 
@@ -186,7 +205,7 @@ backend/app/services/consumer/interview/representative_card_builder.py
 
 职责固定为：
 
-1. 加载 representative sampler 输出。
+1. 加载 Phase 6I representative sampler 输出。
 2. 合并 channel metrics。
 3. 合并 society metrics。
 4. 合并 attitude history。
@@ -203,6 +222,24 @@ backend/app/services/consumer/interview/representative_card_builder.py
 - 购买意愿变化。
 - 影响分数。
 - 证据引用。
+
+## 7.1 Representative Sampler
+
+必须新增：
+
+```text
+backend/app/services/consumer/interview/representative_sampler.py
+```
+
+职责固定为：
+
+1. 加载 Phase 6G society agent state。
+2. 加载 Phase 6H channel metrics。
+3. 加载 Phase 6F consumer event ontology 输出。
+4. 按 `ConsumerRole` 抽样消费者。
+5. 输出 RepresentativeConsumerCard 输入数据。
+
+抽样角色必须使用 Phase 6G `ConsumerRole`。
 
 ## 8. Single Interview Service
 
@@ -541,6 +578,7 @@ locales/zh.json
 
 ```text
 backend/tests/consumer/interview/test_representative_card_builder.py
+backend/tests/consumer/interview/test_representative_sampler.py
 backend/tests/consumer/interview/test_single_interview_service.py
 backend/tests/consumer/interview/test_focus_group_service.py
 backend/tests/consumer/interview/test_followup_question_engine.py
