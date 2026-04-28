@@ -1,267 +1,194 @@
-# Consumer Simulation Phase 6F Semantic Activation Execution Spec
+# MiroConsumer Phase 6F 消费者语义激活执行规格
 
-## 1. Metadata
+## 1. 文档状态
 
-| Field | Value |
+| 字段 | 内容 |
 |---|---|
-| Date | 2026-04-28 |
-| Target branch | `codex/phase5-closure` |
-| Target worktree | `D:\project\MiroFish\.worktrees\phase5a-identity` |
-| Product name | MiroConsumer |
-| Phase | Phase 6F |
-| Status | Draft for product/architecture review |
+| 日期 | 2026-04-28 |
+| 阶段 | Phase 6F |
+| 阶段名称 | 消费者语义激活 |
+| 目标工作区 | `D:\project\MiroFish\.worktrees\phase5a-identity` |
+| 目标分支 | `codex/phase5-closure` |
+| 文档状态 | 审核基线 |
 
-## 2. Product Goal Reset
+## 2. 阶段目标
 
-Phase 6F repositions MiroConsumer from an AI consumer research tool into a consumer propagation rehearsal system built on the MiroFish large-scale social sandbox.
+Phase 6F 必须把 MiroConsumer 从“AI 消费者调研工具”升级为“基于 MiroFish 社会沙盘的消费者传播预演系统”的产品表达层。
 
-The product promise is:
+本阶段必须激活既有 MiroFish 能力，不得重写底层社会运行架构。
 
-> MiroConsumer is not "8 AI personas scoring a concept." It is a pre-launch consumer society rehearsal where concepts, copy, price, and packaging spread through simulated consumer contexts, producing amplification, misreading, skepticism, trust decay, trust recovery, and conversion signals.
+本阶段完成后，用户必须在报告页和交互页直接使用以下消费者研究能力：
 
-MiroFish native capabilities remain the substrate:
+- 深挖消费者结论。
+- 查看传播路径。
+- 查看证据强度。
+- 追问代表性消费者。
+- 对比干预分支差异。
 
-```text
-Real-world materials
-  -> GraphRAG
-  -> Agent society
-  -> dynamic evolution
-  -> god-view intervention
-  -> deep interaction
-```
+## 3. 产品定义
 
-MiroConsumer productizes that substrate as:
+MiroConsumer 的产品定义固定为：
 
-```text
-Consumer brief
-  -> consumer research graph
-  -> consumer propagation simulation
-  -> trust / misread / objection / conversion dynamics
-  -> research director report
-  -> evidence, interviews, branch comparison, asset retention
-```
+> 使用消费者社会模拟概念、文案、价格、包装在传播场域中的扩散、误读、质疑、信任修复和转化变化。
 
-Phase 6F is the semantic activation phase. It does not build the large society runtime yet. It makes existing MiroFish capabilities behave, read, and surface as consumer research capabilities.
+产品表达必须遵守以下规则：
 
-## 3. Scope
+- 必须使用“消费者传播预演”“消费者研究总监”“传播路径”“证据强度”“代表性消费者”“上市前 What-if 实验”。
+- 禁止把 consumer 模式描述为“AI persona 打分”。
+- 禁止把 consumer 报告描述为旧预测报告。
+- 禁止在用户界面暴露 `project_type=default`。
+- 禁止删除 legacy shim。
 
-### 3.1 In Scope
+## 4. 阶段范围
 
-Phase 6F includes five workstreams:
+### 4.1 必须交付
 
-1. **Research Director Agent**
-   - Convert consumer-mode ReportAgent prompts from "future prediction report" to "consumer research director report."
-   - Preserve default / legacy report prompts for `project_type=default`.
-   - Make consumer reports explain why consumers react, which claims propagate, which risks spread, which evidence repairs trust, and which intervention should be tried next.
+本阶段必须交付以下能力：
 
-2. **Consumer research tool semantics**
-   - Keep `ZepToolsService` and its existing tools.
-   - Productize tool semantics in consumer context:
-     - `InsightForge` -> consumer insight deep dive.
-     - `PanoramaSearch` -> propagation path explainer.
-     - `QuickSearch` -> evidence verifier.
-     - `interview_agents` -> virtual consumer interview.
-     - `get_all_nodes` / `get_all_edges` -> consumer cognition graph overview.
-     - temporal facts -> consumer cognition evolution timeline.
+1. ReportAgent consumer 模式提示词重构。
+2. ZepTools consumer 语义映射。
+3. Consumer research action 后端服务。
+4. Consumer research action 规范 API。
+5. Representative consumer 抽样服务。
+6. Consumer interview 规范 API。
+7. Virtual focus group 规范 API。
+8. Consumer event ontology 派生层。
+9. 报告页行动入口。
+10. 交互页消费者访谈入口。
+11. 报告审计工具标签语义替换。
+12. 后端与前端契约测试。
 
-3. **Consumer-facing interaction APIs**
-   - Add canonical `/api/consumer/*` wrappers for research actions and interviews.
-   - Keep existing `/api/simulation/interview*` routes as compatibility routes.
-   - Add representative-consumer selection for advocate, skeptic, misreader, price-sensitive, and amplifier roles.
+### 4.2 禁止纳入
 
-4. **Consumer event ontology**
-   - Add a consumer event type layer over the existing coarse event buckets.
-   - Preserve existing `PropagationEvent.event_type` buckets for compatibility.
-   - Add event labels suitable for timeline, report audit, propagation path, and future society metrics.
+本阶段禁止纳入以下工作：
 
-5. **Frontend product entry points**
-   - Add visible actions near consumer report findings:
-     - Deep dive this conclusion.
-     - View propagation path.
-     - View evidence.
-     - Ask related consumers.
-     - Compare branch delta.
-   - Add lightweight panels for representative consumer interviews and virtual focus groups.
-   - Use existing report log and consumer report header surfaces; do not create a new standalone product surface in this phase.
+- 大规模 Society Runtime。
+- 200 至 1000+ agent population factory。
+- 多渠道传播 runtime。
+- OASIS-to-Consumer runtime 桥接。
+- 数据库仓库实现。
+- 队列执行器。
+- 多实例锁。
+- 生产 Docker 拆分。
+- 权限系统。
+- 团队协作系统。
+- 计费系统。
 
-### 3.2 Out of Scope
+## 5. 现有能力复用边界
 
-Phase 6F does not include:
+### 5.1 必须复用
 
-- Large-scale `Consumer Society Runtime`.
-- Population factory for 200-1000+ agents.
-- Multi-channel runtime for Xiaohongshu / Douyin / WeChat / ecommerce review / livestream / offline word of mouth.
-- OASIS-to-consumer runtime bridge beyond semantic mapping of current events.
-- Database-backed repositories.
-- Durable queue executor.
-- Multi-instance locks.
-- Production Docker split.
-- Auth, teams, permissions, or billing.
-- Full graph ontology migration.
+以下模块必须复用：
 
-Those belong to Phase 6G, Phase 6H, Phase 6I, and Phase 7.
+| 既有模块 | Phase 6F 使用方式 |
+|---|---|
+| `backend/app/services/zep_tools.py` | 作为消费者研究工具底座 |
+| `backend/app/services/report_agent.py` | 作为 Research Director Agent 承载体 |
+| `backend/app/services/consumer/report_context.py` | 作为 consumer report context 来源 |
+| `backend/app/api/simulation.py` interview routes | 作为 legacy live interview 底层 |
+| `backend/app/api/consumer.py` | 作为新增规范 API 挂载点 |
+| `frontend/src/components/Step4Report.vue` | 作为报告行动入口挂载点 |
+| `frontend/src/components/Step5Interaction.vue` | 作为访谈与焦点小组入口挂载点 |
 
-## 4. Current Code Evidence
+### 5.2 禁止重命名
 
-This spec is grounded in the current Phase 6E codebase.
+以下底层符号禁止重命名：
 
-| Area | Current State | Evidence |
-|---|---|---|
-| Zep tools | `ZepToolsService` still exposes InsightForge, PanoramaSearch, QuickSearch, interview, graph node/edge retrieval, temporal edge facts, local fallback. | `backend/app/services/zep_tools.py` |
-| ReportAgent ReACT | Report generation still plans outline, generates sections, calls tools, logs ReACT steps, supports chat. | `backend/app/services/report_agent.py` |
-| Consumer context | ReportAgent imports `ConsumerReportContextBuilder`; report context already includes consumer fields. | `backend/app/services/report_agent.py`, `backend/app/services/consumer/report_context.py` |
-| Current prompt problem | Consumer mode still inherits "future prediction report" semantics in prompt constants. | `PLAN_SYSTEM_PROMPT`, `SECTION_SYSTEM_PROMPT_TEMPLATE`, `CHAT_SYSTEM_PROMPT_TEMPLATE` in `report_agent.py` |
-| Interview APIs | Legacy routes exist for single, batch, all-agent, and history interviews. | `backend/app/api/simulation.py` |
-| Consumer API | Canonical consumer route blueprint exists and is mounted at `/api/consumer`. | `backend/app/api/consumer.py`, `backend/app/__init__.py` |
-| Frontend report | Step 4 already shows consumer report header, evidence summaries, event counts, causal chains, tool logs, and special display for `interview_agents`. | `frontend/src/components/Step4Report.vue` |
-| Existing event model | `PropagationEvent.event_type` has coarse buckets: `positive_relay`, `skeptical_challenge`, `misread_amplification`, `risk_discovery`, `clarification_recovery`. | `backend/app/services/consumer/models.py` |
+- `ZepToolsService`
+- `insight_forge`
+- `panorama_search`
+- `quick_search`
+- `interview_agents`
+- `ReportAgent`
+- `/api/simulation/interview`
+- `/api/simulation/interview/batch`
+- `/api/simulation/interview/all`
+- `/api/simulation/interview/history`
 
-## 5. Design Principles
+## 6. 后端规格
 
-1. **Adapt, do not rewrite.**
-   Phase 6F wraps existing capabilities in consumer semantics instead of renaming or replacing the core tools.
+### 6.1 消费者研究工具语义
 
-2. **Consumer mode only.**
-   Prompt changes, action buttons, and consumer research APIs activate only for `consumer_test`.
-
-3. **Backward compatibility.**
-   Existing `/api/simulation/*`, `/api/report/*`, ReACT logs, and tool names remain valid.
-
-4. **Evidence-first reporting.**
-   Consumer reports must distinguish evidence-backed conclusions, simulation-derived inferences, weak support, and gatekept conclusions.
-
-5. **No hidden Phase 7 work.**
-   This phase may define future productionization needs, but implementation must not introduce DB, queue, locks, or deployment split work.
-
-6. **No fake large society.**
-   Phase 6F may use language that prepares the product for a society sandbox, but it must not imply 1000-agent execution until Phase 6G implements it.
-
-## 6. User Experience
-
-### 6.1 Report Conclusion Actions
-
-Consumer reports should expose actions beside high-value findings rather than burying MiroFish tools in agent logs.
-
-Primary action set:
-
-| Button | Consumer meaning | Backend behavior |
-|---|---|---|
-| Deep dive | Explain why this conclusion emerged. | Calls insight deep dive with finding / claim / quote context. |
-| Propagation path | Show how the reaction spread or was blocked. | Calls panorama path explanation and uses causal chains / events. |
-| Evidence | Show source support and validation strength. | Calls evidence verifier over finding IDs, sources, and report context. |
-| Ask consumers | Interview representative consumers related to the conclusion. | Calls representative sampler plus interview service. |
-| Compare branch | Explain base vs intervention differences. | Calls existing branch comparison when a selected branch exists. |
-
-These actions should appear for:
-
-- Top risk findings.
-- Top clarification opportunities.
-- Causal chains.
-- Generated report sections when a section has a stable section index.
-- Branch comparison snapshots when available.
-
-### 6.2 Virtual Consumer Interview
-
-User-facing interview entry points:
-
-- Interview advocates.
-- Interview skeptics.
-- Interview misreaders.
-- Interview price-sensitive consumers.
-- Interview high-propagation consumers.
-- Build a virtual focus group.
-
-The user should not need to understand agent IDs, Reddit, Twitter, or OASIS internals.
-
-### 6.3 Research Director Report
-
-The report should read as if written by a consumer research director:
-
-- "Consumers resisted the price because..."
-- "This claim propagated among..."
-- "The strongest misread was..."
-- "Trust recovered when..."
-- "The next What-if experiment should..."
-
-It should avoid:
-
-- "The future will..."
-- "In the predicted world..."
-- "This is a future forecast..."
-- Generic MiroFish "god view" phrasing in user-facing text.
-
-## 7. Backend Design
-
-### 7.1 Consumer Research Tool Semantics
-
-Add a thin semantic layer that maps current tool names to consumer product concepts without breaking ReACT tool execution.
-
-Proposed file:
+必须新增文件：
 
 ```text
 backend/app/services/consumer/research_tool_semantics.py
 ```
 
-Responsibilities:
+该文件必须定义唯一的 consumer 工具语义表：
 
-- Define consumer-facing tool labels.
-- Define recommended prompt hints per tool.
-- Define action type to tool mapping.
-- Avoid importing Flask or frontend concepts.
+| Raw tool | Consumer label | 中文标签 | 固定用途 |
+|---|---|---|---|
+| `insight_forge` | `Consumer Insight Deep Dive` | `消费者洞察深挖` | 解释结论形成原因 |
+| `panorama_search` | `Propagation Path Explainer` | `传播路径解释器` | 解释扩散、阻断、误读、修复路径 |
+| `quick_search` | `Evidence Verifier` | `报告结论证据校验` | 校验结论证据支撑 |
+| `interview_agents` | `Virtual Consumer Interview` | `虚拟消费者深访` | 追问代表性消费者 |
+| `get_all_nodes` | `Consumer Cognition Graph Nodes` | `消费者认知图谱节点` | 展示消费者认知图谱节点 |
+| `get_all_edges` | `Consumer Cognition Graph Edges` | `消费者认知图谱关系` | 展示消费者认知图谱关系 |
 
-Proposed constants:
+该文件必须导出：
 
 ```python
-CONSUMER_TOOL_SEMANTICS = {
-    "insight_forge": {
-        "label": "Consumer Insight Deep Dive",
-        "consumer_label_zh": "消费者洞察深挖",
-        "purpose": "Explain why a finding emerged from consumer reactions, graph facts, and quotes.",
-    },
-    "panorama_search": {
-        "label": "Propagation Path Explainer",
-        "consumer_label_zh": "传播路径解释器",
-        "purpose": "Explain how a claim, objection, misread, or trust repair moved through the simulation.",
-    },
-    "quick_search": {
-        "label": "Evidence Verifier",
-        "consumer_label_zh": "报告结论证据校验",
-        "purpose": "Verify source support for a claim or report conclusion.",
-    },
-    "interview_agents": {
-        "label": "Virtual Consumer Interview",
-        "consumer_label_zh": "虚拟消费者深访",
-        "purpose": "Ask representative consumers why they reacted, amplified, resisted, or changed intent.",
-    },
-}
+CONSUMER_TOOL_SEMANTICS
+get_consumer_tool_label(tool_name: str, locale: str = "zh") -> str
+get_consumer_tool_purpose(tool_name: str) -> str
 ```
 
-This file is also the source of truth for frontend labels if exposed by API later.
+所有未知 tool 名必须原样返回，不得抛出异常。
 
-### 7.2 Consumer Research Action Service
+### 6.2 Research Director Agent
 
-Add an application service for user-triggered report actions.
+必须修改：
 
-Proposed file:
+```text
+backend/app/services/report_agent.py
+```
+
+必须新增 consumer 专用提示词常量：
+
+```python
+CONSUMER_PLAN_SYSTEM_PROMPT
+CONSUMER_PLAN_USER_PROMPT_TEMPLATE
+CONSUMER_SECTION_SYSTEM_PROMPT_TEMPLATE
+CONSUMER_SECTION_USER_PROMPT_TEMPLATE
+CONSUMER_CHAT_SYSTEM_PROMPT_TEMPLATE
+```
+
+Consumer 模式提示词必须满足以下要求：
+
+- Agent 身份必须是 `Consumer Research Director Agent` 或 `消费者研究总监 Agent`。
+- 报告必须解释消费者反应原因。
+- 报告必须解释卖点传播。
+- 报告必须解释质疑扩散。
+- 报告必须解释误读扩散。
+- 报告必须解释信任衰减。
+- 报告必须解释信任修复。
+- 报告必须解释证据对态度变化的作用。
+- 报告必须提出下一轮上市前 What-if 实验。
+- 每个章节必须调用 consumer 语义工具。
+- 工具调用 payload 必须继续使用 raw tool 名。
+
+Consumer 模式提示词禁止出现旧预测报告提示词中的中英文关键句。
+
+测试文件必须把既有中英文关键句保存为测试常量，并断言 consumer prompt 不包含这些常量。
+
+Prompt 选择规则固定为：
+
+```python
+consumer_mode = self.project_type == "consumer_test" or report_context contains consumer fields
+```
+
+`consumer_mode=True` 必须使用 consumer 提示词。`consumer_mode=False` 必须使用既有提示词。
+
+### 6.3 Research Action 服务
+
+必须新增文件：
 
 ```text
 backend/app/services/application/consumer_research_action_service.py
 ```
 
-Responsibilities:
-
-- Validate that the simulation is `consumer_test`.
-- Load simulation state, consumer summary, report context, branch context, and selected finding/section metadata.
-- Call the appropriate existing capability:
-  - `ZepToolsService.insight_forge`
-  - `ZepToolsService.panorama_search`
-  - `ZepToolsService.quick_search`
-  - `ZepToolsService.interview_agents`
-  - `BranchAppService.get_branch_comparison`
-  - `ConsumerAppService.get_consumer_summary`
-- Normalize response shape for the frontend.
-
-Canonical action types:
+该服务必须定义：
 
 ```python
 class ConsumerResearchActionType(str, Enum):
@@ -272,7 +199,34 @@ class ConsumerResearchActionType(str, Enum):
     CompareBranchDelta = "compare_branch_delta"
 ```
 
-Canonical response shape:
+该服务必须暴露：
+
+```python
+ConsumerResearchActionService.run_action(simulation_id: str, payload: dict) -> dict
+```
+
+服务必须执行以下步骤：
+
+1. 加载 simulation。
+2. 校验 simulation 为 `consumer_test`。
+3. 解析 `action_type`。
+4. 解析 target。
+5. 加载 consumer summary。
+6. 加载 report context。
+7. 按 action 调用既有能力。
+8. 返回统一响应。
+
+Action 与工具映射固定为：
+
+| action_type | 执行能力 |
+|---|---|
+| `deep_dive_conclusion` | `ZepToolsService.insight_forge` |
+| `explain_propagation_path` | `ZepToolsService.panorama_search` |
+| `verify_evidence` | report context evidence lookup + `ZepToolsService.quick_search` |
+| `interview_consumers` | `ConsumerInterviewService.interview` |
+| `compare_branch_delta` | `BranchAppService.get_branch_comparison` |
+
+统一响应必须包含：
 
 ```json
 {
@@ -280,101 +234,88 @@ Canonical response shape:
   "simulation_id": "sim_xxx",
   "target": {
     "kind": "finding",
-    "id": "finding_123",
-    "label": "Low sugar claim triggers taste skepticism"
+    "id": "finding_xxx",
+    "text": "..."
   },
-  "title": "Why this conclusion emerged",
-  "summary": "Short executive answer",
-  "details_markdown": "Evidence-aware explanation...",
+  "title": "...",
+  "summary": "...",
+  "details_markdown": "...",
   "evidence": {
     "support_level": "strong",
-    "source_count": 3,
-    "simulation_quote_count": 5,
+    "source_count": 0,
+    "simulation_quote_count": 0,
     "gatekeeping_status": "supported"
   },
   "tool_trace": {
     "tool_name": "insight_forge",
-    "consumer_tool_label": "Consumer Insight Deep Dive",
+    "consumer_tool_label": "消费者洞察深挖",
     "query": "..."
   }
 }
 ```
 
-### 7.3 Consumer Research Action API
+`support_level` 取值固定为：
 
-Add a single canonical endpoint first to avoid route sprawl.
+```text
+strong
+medium
+weak
+insufficient
+simulation_only
+```
 
-Proposed route:
+### 6.4 Research Action API
+
+必须修改：
+
+```text
+backend/app/api/consumer.py
+```
+
+必须新增路由：
 
 ```http
 POST /api/consumer/simulations/<simulation_id>/research-actions
 ```
 
-Request:
+请求体固定为：
 
 ```json
 {
   "action_type": "deep_dive_conclusion",
   "target": {
     "kind": "finding",
-    "id": "finding_123",
-    "text": "Consumers doubt the low-sugar claim will taste good."
+    "id": "finding_xxx",
+    "text": "..."
   },
   "context": {
-    "report_id": "report_123",
-    "section_index": 2,
-    "branch_id": "branch_abc",
-    "claim": "low sugar, full flavor"
+    "report_id": "report_xxx",
+    "section_index": 1,
+    "branch_id": "branch_xxx",
+    "claim": "..."
   }
 }
 ```
 
-Response:
+HTTP 状态码固定为：
 
-```json
-{
-  "success": true,
-  "data": {
-    "action_type": "deep_dive_conclusion",
-    "title": "Why consumers doubted the low-sugar claim",
-    "summary": "...",
-    "details_markdown": "...",
-    "evidence": {},
-    "tool_trace": {}
-  }
-}
-```
+| 状态码 | 条件 |
+|---|---|
+| 200 | action 执行成功 |
+| 400 | 参数缺失、action 不存在、simulation 不是 consumer_test |
+| 404 | simulation、report、branch 不存在 |
+| 409 | branch 对比请求遇到运行中分支 |
+| 500 | 工具执行异常 |
 
-Error rules:
+### 6.5 Representative Consumer 抽样
 
-- `404`: simulation not found.
-- `400`: unsupported `action_type`, missing target, or non-consumer simulation.
-- `409`: branch comparison requested but selected branch is still running.
-- `500`: tool execution failure.
-
-### 7.4 Representative Consumer Service
-
-Add a lightweight sampler for representative consumers. This is not the large society runtime.
-
-Proposed file:
+必须新增文件：
 
 ```text
 backend/app/services/consumer/representative_sampler.py
 ```
 
-Responsibilities:
-
-- Load consumer round snapshots through `ConsumerStateRepository`.
-- Load profiles through `SimulationRepository`.
-- Identify representative consumers using existing fields:
-  - attitude label
-  - propagation events
-  - supporting quotes
-  - agent state if available
-  - influence weight / role metadata if available
-- Return stable role buckets.
-
-Representative roles:
+必须定义消费者角色：
 
 ```text
 advocate
@@ -386,56 +327,73 @@ trust_recovered
 blocked_propagation
 ```
 
-Response shape:
+抽样输入必须来自：
+
+- consumer round snapshots
+- consumer config
+- simulation profiles
+- propagation events
+- attitude labels
+- quotes
+
+抽样输出固定为：
 
 ```json
 {
   "agents": [
     {
-      "agent_id": "agent_7",
-      "display_name": "Pragmatic parent",
+      "agent_id": "agent_1",
+      "display_name": "...",
       "role": "skeptic",
-      "segment": "family shopper",
+      "segment": "...",
       "attitude_start": "neutral",
       "attitude_latest": "skeptical",
-      "key_quote": "I like the idea, but I need proof...",
+      "key_quote": "...",
       "round_index": 3,
       "evidence": {
-        "event_ids": ["event_1"],
-        "finding_ids": ["finding_2"]
+        "event_ids": [],
+        "finding_ids": []
       }
     }
   ]
 }
 ```
 
-### 7.5 Consumer Interview Service
+空结果必须返回 `{"agents": []}`。
 
-Add a canonical consumer interview service that hides legacy platform details.
+### 6.6 Consumer Interview 服务
 
-Proposed file:
+必须新增文件：
 
 ```text
 backend/app/services/application/consumer_interview_service.py
 ```
 
-Responsibilities:
+必须支持三种模式：
 
-- Validate consumer simulation.
-- Select representative agents if the request uses role filters.
-- Build consumer research prompts.
-- Prefer snapshot-based interview for completed consumer simulations.
-- Optionally use live legacy interview APIs if the simulation environment is running.
-
-Interview modes:
-
-| Mode | Behavior |
+| mode | 行为 |
 |---|---|
-| `snapshot` | Uses stored profile, quotes, round history, and LLMClient to answer as a representative consumer. Works after simulation completes. |
-| `live` | Uses existing `SimulationRunner.interview_agents_batch` when the OASIS environment is alive. |
-| `auto` | Use live when available, otherwise snapshot. Default. |
+| `snapshot` | 使用存储的 persona、profile、round history、quote 生成回答 |
+| `live` | 使用 `SimulationRunner.interview_agents_batch` |
+| `auto` | 先执行 live，live 不存在时执行 snapshot |
 
-Canonical routes:
+`auto` 是默认值。
+
+服务必须暴露：
+
+```python
+ConsumerInterviewService.get_representative_agents(simulation_id: str, filters: dict) -> dict
+ConsumerInterviewService.interview(simulation_id: str, payload: dict) -> dict
+ConsumerInterviewService.focus_group(simulation_id: str, payload: dict) -> dict
+```
+
+Snapshot interview 必须使用存储上下文生成回答，不得调用 legacy live API。
+
+Live interview 必须复用既有 `SimulationRunner.interview_agents_batch`。
+
+### 6.7 Consumer Interview API
+
+必须新增路由：
 
 ```http
 GET  /api/consumer/simulations/<simulation_id>/representative-agents
@@ -443,97 +401,40 @@ POST /api/consumer/simulations/<simulation_id>/interviews
 POST /api/consumer/simulations/<simulation_id>/focus-groups
 ```
 
-Interview request:
+Interview 请求体固定为：
 
 ```json
 {
   "mode": "auto",
   "roles": ["skeptic", "misreader"],
   "agent_ids": [],
-  "topic": "Why did the low-sugar claim trigger skepticism?",
-  "questions": [
-    "What would make you believe this claim?",
-    "What did you think the brand was implying?"
-  ],
+  "topic": "...",
+  "questions": ["..."],
   "max_agents": 4
 }
 ```
 
-Focus group request:
+Focus group 请求体固定为：
 
 ```json
 {
-  "topic": "Should we reveal ingredient proof before or after the price message?",
+  "mode": "auto",
   "roles": ["advocate", "skeptic", "price_sensitive"],
-  "max_agents": 6,
-  "moderator_goal": "Find where consensus and disagreement form."
+  "topic": "...",
+  "moderator_goal": "...",
+  "max_agents": 6
 }
 ```
 
-### 7.6 ReportAgent Consumer Prompt Split
+### 6.8 Consumer Event Ontology
 
-Do not globally rewrite ReportAgent prompts. Add consumer-specific prompt templates and choose them only when the report context is consumer mode.
-
-Proposed changes in:
-
-```text
-backend/app/services/report_agent.py
-```
-
-Add consumer prompt constants:
-
-```python
-CONSUMER_PLAN_SYSTEM_PROMPT
-CONSUMER_PLAN_USER_PROMPT_TEMPLATE
-CONSUMER_SECTION_SYSTEM_PROMPT_TEMPLATE
-CONSUMER_SECTION_USER_PROMPT_TEMPLATE
-CONSUMER_CHAT_SYSTEM_PROMPT_TEMPLATE
-```
-
-Prompt requirements:
-
-- The agent identity is "Consumer Research Director Agent."
-- The report must answer:
-  - What first impression formed?
-  - Which claims propagated?
-  - Which objections or misreads spread?
-  - Where did trust decay or recover?
-  - What evidence changed interpretation?
-  - Which What-if intervention should be tested next?
-- The agent must call tools as consumer research tools:
-  - Consumer Insight Deep Dive.
-  - Propagation Path Explainer.
-  - Evidence Verifier.
-  - Virtual Consumer Interview.
-- The agent must not frame consumer reports as generic future prediction reports.
-- The agent must label unsupported findings as weak or simulation-only.
-
-Selection rule:
-
-```python
-if self.project_type == "consumer_test" or report_context contains consumer fields:
-    use consumer prompt templates
-else:
-    use existing default templates
-```
-
-Backward compatibility:
-
-- Existing prompt constants may stay for default mode.
-- Existing tool names stay unchanged in `<tool_call>` payloads.
-- Existing ReACT parsing stays unchanged.
-
-### 7.7 Consumer Event Ontology
-
-Add a consumer event ontology layer while preserving existing coarse buckets.
-
-Proposed file:
+必须新增文件：
 
 ```text
 backend/app/services/consumer/event_ontology.py
 ```
 
-Canonical event types:
+必须定义以下事件类型：
 
 ```text
 VIEW_CLAIM
@@ -552,13 +453,19 @@ PURCHASE_INTENT_DOWN
 NEGATIVE_CASCADE
 ```
 
-Compatibility strategy:
+必须保留既有 `PropagationEvent.event_type`。
 
-- Keep existing `PropagationEvent.event_type` values.
-- Add `consumer_event_type` to generated event dictionaries where possible.
-- For existing records, derive `consumer_event_type` through mapping:
+必须新增派生字段：
 
-| Existing bucket | Derived consumer event type |
+```json
+{
+  "consumer_event_type": "ASK_PROOF"
+}
+```
+
+兼容映射固定为：
+
+| 既有 bucket | consumer_event_type |
 |---|---|
 | `positive_relay` | `AMPLIFY_CLAIM` |
 | `skeptical_challenge` | `ASK_PROOF` |
@@ -566,41 +473,18 @@ Compatibility strategy:
 | `risk_discovery` | `TRUST_DECAY` |
 | `clarification_recovery` | `TRUST_RECOVERY` |
 
-This gives frontend timelines and report actions better labels without invalidating stored JSONL.
+## 7. 前端规格
 
-### 7.8 Evidence Verification Behavior
+### 7.1 Consumer API
 
-Evidence action should use existing evidence and confidence structures before calling generic graph search.
-
-Order of evidence lookup:
-
-1. `report_context.evidence_validation_summary`
-2. `report_context.finding_confidences`
-3. `report_context.enriched_findings`
-4. `report_context.source_catalog`
-5. `ZepToolsService.quick_search`
-
-Evidence response must say:
-
-- support level: `strong`, `medium`, `weak`, `insufficient`, `simulation_only`
-- source count
-- simulation quote count
-- whether real materials support the conclusion
-- whether gatekeeping downgraded it
-- whether contradiction was detected, if available
-
-## 8. Frontend Design
-
-### 8.1 API Factory
-
-Modify:
+必须修改：
 
 ```text
 frontend/src/api/consumerFactory.js
 frontend/src/api/consumer.js
 ```
 
-Add functions:
+必须新增函数：
 
 ```javascript
 runConsumerResearchAction(simulationId, data)
@@ -609,178 +493,105 @@ interviewConsumers(simulationId, data)
 runFocusGroup(simulationId, data)
 ```
 
-All functions call `/api/consumer/*`, not legacy `/api/simulation/interview*`.
+所有新增函数必须调用 `/api/consumer/*`。
 
-### 8.2 Consumer Research Action Bar
+### 7.2 Report Action Bar
 
-Proposed file:
+必须新增：
 
 ```text
 frontend/src/components/consumer/ConsumerResearchActionBar.vue
 ```
 
-Responsibilities:
+必须展示按钮：
 
-- Render icon/text buttons for consumer mode only.
-- Emit action payloads for:
-  - deep dive
-  - propagation path
-  - evidence
-  - ask consumers
-  - compare branch
-- Disable branch comparison when no selected branch exists.
-- Show loading state per action.
+- 深挖结论
+- 查看传播路径
+- 查看证据
+- 追问消费者
+- 比较分支差异
 
-Initial mount points:
+按钮必须传出固定 action payload。
 
-- Risk finding rows.
-- Clarification opportunity rows.
-- Causal chain rows.
-- Section header rows in `Step4Report.vue` when completed.
+### 7.3 Insight Drawer
 
-### 8.3 Consumer Insight Drawer
-
-Proposed file:
+必须新增：
 
 ```text
 frontend/src/components/consumer/ConsumerInsightDrawer.vue
 ```
 
-Responsibilities:
+必须展示：
 
-- Display action response.
-- Show title, summary, markdown details, evidence status, and tool trace.
-- Distinguish:
-  - insight deep dive
-  - propagation path
-  - evidence verification
-  - branch delta
-  - interview result
-- Keep layout compact and analytical, not a marketing-style modal.
+- 标题
+- 摘要
+- markdown 详情
+- 证据等级
+- 来源数量
+- 模拟 quote 数量
+- gatekeeping 状态
+- 工具追踪
 
-### 8.4 Representative Consumer Interview
+### 7.4 Representative Interview Panel
 
-Proposed file:
+必须新增：
 
 ```text
 frontend/src/components/consumer/RepresentativeConsumerInterview.vue
 ```
 
-Responsibilities:
+必须支持：
 
-- Show representative consumer cards by role.
-- Allow selecting one or more consumers.
-- Provide question input and suggested prompts.
-- Submit interview request.
-- Render answers with agent role, segment, quote history, and support links.
+- 按角色筛选消费者。
+- 选择消费者。
+- 输入问题。
+- 使用固定 prompt 按钮。
+- 展示回答。
+- 展示 key quote。
+- 展示 attitude 变化。
 
-Suggested prompt buttons:
+### 7.5 Virtual Focus Group Panel
 
-- "Why did you hesitate?"
-- "What proof would change your mind?"
-- "What did you tell others?"
-- "Where did the message become confusing?"
-- "Would a price change alter your intent?"
-
-### 8.5 Virtual Focus Group Panel
-
-Proposed file:
+必须新增：
 
 ```text
 frontend/src/components/consumer/VirtualFocusGroupPanel.vue
 ```
 
-Responsibilities:
+必须支持：
 
-- Select role mix.
-- Set moderator goal.
-- Run focus group.
-- Show consensus, disagreement, surprising objections, and next What-if recommendation.
+- 选择角色组合。
+- 输入焦点小组主题。
+- 输入 moderator goal。
+- 展示共识。
+- 展示分歧。
+- 展示关键 quote。
+- 展示下一轮 What-if 实验。
 
-This panel can be embedded in Step 5 Interaction first, then optionally linked from Step 4 report actions.
+### 7.6 挂载点
 
-### 8.6 Report Audit Enhancement
-
-Step 4 already shows agent logs and special display for tool calls. Phase 6F should relabel consumer-mode tool calls:
-
-| Raw tool | Consumer display |
-|---|---|
-| `insight_forge` | Consumer Insight Deep Dive |
-| `panorama_search` | Propagation Path Explainer |
-| `quick_search` | Evidence Verifier |
-| `interview_agents` | Virtual Consumer Interview |
-
-Modify:
+必须修改：
 
 ```text
 frontend/src/components/Step4Report.vue
+frontend/src/components/Step5Interaction.vue
 frontend/src/utils/consumerMode.js
 locales/en.json
 locales/zh.json
 ```
 
-Do not remove existing parsers for InsightForge / Panorama / Interview logs.
+挂载规则固定为：
 
-## 9. Data Flow
+- `Step4Report.vue` 挂载 action bar 和 insight drawer。
+- `Step5Interaction.vue` 挂载 interview panel 和 focus group panel。
+- consumer mode 工具日志必须显示 consumer label。
+- non-consumer mode 工具日志保持原显示。
 
-### 9.1 Report Action Flow
+## 8. 测试规格
 
-```text
-User clicks report action
-  -> ConsumerResearchActionBar emits action
-  -> Step4Report calls runConsumerResearchAction()
-  -> /api/consumer/simulations/{id}/research-actions
-  -> ConsumerResearchActionService validates consumer simulation
-  -> loads report / summary / target context
-  -> calls ZepToolsService or branch comparison service
-  -> returns normalized action response
-  -> ConsumerInsightDrawer renders result
-```
+### 8.1 后端测试
 
-### 9.2 Interview Flow
-
-```text
-User opens interview panel
-  -> frontend loads representative agents
-  -> user chooses role or consumers
-  -> POST /api/consumer/simulations/{id}/interviews
-  -> ConsumerInterviewService builds consumer prompt
-  -> auto mode chooses live or snapshot interview
-  -> returns interview answers and summary
-```
-
-### 9.3 Event Ontology Flow
-
-```text
-Consumer simulation creates or loads event bucket
-  -> event_ontology derives consumer_event_type
-  -> ConsumerAppService includes consumer event labels in summary context
-  -> frontend timeline / action surfaces use consumer labels
-```
-
-## 10. Error Handling
-
-### 10.1 Backend
-
-- Research actions must not fail the whole report page.
-- Tool failure returns a structured error response with `tool_name`, `action_type`, and user-facing message.
-- Non-consumer simulation returns `400` with "consumer research actions require consumer_test simulation."
-- Missing graph ID returns a recoverable action error if summary/evidence can still be shown.
-- Interview live mode returns `409` if the simulation environment is unavailable and `mode=live`.
-- Interview auto mode falls back to snapshot mode when possible.
-
-### 10.2 Frontend
-
-- Each action button has its own loading and error state.
-- Failed action opens the drawer with an error explanation instead of silently failing.
-- Evidence verifier can show partial evidence if graph search fails.
-- Interview panel shows "not enough representative consumers" when sampler returns empty.
-
-## 11. Testing Strategy
-
-### 11.1 Backend Unit Tests
-
-Add tests:
+必须新增：
 
 ```text
 backend/tests/consumer/test_event_ontology.py
@@ -789,68 +600,60 @@ backend/tests/services/application/test_consumer_research_action_service.py
 backend/tests/services/application/test_consumer_interview_service.py
 backend/tests/api/test_consumer_research_actions.py
 backend/tests/api/test_consumer_interviews.py
-```
-
-Required assertions:
-
-- Existing event buckets map to canonical consumer event types.
-- Representative sampler returns expected roles from deterministic snapshots.
-- Research action service validates consumer simulation.
-- Research action service calls the correct Zep tool for each action type.
-- Evidence action prefers report context evidence before graph search.
-- Interview service falls back from live to snapshot in auto mode.
-- API returns canonical success/error response shapes.
-
-### 11.2 ReportAgent Prompt Tests
-
-Add or update tests:
-
-```text
 backend/tests/consumer/test_report_agent_consumer_prompts.py
 ```
 
-Required assertions:
+测试必须覆盖：
 
-- Consumer prompt contains "Consumer Research Director" or Chinese equivalent.
-- Consumer prompt contains claim propagation, misread, objection, trust repair, evidence, and intervention language.
-- Consumer prompt does not contain forbidden future-prediction framing:
-  - "未来预测报告"
-  - "未来会发生什么"
-  - "future prediction report"
-  - "what will happen in the future"
-- Default prompt still preserves existing future prediction semantics for `project_type=default`.
+- event bucket 到 consumer event type 的映射。
+- representative sampler 角色抽样。
+- research action 服务 action 映射。
+- evidence action 查找顺序。
+- interview auto fallback。
+- API 成功响应。
+- API 错误响应。
+- consumer prompt 禁止词。
+- default prompt 不回归。
 
-### 11.3 Frontend Tests
+### 8.2 前端测试
 
-Add tests:
+必须新增：
+
+```text
+frontend/tests/consumerResearchActions.test.js
+frontend/tests/representativeConsumerInterview.test.js
+frontend/tests/virtualFocusGroup.test.js
+```
+
+必须扩展：
 
 ```text
 frontend/tests/consumerApi.behavior.test.js
-frontend/tests/consumerResearchActions.test.js
-frontend/tests/representativeConsumerInterview.test.js
 ```
 
-Required assertions:
+测试必须覆盖：
 
-- Consumer API factory calls the canonical `/api/consumer` routes.
-- Action bar emits the correct action payload.
-- Insight drawer renders evidence support level and tool trace.
-- Interview panel sends roles, topic, questions, and max agent count.
-- Consumer-mode tool labels replace raw MiroFish tool names.
+- consumer API 路径。
+- action bar payload。
+- drawer evidence 渲染。
+- interview 请求体。
+- focus group 请求体。
+- consumer tool label 渲染。
 
-### 11.4 Regression Commands
+## 9. 验收命令
 
-Backend:
+后端验收必须运行：
 
 ```bash
 cd backend
 python -m pytest tests/consumer/test_event_ontology.py tests/consumer/test_representative_sampler.py -q
 python -m pytest tests/services/application/test_consumer_research_action_service.py tests/services/application/test_consumer_interview_service.py -q
 python -m pytest tests/api/test_consumer_research_actions.py tests/api/test_consumer_interviews.py -q
+python -m pytest tests/consumer/test_report_agent_consumer_prompts.py -q
 python -m pytest tests/ --tb=short -q
 ```
 
-Frontend:
+前端验收必须运行：
 
 ```bash
 cd frontend
@@ -858,107 +661,26 @@ node --test tests/*.test.js tests/composables/*.test.js
 npm run build
 ```
 
-Whitespace:
+仓库验收必须运行：
 
 ```bash
 git diff --check
 ```
 
-## 12. Acceptance Criteria
+## 10. 退出条件
 
-Phase 6F is complete when:
+Phase 6F 退出必须同时满足：
 
-1. Consumer-mode ReportAgent output is framed as consumer research, not future prediction.
-2. Default legacy report mode remains behaviorally compatible.
-3. Consumer report findings have visible action buttons for deep dive, propagation path, evidence, interview, and branch comparison.
-4. Research actions return normalized evidence-aware responses through `/api/consumer`.
-5. Representative consumer selection works from existing snapshots.
-6. Consumer interview and focus group endpoints exist and hide legacy platform details.
-7. Consumer event ontology is available in summary context without breaking existing stored event buckets.
-8. Report audit logs show consumer-facing tool labels in consumer mode.
-9. Backend and frontend targeted tests pass.
-10. Full existing backend/frontend regression commands are still expected to pass.
-
-## 13. Recommended Implementation Sequence
-
-### Batch 1: Backend semantics and prompt split
-
-- Add `research_tool_semantics.py`.
-- Add consumer prompt constants in `report_agent.py`.
-- Add prompt selection logic.
-- Add prompt tests.
-
-### Batch 2: Consumer event ontology
-
-- Add `event_ontology.py`.
-- Update event generation or report context construction to include derived `consumer_event_type`.
-- Add event ontology tests.
-
-### Batch 3: Research action service and API
-
-- Add `consumer_research_action_service.py`.
-- Add `/api/consumer/simulations/<simulation_id>/research-actions`.
-- Add API/service tests with mocked ZepToolsService.
-
-### Batch 4: Representative sampler and interview service
-
-- Add `representative_sampler.py`.
-- Add `consumer_interview_service.py`.
-- Add representative, interview, and focus group routes.
-- Add sampler/service/API tests.
-
-### Batch 5: Frontend API and report action surfaces
-
-- Extend `consumerFactory.js`.
-- Add `ConsumerResearchActionBar.vue`.
-- Add `ConsumerInsightDrawer.vue`.
-- Wire into `Step4Report.vue`.
-- Add frontend tests.
-
-### Batch 6: Interview and focus group panels
-
-- Add `RepresentativeConsumerInterview.vue`.
-- Add `VirtualFocusGroupPanel.vue`.
-- Wire into `Step5Interaction.vue` and report action drawer.
-- Add frontend tests.
-
-### Batch 7: Regression and documentation
-
-- Update `README.md` / `README-ZH.md` only if product copy needs to mention Phase 6F behavior.
-- Run targeted tests.
-- Run full regression if feasible.
-- Run `git diff --check`.
-
-## 14. Future Hooks
-
-Phase 6F should leave clean extension points for later phases:
-
-| Future phase | Hook created in Phase 6F |
-|---|---|
-| Phase 6G large society | Event ontology, representative sampler contract, research action service |
-| Phase 6H multi-channel | Consumer event type and future `channel_id` field in event/action responses |
-| Phase 6I focus group | Consumer interview service and focus group API |
-| Phase 7 productionization | Canonical `/api/consumer` boundaries and service-layer isolation |
-
-## 15. Risks and Mitigations
-
-| Risk | Mitigation |
-|---|---|
-| Prompt rewrite changes default reports | Select prompts only for consumer mode; add tests proving default mode still uses legacy framing. |
-| Tool labels diverge from actual tool names | Keep raw tool names in backend execution; use semantic labels only at prompt/UI layer. |
-| Interview requires live simulation process | Support snapshot interview fallback in `auto` mode. |
-| Frontend `Step4Report.vue` grows larger | Add focused child components for action bar and drawer; avoid embedding large new logic inline. |
-| Event ontology breaks existing JSONL | Add derived `consumer_event_type`; do not replace existing `event_type`. |
-| Evidence action overpromises certainty | Response must include support level and simulation-only/weak-support labels. |
-
-## 16. Open Decisions for Review
-
-This spec makes two decisions that should be explicitly reviewed:
-
-1. **Snapshot interview is allowed.**
-   Completed consumer simulations can support virtual consumer interviews using stored persona/profile/round history even when the live simulation process is no longer running.
-
-2. **Single research action endpoint first.**
-   Phase 6F starts with one `/research-actions` endpoint for report actions, plus separate interview/focus-group endpoints. If product usage grows, actions can later be split into dedicated routes.
-
-If these decisions are accepted, the next step is to write a task-by-task implementation plan for Phase 6F.
+1. Consumer report 不再使用旧预测语义。
+2. Default report 保持既有语义。
+3. Consumer report 展示五个行动入口。
+4. Research action API 返回统一响应。
+5. Representative consumer API 返回固定结构。
+6. Interview API 与 focus group API 存在。
+7. Consumer event ontology 进入 summary context。
+8. Report audit 显示 consumer 工具标签。
+9. 所有新增测试通过。
+10. 全量后端测试通过。
+11. 前端 node 测试通过。
+12. 前端 build 通过。
+13. `git diff --check` 无输出。
