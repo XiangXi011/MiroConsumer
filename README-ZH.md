@@ -1,6 +1,5 @@
 <div align="center">
 
-<img src="./static/image/MiroFish_logo_compressed.jpeg" alt="MiroConsumer Logo" width="68%"/>
 
 # MiroConsumer
 
