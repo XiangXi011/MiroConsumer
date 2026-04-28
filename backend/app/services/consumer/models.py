@@ -157,6 +157,18 @@ class PropagationEvent(BaseModel):
     cross_community: bool = False
     target_communities: List[str] = Field(default_factory=list)
 
+    @property
+    def consumer_event_type(self) -> str:
+        """Derived consumer ontology value from the legacy event_type."""
+        from .event_ontology import map_legacy_event_type_to_consumer
+
+        return map_legacy_event_type_to_consumer(self.event_type)
+
+    def model_dump(self, **kwargs: Any) -> Dict[str, Any]:
+        data = super().model_dump(**kwargs)
+        data["consumer_event_type"] = self.consumer_event_type
+        return data
+
 
 def _normalize_string_list(value: Any, field_name: str) -> List[str]:
     if value is None:

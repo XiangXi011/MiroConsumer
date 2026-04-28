@@ -12,6 +12,7 @@ from .evidence_validator import (
     build_gatekeeping_summary,
     filter_allowed_findings,
 )
+from .event_ontology import map_legacy_bucket_to_consumer_event
 from .scoring import ConsumerPhase2Summary, ConsumerScoringService
 
 
@@ -236,6 +237,15 @@ class ConsumerReportContextBuilder:
         summary = self.scoring_service.summarize(initial_labels, final_labels)
         evidence = self.scoring_service.build_evidence_bundle(normalized)
 
+        # Phase 6F: compute consumer_event_counts from normalized events
+        from collections import Counter
+
+        consumer_event_counts: Dict[str, int] = Counter()
+        for event in normalized:
+            cet = event.get("consumer_event_type")
+            if cet:
+                consumer_event_counts[cet] += 1
+
         return {
             "summary": summary.to_dict(),
             "initial_acceptance": summary.initial_acceptance,
@@ -251,6 +261,7 @@ class ConsumerReportContextBuilder:
             },
             "evidence_bundle": evidence.to_dict(),
             "events_count": len(normalized),
+            "consumer_event_counts": dict(consumer_event_counts),
             # Task-aware placeholders (populated downstream when brief is available)
             "top_packaging_hooks": [],
             "top_trust_objections": [],
@@ -268,11 +279,13 @@ class ConsumerReportContextBuilder:
         visible_nodes = event.get("visible_nodes", [])
         if not isinstance(visible_nodes, list):
             visible_nodes = []
+        bucket = str(event.get("bucket", "question")).strip().lower() or "question"
         return {
             "round_num": int(event.get("round_num", 0) or 0),
             "agent_id": str(event.get("agent_id", "")).strip(),
             "attitude_label": str(event.get("attitude_label", "neutral")).strip().lower() or "neutral",
-            "bucket": str(event.get("bucket", "question")).strip().lower() or "question",
+            "bucket": bucket,
+            "consumer_event_type": map_legacy_bucket_to_consumer_event(bucket),
             "engagement": int(event.get("engagement", 0) or 0),
             "quote": str(event.get("quote", "")).strip(),
             "visible_nodes": visible_nodes,
@@ -456,6 +469,12 @@ def build_consumer_report_context(
         if g.gatekeeping_status == "allowed"
     } if gatekeeping_results else None
 
+    # Phase 6F: compute consumer_event_counts from typed events
+    consumer_event_counts: Dict[str, int] = {}
+    for event in typed_events:
+        cet = event.consumer_event_type
+        consumer_event_counts[cet] = consumer_event_counts.get(cet, 0) + 1
+
     causal_chains: List[Dict[str, Any]] = []
     for finding in typed_findings:
         if finding.finding_id in finding_events:
@@ -468,6 +487,7 @@ def build_consumer_report_context(
                 "finding_summary": finding.summary,
                 "event_ids": finding_events[finding.finding_id],
                 "event_types": list({e.event_type for e in related_events}),
+                "consumer_event_types": list({e.consumer_event_type for e in related_events}),
             })
 
     # Event-led attitude reversals
@@ -475,6 +495,7 @@ def build_consumer_report_context(
         {
             "event_id": e.event_id,
             "event_type": e.event_type,
+            "consumer_event_type": e.consumer_event_type,
             "actor_id": e.actor_id,
             "round_index": e.round_index,
             "quote": e.supporting_quote,
@@ -505,6 +526,7 @@ def build_consumer_report_context(
         "persona_group_signals": persona_events,
         "trigger_finding_count": len(causal_chains),
         "event_count": len(typed_events),
+        "consumer_event_counts": consumer_event_counts,
         "cascade_metrics": summary_dict.get("cascade_metrics", {}),
         "top_packaging_hooks": summary_dict.get("top_packaging_hooks", []),
         "top_trust_objections": summary_dict.get("top_trust_objections", []),

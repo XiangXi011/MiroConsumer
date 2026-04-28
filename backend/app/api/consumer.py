@@ -15,6 +15,9 @@ from . import consumer_bp
 from ..services.application.consumer_app_service import ConsumerAppService
 from ..services.application.branch_app_service import BranchAppService
 from ..services.application.comparison_app_service import ComparisonAppService
+from ..services.application.consumer_research_action_service import (
+    ConsumerResearchActionService,
+)
 from ..services.application.research_asset_app_service import ResearchAssetAppService
 from ..utils.logger import get_logger
 
@@ -290,4 +293,28 @@ def get_research_asset(asset_id: str):
         return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"获取研究资产失败: {str(e)}")
+        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+
+
+# ============== Research Actions ==============
+
+@consumer_bp.route("/simulations/<simulation_id>/research-actions", methods=["POST"])
+def run_consumer_research_action(simulation_id: str):
+    """Execute a consumer research action on a simulation."""
+    try:
+        data = request.get_json() or {}
+        result = ConsumerResearchActionService.run_action(
+            simulation_id=simulation_id,
+            payload=data,
+        )
+        return jsonify({"success": True, "data": result})
+    except ValueError as e:
+        msg = str(e).lower()
+        if "not found" in msg or "不存在" in msg:
+            return jsonify({"success": False, "error": str(e)}), 404
+        if "already running" in msg:
+            return jsonify({"success": False, "error": str(e)}), 409
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        logger.error(f"执行消费者研究动作失败: {str(e)}")
         return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500

@@ -90,7 +90,20 @@
               <div class="section-body" v-show="!collapsedSections.has(idx)">
                 <!-- Completed Content -->
                 <div v-if="generatedSections[idx + 1]" class="generated-content" v-html="renderMarkdown(generatedSections[idx + 1])"></div>
-                
+
+                <!-- Consumer Research Action Bar -->
+                <ConsumerResearchActionBar
+                  v-if="isConsumerMode && generatedSections[idx + 1]"
+                  :report-id="reportId"
+                  :simulation-id="simulationId"
+                  :section-index="idx + 1"
+                  :section-title="section.title"
+                  :section-content="generatedSections[idx + 1]"
+                  :branch-id="branchComparisonFormatted?.branchId || ''"
+                  :disabled="drawerLoading"
+                  @run-action="handleRunAction"
+                />
+
                 <!-- Loading State -->
                 <div v-else-if="currentSectionIndex === idx + 1" class="loading-state">
                   <div class="loading-icon">
@@ -427,6 +440,16 @@
         </div>
       </div>
     </div>
+
+    <!-- Consumer Insight Drawer -->
+    <ConsumerInsightDrawer
+      v-if="showInsightDrawer"
+      :result="drawerResult"
+      :loading="drawerLoading"
+      :error="drawerError"
+      @close="closeInsightDrawer"
+      @open-handoff="handleOpenHandoff"
+    />
   </div>
 </template>
 
@@ -459,6 +482,13 @@ import {
 import ConsumerReportHeader from './consumer/ConsumerReportHeader.vue'
 import ResearchAssetWorkspace from './consumer/ResearchAssetWorkspace.vue'
 import ComparisonWorkspace from './consumer/ComparisonWorkspace.vue'
+import ConsumerResearchActionBar from './consumer/ConsumerResearchActionBar.vue'
+import ConsumerInsightDrawer from './consumer/ConsumerInsightDrawer.vue'
+import { runConsumerResearchAction } from '../api/consumer'
+import {
+  normalizeConsumerResearchActionResponse,
+  saveConsumerInterviewHandoff,
+} from '../utils/consumerResearchActions'
 
 const router = useRouter()
 const { t } = useI18n()
@@ -480,6 +510,34 @@ const goToInteraction = () => {
   }
 }
 
+const closeInsightDrawer = () => {
+  showInsightDrawer.value = false
+  drawerResult.value = null
+  drawerError.value = ''
+}
+
+const handleRunAction = async (payload) => {
+  if (!props.simulationId) return
+  drawerLoading.value = true
+  drawerError.value = ''
+  drawerResult.value = null
+  showInsightDrawer.value = true
+
+  try {
+    const response = await runConsumerResearchAction(props.simulationId, payload)
+    drawerResult.value = normalizeConsumerResearchActionResponse(response)
+  } catch (err) {
+    drawerError.value = err?.message || 'Request failed'
+  } finally {
+    drawerLoading.value = false
+  }
+}
+
+const handleOpenHandoff = (targetContext) => {
+  saveConsumerInterviewHandoff(props.simulationId, targetContext)
+  goToInteraction()
+}
+
 // State
 const agentLogs = ref([])
 const consoleLogs = ref([])
@@ -497,6 +555,12 @@ const leftPanel = ref(null)
 const rightPanel = ref(null)
 const logContent = ref(null)
 const showRawResult = reactive({})
+
+// Consumer insight drawer state
+const showInsightDrawer = ref(false)
+const drawerResult = ref(null)
+const drawerLoading = ref(false)
+const drawerError = ref('')
 
 // Branch comparison state
 const branchComparisonRaw = ref(null)

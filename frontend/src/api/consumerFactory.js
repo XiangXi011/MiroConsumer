@@ -59,5 +59,9 @@ export function createConsumerApi(service) {
     getComparison(comparisonId) {
       return service.get(`/api/consumer/comparisons/${comparisonId}`)
     },
+
+    runConsumerResearchAction(simulationId, data) {
+      return service.post(`/api/consumer/simulations/${simulationId}/research-actions`, data)
+    },
   }
 }

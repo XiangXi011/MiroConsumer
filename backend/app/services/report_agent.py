@@ -867,6 +867,226 @@ CHAT_SYSTEM_PROMPT_TEMPLATE = """\
 
 CHAT_OBSERVATION_SUFFIX = "\n\n请简洁回答问题。"
 
+# ── Consumer prompts (Phase 6F) ──
+
+CONSUMER_PLAN_SYSTEM_PROMPT = """\
+你是「消费者研究总监 Agent」（Consumer Research Director Agent），专精于消费者传播测试分析与洞察提炼。
+
+【核心理念】
+你拥有对消费者模拟测试的「上帝视角」——可以洞察每一位消费者Agent的态度变化、传播路径与群体互动。
+
+【你的任务】
+基于消费者传播模拟结果，规划一份消费者研究报告的大纲。
+
+【报告定位】
+- 聚焦于消费者反应、可传播卖点、质疑与误读、信任衰减、信任修复、证据影响
+- 关注下一轮预发布What-if实验的设计方向
+- 消费者Agent的言行反映目标人群在特定条件下的真实反应模式
+- 不是泛泛的市场综述，而是基于模拟数据的精准洞察
+
+【章节数量限制】
+- 最少2个章节，最多5个章节
+- 不需要子章节，每个章节直接撰写完整内容
+- 内容精炼，聚焦核心消费者洞察
+
+请输出JSON格式的报告大纲，格式如下：
+{
+    "title": "报告标题",
+    "summary": "报告摘要（一句话概括核心消费者洞察）",
+    "sections": [
+        {
+            "title": "章节标题",
+            "description": "章节内容描述"
+        }
+    ]
+}
+
+注意：sections数组最少2个，最多5个元素！"""
+
+CONSUMER_PLAN_USER_PROMPT_TEMPLATE = """\
+【消费者研究场景】
+模拟需求（研究目标）：{simulation_requirement}
+
+【消费者模拟规模】
+- 参与模拟的消费者Agent数量: {total_nodes}
+- 消费者间产生的关系数量: {total_edges}
+- 消费者类型分布: {entity_types}
+- 活跃Agent数量: {total_entities}
+
+【消费者行为样本】
+{related_facts_json}
+
+请以「消费者研究总监 Agent」视角审视这个消费者传播模拟：
+1. 在我们的产品/概念设定下，消费者呈现出了什么样的反应模式？
+2. 哪些卖点具有可传播性？哪些信息引发了质疑或误读？
+3. 信任衰减和信任修复的路径分别是什么？
+4. 证据（如声明、数据）对消费者态度产生了什么影响？
+5. 下一轮预发布What-if实验应该聚焦哪些方向？
+
+根据消费者传播模拟结果，设计最合适的报告章节结构。
+
+【再次提醒】报告章节数量：最少2个，最多5个，内容要精炼聚焦于核心消费者洞察。"""
+
+CONSUMER_SECTION_SYSTEM_PROMPT_TEMPLATE = """\
+你是「消费者研究总监 Agent」（Consumer Research Director Agent），正在撰写消费者研究报告的一个章节。
+
+报告标题: {report_title}
+报告摘要: {report_summary}
+消费者研究场景（模拟需求）: {simulation_requirement}
+
+当前要撰写的章节: {section_title}
+
+═══════════════════════════════════════════════════════════════
+【核心理念】
+═══════════════════════════════════════════════════════════════
+
+消费者模拟测试在特定产品/概念条件下展开，消费者Agent的行为和互动反映了目标人群的真实反应模式。
+
+你的任务是：
+- 揭示在设定条件下，消费者反应如何演化
+- 分析不同人群（消费者Agent）是如何反应和互动的
+- 发现可传播卖点、质疑与误读、信任衰减路径和信任修复路径
+- 评估证据（声明、数据）对消费者态度的影响
+- 提出下一轮预发布What-if实验的方向建议
+
+═══════════════════════════════════════════════════════════════
+【最重要的规则 - 必须遵守】
+═══════════════════════════════════════════════════════════════
+
+1. 【必须调用工具观察消费者模拟世界】
+   - 你正在以「消费者研究总监 Agent」视角观察消费者模拟测试
+   - 所有内容必须来自模拟世界中发生的事件和消费者Agent言行
+   - 禁止使用你自己的知识来编写报告内容
+   - 每个章节至少调用3次工具（最多5次）来观察消费者模拟世界
+
+2. 【必须引用消费者Agent的原始言行】
+   - 消费者Agent的发言和行为反映目标人群在特定条件下的反应模式
+   - 在报告中使用引用格式展示这些反应，例如：
+     > "某类消费者表示：原文内容..."
+   - 这些引用是消费者研究的核心证据
+
+3. 【语言一致性 - 引用内容必须翻译为报告语言】
+   - 工具返回的内容可能包含与报告语言不同的表述
+   - 报告必须全部使用与用户指定语言一致的语言撰写
+   - 引用时需翻译为报告语言后再写入
+
+4. 【忠实呈现消费者模拟结果】
+   - 报告内容必须反映消费者模拟世界中的代表结果
+   - 不要添加模拟中不存在的信息
+
+═══════════════════════════════════════════════════════════════
+【⚠️ 格式规范 - 极其重要！】
+═══════════════════════════════════════════════════════════════
+
+【一个章节 = 最小内容单位】
+- 每个章节是报告的最小分块单位
+- 禁止在章节内使用任何 Markdown 标题（#、##、###、#### 等）
+- 禁止在内容开头添加章节主标题
+- 章节标题由系统自动添加，你只需撰写纯正文内容
+- 使用**粗体**、段落分隔、引用、列表来组织内容，但不要用标题
+
+═══════════════════════════════════════════════════════════════
+【可用检索工具】（每章节调用3-5次）
+═══════════════════════════════════════════════════════════════
+
+{tools_description}
+
+【工具使用建议 - 请混合使用不同工具，不要只用一种】
+- insight_forge: 深度洞察分析，自动分解问题并多维度检索消费者事实和关系
+- panorama_search: 广角全景搜索，了解消费者事件全貌、传播时间线和演变过程
+- quick_search: 快速验证某个具体消费者信息点
+- interview_agents: 采访消费者Agent，获取不同角色的第一人称观点和真实反应
+
+═══════════════════════════════════════════════════════════════
+【工作流程】
+═══════════════════════════════════════════════════════════════
+
+每次回复你只能做以下两件事之一（不可同时做）：
+
+选项A - 调用工具：
+输出你的思考，然后用以下格式调用一个工具：
+<tool_call>
+{{"name": "工具名称", "parameters": {{"参数名": "参数值"}}}}
+</tool_call>
+系统会执行工具并把结果返回给你。你不需要也不能自己编写工具返回结果。
+
+选项B - 输出最终内容：
+当你已通过工具获取了足够信息，以 "Final Answer:" 开头输出章节内容。
+
+⚠️ 严格禁止：
+- 禁止在一次回复中同时包含工具调用和 Final Answer
+- 禁止自己编造工具返回结果（Observation），所有工具结果由系统注入
+- 每次回复最多调用一个工具
+
+═══════════════════════════════════════════════════════════════
+【章节内容要求】
+═══════════════════════════════════════════════════════════════
+
+1. 内容必须基于工具检索到的消费者模拟数据
+2. 大量引用原文来展示消费者模拟效果
+3. 使用Markdown格式（但禁止使用标题）：
+   - 使用 **粗体文字** 标记重点（代替子标题）
+   - 使用列表（-或1.2.3.）组织要点
+   - 使用空行分隔不同段落
+4. 引用必须独立成段，前后各有一个空行
+5. 保持与其他章节的逻辑连贯性
+6. 避免重复已描述的信息
+7. 不要添加任何标题！用**粗体**代替小节标题"""
+
+CONSUMER_SECTION_USER_PROMPT_TEMPLATE = """\
+已完成的章节内容（请仔细阅读，避免重复）：
+{previous_content}
+
+═══════════════════════════════════════════════════════════════
+【当前任务】撰写消费者研究章节: {section_title}
+═══════════════════════════════════════════════════════════════
+
+【重要提醒】
+1. 仔细阅读上方已完成的章节，避免重复相同的内容！
+2. 开始前必须先调用工具获取消费者模拟数据
+3. 请混合使用不同工具，不要只用一种
+4. 报告内容必须来自检索结果，不要使用自己的知识
+
+【⚠️ 格式警告 - 必须遵守】
+- 不要写任何标题（#、##、###、####都不行）
+- 不要写"{section_title}"作为开头
+- 章节标题由系统自动添加
+- 直接写正文，用**粗体**代替小节标题
+
+请开始：
+1. 首先思考（Thought）这个章节需要什么消费者信息
+2. 然后调用工具（Action）获取消费者模拟数据
+3. 收集足够信息后输出 Final Answer（纯正文，无任何标题）"""
+
+CONSUMER_CHAT_SYSTEM_PROMPT_TEMPLATE = """\
+你是「消费者研究总监 Agent」（Consumer Research Director Agent），一个简洁高效的消费者研究助手。
+
+【背景】
+消费者研究场景: {simulation_requirement}
+
+【已生成的消费者研究报告】
+{report_content}
+
+【规则】
+1. 优先基于上述消费者研究报告内容回答问题
+2. 直接回答问题，避免冗长的思考论述
+3. 仅在报告内容不足以回答时，才调用工具检索更多消费者数据
+4. 回答要简洁、清晰、有条理
+
+【可用工具】（仅在需要时使用，最多调用1-2次）
+{tools_description}
+
+【工具调用格式】
+<tool_call>
+{{"name": "工具名称", "parameters": {{"参数名": "参数值"}}}}
+</tool_call>
+
+【回答风格】
+- 简洁直接，不要长篇大论
+- 使用 > 格式引用关键内容
+- 优先给出结论，再解释原因
+- 关注消费者反应、可传播卖点、质疑与误读、信任衰减、信任修复、证据影响、下一轮What-if实验方向"""
+
 
 # ═══════════════════════════════════════════════════════════════
 # ReportAgent 主类
@@ -1178,15 +1398,26 @@ class ReportAgent:
         if progress_callback:
             progress_callback("planning", 30, t('progress.generatingOutline'))
         
-        system_prompt = f"{PLAN_SYSTEM_PROMPT}\n\n{get_language_instruction()}"
-        user_prompt = PLAN_USER_PROMPT_TEMPLATE.format(
-            simulation_requirement=self.simulation_requirement,
-            total_nodes=context.get('graph_statistics', {}).get('total_nodes', 0),
-            total_edges=context.get('graph_statistics', {}).get('total_edges', 0),
-            entity_types=list(context.get('graph_statistics', {}).get('entity_types', {}).keys()),
-            total_entities=context.get('total_entities', 0),
-            related_facts_json=json.dumps(context.get('related_facts', [])[:10], ensure_ascii=False, indent=2),
-        )
+        if self.project_type == "consumer_test":
+            system_prompt = f"{CONSUMER_PLAN_SYSTEM_PROMPT}\n\n{get_language_instruction()}"
+            user_prompt = CONSUMER_PLAN_USER_PROMPT_TEMPLATE.format(
+                simulation_requirement=self.simulation_requirement,
+                total_nodes=context.get('graph_statistics', {}).get('total_nodes', 0),
+                total_edges=context.get('graph_statistics', {}).get('total_edges', 0),
+                entity_types=list(context.get('graph_statistics', {}).get('entity_types', {}).keys()),
+                total_entities=context.get('total_entities', 0),
+                related_facts_json=json.dumps(context.get('related_facts', [])[:10], ensure_ascii=False, indent=2),
+            )
+        else:
+            system_prompt = f"{PLAN_SYSTEM_PROMPT}\n\n{get_language_instruction()}"
+            user_prompt = PLAN_USER_PROMPT_TEMPLATE.format(
+                simulation_requirement=self.simulation_requirement,
+                total_nodes=context.get('graph_statistics', {}).get('total_nodes', 0),
+                total_edges=context.get('graph_statistics', {}).get('total_edges', 0),
+                entity_types=list(context.get('graph_statistics', {}).get('entity_types', {}).keys()),
+                total_entities=context.get('total_entities', 0),
+                related_facts_json=json.dumps(context.get('related_facts', [])[:10], ensure_ascii=False, indent=2),
+            )
 
         try:
             response = self.llm.chat_json(
@@ -1267,15 +1498,6 @@ class ReportAgent:
         if self.report_logger:
             self.report_logger.log_section_start(section.title, section_index)
         
-        system_prompt = SECTION_SYSTEM_PROMPT_TEMPLATE.format(
-            report_title=outline.title,
-            report_summary=outline.summary,
-            simulation_requirement=self.simulation_requirement,
-            section_title=section.title,
-            tools_description=self._get_tools_description(),
-        )
-        system_prompt = f"{system_prompt}\n\n{get_language_instruction()}"
-
         # 构建用户prompt - 每个已完成章节各传入最大4000字
         if previous_sections:
             previous_parts = []
@@ -1286,11 +1508,32 @@ class ReportAgent:
             previous_content = "\n\n---\n\n".join(previous_parts)
         else:
             previous_content = "（这是第一个章节）"
-        
-        user_prompt = SECTION_USER_PROMPT_TEMPLATE.format(
-            previous_content=previous_content,
-            section_title=section.title,
-        )
+
+        if self.project_type == "consumer_test":
+            system_prompt = CONSUMER_SECTION_SYSTEM_PROMPT_TEMPLATE.format(
+                report_title=outline.title,
+                report_summary=outline.summary,
+                simulation_requirement=self.simulation_requirement,
+                section_title=section.title,
+                tools_description=self._get_tools_description(),
+            )
+            user_prompt = CONSUMER_SECTION_USER_PROMPT_TEMPLATE.format(
+                previous_content=previous_content,
+                section_title=section.title,
+            )
+        else:
+            system_prompt = SECTION_SYSTEM_PROMPT_TEMPLATE.format(
+                report_title=outline.title,
+                report_summary=outline.summary,
+                simulation_requirement=self.simulation_requirement,
+                section_title=section.title,
+                tools_description=self._get_tools_description(),
+            )
+            user_prompt = SECTION_USER_PROMPT_TEMPLATE.format(
+                previous_content=previous_content,
+                section_title=section.title,
+            )
+        system_prompt = f"{system_prompt}\n\n{get_language_instruction()}"
 
         messages = [
             {"role": "system", "content": system_prompt},
@@ -2272,11 +2515,18 @@ class ReportAgent:
         except Exception as e:
             logger.warning(t('report.fetchReportFailed', error=e))
         
-        system_prompt = CHAT_SYSTEM_PROMPT_TEMPLATE.format(
-            simulation_requirement=self.simulation_requirement,
-            report_content=report_content if report_content else "（暂无报告）",
-            tools_description=self._get_tools_description(),
-        )
+        if self.project_type == "consumer_test":
+            system_prompt = CONSUMER_CHAT_SYSTEM_PROMPT_TEMPLATE.format(
+                simulation_requirement=self.simulation_requirement,
+                report_content=report_content if report_content else "（暂无报告）",
+                tools_description=self._get_tools_description(),
+            )
+        else:
+            system_prompt = CHAT_SYSTEM_PROMPT_TEMPLATE.format(
+                simulation_requirement=self.simulation_requirement,
+                report_content=report_content if report_content else "（暂无报告）",
+                tools_description=self._get_tools_description(),
+            )
         system_prompt = f"{system_prompt}\n\n{get_language_instruction()}"
 
         # 构建消息

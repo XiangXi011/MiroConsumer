@@ -215,6 +215,19 @@ test('getComparison uses GET /api/consumer/comparisons/{id}', async () => {
   assert.strictEqual(result, fake.fakeResponse)
 })
 
+test('runConsumerResearchAction posts to /api/consumer/simulations/{id}/research-actions', async () => {
+  const fake = makeFakeService()
+  const api = createConsumerApi(fake)
+  const payload = { action_type: 'deep_dive_conclusion', target: { kind: 'section', id: 'section_1' } }
+  const result = await api.runConsumerResearchAction('sim-7', payload)
+
+  assert.equal(fake.calls.length, 1)
+  assert.equal(fake.calls[0].method, 'post')
+  assert.equal(fake.calls[0].url, '/api/consumer/simulations/sim-7/research-actions')
+  assert.deepStrictEqual(fake.calls[0].data, payload)
+  assert.strictEqual(result, fake.fakeResponse)
+})
+
 test('fake service return value is returned to caller without mutation', async () => {
   const fake = makeFakeService()
   fake.fakeResponse = { custom: 'value', nested: { arr: [1, 2, 3] } }
