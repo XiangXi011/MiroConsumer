@@ -358,12 +358,14 @@ class ConsumerResearchActionService:
     def _load_report_context(cls, simulation_id: str) -> Dict[str, Any]:
         """Load a minimal report context for passing to Zep tools."""
         from ...services.consumer.report_context import ConsumerReportContextBuilder
+        from ...services.consumer.society.report_adapter import SocietyReportAdapter
         from ...repositories.filesystem import FilesystemConsumerStateRepository
 
         accessor = FilesystemConsumerStateRepository()
         snapshots = accessor.load_consumer_rounds(simulation_id)
+        society_adapter = SocietyReportAdapter()
         if not snapshots:
-            return {}
+            return society_adapter.build_report_context(simulation_id)
 
         builder = ConsumerReportContextBuilder()
         context = builder.build(snapshots)
@@ -395,7 +397,10 @@ class ConsumerResearchActionService:
             ctx = build_consumer_report_context(summary, [], all_events)
             context.update({k: v for k, v in ctx.items() if k not in context})
 
-        return context
+        return society_adapter.merge_into_context(
+            context,
+            society_adapter.build_report_context(simulation_id),
+        )
 
     @classmethod
     def _lookup_evidence(cls, report_ctx: Dict[str, Any], target: str) -> Dict[str, Any]:

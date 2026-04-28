@@ -2120,6 +2120,12 @@ class ReportAgent:
         builder = ConsumerReportContextBuilder()
         snapshots = builder.load_events(rounds_path)
         if not snapshots:
+            from .consumer.society.report_adapter import SocietyReportAdapter
+
+            society_context = SocietyReportAdapter().build_report_context(self.simulation_id)
+            if society_context.get("society_agents_count", 0) > 0:
+                society_context["replay_alignment"] = self._load_latest_replay_alignment()
+                return society_context
             raise ValueError(f"消费者传播快照不存在: {self.simulation_id}")
 
         # Phase 1 baseline context
@@ -2271,7 +2277,13 @@ class ReportAgent:
         # Phase 4A: include latest replay alignment for this simulation if available
         context["replay_alignment"] = self._load_latest_replay_alignment()
 
-        return context
+        from .consumer.society.report_adapter import SocietyReportAdapter
+
+        society_adapter = SocietyReportAdapter()
+        return society_adapter.merge_into_context(
+            context,
+            society_adapter.build_report_context(self.simulation_id),
+        )
 
     def _load_latest_replay_alignment(self) -> Dict[str, Any]:
         """Load the latest replay result for this simulation, if any."""

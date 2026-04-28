@@ -81,6 +81,8 @@
         </div>
       </div>
 
+      <SocietyRunSummary :context="societyRunContext" />
+
       <div v-if="consumerVocHighlights.length > 0" class="consumer-voc-banner">
         <div v-for="quote in consumerVocHighlights" :key="quote.bucket" class="consumer-voc-chip">
           <span class="consumer-voc-kind">{{ quote.label }}</span>
@@ -344,6 +346,7 @@ import {
   pickTopVocQuotes,
 } from '../utils/consumerMode'
 import BranchInterventionWorkspace from './consumer/BranchInterventionWorkspace.vue'
+import SocietyRunSummary from './consumer/SocietyRunSummary.vue'
 
 const { t } = useI18n()
 
@@ -421,6 +424,11 @@ const consumerMetricCards = computed(() => (
     ? buildConsumerMetricCards(consumerSummary.value, t)
     : []
 ))
+
+const societyRunContext = computed(() => ({
+  ...(consumerSummary.value || {}),
+  ...(runStatus.value || {}),
+}))
 
 const consumerVocHighlights = computed(() => (
   isConsumerMode.value && consumerSummary.value

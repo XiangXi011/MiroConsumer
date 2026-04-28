@@ -13,6 +13,7 @@ from ...repositories import BranchRepository, SimulationRepository
 from ...repositories.filesystem import FilesystemBranchRepository, FilesystemSimulationRepository
 from ...services.consumer.api_guard import ConsumerApiGuard
 from ...services.consumer.intervention_manager import InterventionType
+from ...services.consumer.society.state_store import SocietyStateStore
 from ...services.simulation_runner import SimulationRunner
 from ...utils.locale import get_locale, set_locale
 from ...utils.logger import get_logger
@@ -182,6 +183,10 @@ class BranchAppService:
         config = cls._simulation_repo.load_simulation_config(simulation_id)
         if not config:
             raise ValueError("Simulation config not found")
+        if not config.get("society_config"):
+            base_society_config = SocietyStateStore().read_config(simulation_id)
+            if base_society_config:
+                config["society_config"] = base_society_config
 
         time_config = config.get("time_config", {})
         total_hours = time_config.get("total_simulation_hours", 72)

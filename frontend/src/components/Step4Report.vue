@@ -42,6 +42,11 @@
             :branch-comparison-formatted="branchComparisonFormatted"
           />
 
+          <SocietyRunSummary
+            v-if="isConsumerMode"
+            :context="reportContext"
+          />
+
           <!-- Research Assets / Comparison Workspace -->
           <ResearchAssetWorkspace
             :project-id="projectId"
@@ -484,6 +489,7 @@ import ResearchAssetWorkspace from './consumer/ResearchAssetWorkspace.vue'
 import ComparisonWorkspace from './consumer/ComparisonWorkspace.vue'
 import ConsumerResearchActionBar from './consumer/ConsumerResearchActionBar.vue'
 import ConsumerInsightDrawer from './consumer/ConsumerInsightDrawer.vue'
+import SocietyRunSummary from './consumer/SocietyRunSummary.vue'
 import { runConsumerResearchAction } from '../api/consumer'
 import {
   normalizeConsumerResearchActionResponse,

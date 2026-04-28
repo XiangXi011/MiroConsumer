@@ -17,6 +17,7 @@ from ...repositories.filesystem import (
 )
 from ...services.consumer.api_guard import ConsumerApiGuard
 from ...services.consumer.persona_pack import load_default_persona_pack
+from ...services.consumer.society.population_models import ConsumerSocietyRunConfig
 from ...services.prepare_manifest import read_manifest
 from ...services.simulation_manager import SimulationStatus
 from ...services.simulation_runner import SimulationRunner
@@ -385,6 +386,8 @@ class SimulationAppService:
         if not state:
             raise ValueError(t("api.simulationNotFound", id=simulation_id))
 
+        society_config = cls._build_society_config(data, state)
+
         force_restarted = False
 
         if state.status != SimulationStatus.READY:
@@ -437,6 +440,7 @@ class SimulationAppService:
             max_rounds=max_rounds,
             enable_graph_memory_update=enable_graph_memory_update,
             graph_id=graph_id,
+            society_config=society_config,
         )
 
         state.status = SimulationStatus.RUNNING
@@ -449,8 +453,93 @@ class SimulationAppService:
         response_data["force_restarted"] = force_restarted
         if enable_graph_memory_update:
             response_data["graph_id"] = graph_id
+        response_data["society_config"] = society_config
 
         return response_data
+
+    @classmethod
+    def _build_society_config(cls, data: dict, state: Any) -> dict:
+        """Normalize Phase 6G society runtime config from start payload."""
+        mode = str(data.get("society_mode") or "quick").strip() or "quick"
+        if mode not in {"quick", "standard", "large_society"}:
+            raise ValueError(f"Unsupported society_mode: {mode}")
+
+        project_type = getattr(state, "project_type", "") or ""
+        has_society_payload = any(
+            key in data
+            for key in (
+                "society_mode",
+                "society_seed",
+                "society_max_agents",
+                "society_audit_sample_size",
+            )
+        )
+        if (mode != "quick" or has_society_payload) and project_type != "consumer_test":
+            raise ValueError("society runtime requires a consumer_test simulation")
+
+        enabled = os.environ.get("ENABLE_SOCIETY_MODE", "true").strip().lower() in {"1", "true", "yes"}
+        if mode in {"standard", "large_society"} and not enabled:
+            raise ValueError("ENABLE_SOCIETY_MODE must be true for standard or large_society")
+
+        max_allowed = int(os.environ.get("MAX_SOCIETY_AGENTS", "1000"))
+        max_agents = int(data.get("society_max_agents") or cls._default_society_agents(mode))
+        if max_agents > max_allowed:
+            raise ValueError(f"society_max_agents exceeds MAX_SOCIETY_AGENTS={max_allowed}")
+
+        seed = int(data.get("society_seed") or 0)
+        audit_sample_size = int(data.get("society_audit_sample_size") or cls._default_audit_sample_size(mode))
+        core, expanded, shadow = cls._split_society_agents(mode, max_agents)
+        run_config = ConsumerSocietyRunConfig(
+            mode=mode,
+            core_persona_count=core,
+            expanded_persona_count=expanded,
+            shadow_agent_count=shadow,
+            max_rounds=int(data.get("max_rounds") or 1),
+            random_seed=seed,
+            llm_budget_limit=int(data.get("llm_budget_limit") or cls._default_llm_budget(mode, max_agents)),
+            audit_sample_size=audit_sample_size,
+        )
+        payload = run_config.to_dict()
+        payload["max_agents"] = max_agents
+        return payload
+
+    @staticmethod
+    def _default_society_agents(mode: str) -> int:
+        if mode == "large_society":
+            return 1000
+        if mode == "standard":
+            return 252
+        return 8
+
+    @staticmethod
+    def _default_audit_sample_size(mode: str) -> int:
+        if mode == "large_society":
+            return 24
+        if mode == "standard":
+            return 12
+        return 0
+
+    @staticmethod
+    def _default_llm_budget(mode: str, max_agents: int) -> int:
+        if mode == "large_society":
+            return max(1, int(max_agents * 0.08))
+        if mode == "standard":
+            return 32
+        return max_agents
+
+    @staticmethod
+    def _split_society_agents(mode: str, max_agents: int) -> tuple[int, int, int]:
+        if mode == "quick":
+            return min(8, max_agents), 0, 0
+        if mode == "large_society":
+            core = min(50, max(20, int(max_agents * 0.04)))
+            expanded = min(250, max(100, int(max_agents * 0.2)))
+            shadow = max(0, max_agents - core - expanded)
+            return core, expanded, shadow
+        core = min(20, max(12, int(max_agents * 0.08)))
+        shadow = min(200, max(0, int(max_agents * 0.8)))
+        expanded = max(0, max_agents - core - shadow)
+        return core, expanded, shadow
 
     @classmethod
     def get_prepare_status(

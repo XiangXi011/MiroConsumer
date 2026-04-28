@@ -27,6 +27,9 @@ from .consumer.models import ResearchFinding
 from .consumer.orchestrator import ConsumerSimulationOrchestrator
 from .consumer.persona_pack import load_default_persona_pack, map_persona_to_agent_traits
 from .consumer.propagation_state import PropagationState, create_initial_state
+from .consumer.society.population_models import ConsumerSocietyRunConfig
+from .consumer.society.report_adapter import EMPTY_SOCIETY_CONTEXT
+from .consumer.society.society_runtime import ConsumerSocietyRuntime
 from .zep_graph_memory_updater import ZepGraphMemoryManager
 from .simulation_ipc import SimulationIPCClient, CommandType, IPCResponse
 
@@ -131,6 +134,13 @@ class SimulationRunState:
     # 平台完成状态（通过检测 actions.jsonl 中的 simulation_end 事件）
     twitter_completed: bool = False
     reddit_completed: bool = False
+
+    # Phase 6G society runtime summary
+    society_mode: str = "quick"
+    society_agents_count: int = 0
+    society_rounds_completed: int = 0
+    society_llm_budget_used: int = 0
+    society_metrics: Dict[str, Any] = field(default_factory=dict)
     
     # 每轮摘要
     rounds: List[RoundSummary] = field(default_factory=list)
@@ -184,6 +194,11 @@ class SimulationRunState:
             "twitter_actions_count": self.twitter_actions_count,
             "reddit_actions_count": self.reddit_actions_count,
             "total_actions_count": self.twitter_actions_count + self.reddit_actions_count,
+            "society_mode": self.society_mode,
+            "society_agents_count": self.society_agents_count,
+            "society_rounds_completed": self.society_rounds_completed,
+            "society_llm_budget_used": self.society_llm_budget_used,
+            "society_metrics": self.society_metrics,
             "started_at": self.started_at,
             "updated_at": self.updated_at,
             "completed_at": self.completed_at,
@@ -274,6 +289,11 @@ class SimulationRunner:
                 reddit_completed=data.get("reddit_completed", False),
                 twitter_actions_count=data.get("twitter_actions_count", 0),
                 reddit_actions_count=data.get("reddit_actions_count", 0),
+                society_mode=data.get("society_mode", "quick"),
+                society_agents_count=data.get("society_agents_count", 0),
+                society_rounds_completed=data.get("society_rounds_completed", 0),
+                society_llm_budget_used=data.get("society_llm_budget_used", 0),
+                society_metrics=data.get("society_metrics", {}),
                 started_at=data.get("started_at"),
                 updated_at=data.get("updated_at", datetime.now().isoformat()),
                 completed_at=data.get("completed_at"),
@@ -322,7 +342,8 @@ class SimulationRunner:
         platform: str = "parallel",  # twitter / reddit / parallel
         max_rounds: int = None,  # 最大模拟轮数（可选，用于截断过长的模拟）
         enable_graph_memory_update: bool = False,  # 是否将活动更新到Zep图谱
-        graph_id: str = None  # Zep图谱ID（启用图谱更新时必需）
+        graph_id: str = None,  # Zep图谱ID（启用图谱更新时必需）
+        society_config: Optional[Dict[str, Any]] = None,
     ) -> SimulationRunState:
         """
         启动模拟
@@ -351,6 +372,9 @@ class SimulationRunner:
         
         with open(config_path, 'r', encoding='utf-8') as f:
             config = json.load(f)
+        if society_config is None:
+            society_config = {"mode": "quick", "max_agents": 8}
+        config["society_config"] = dict(society_config)
         
         # 初始化运行状态
         time_config = config.get("time_config", {})
@@ -371,7 +395,10 @@ class SimulationRunner:
             total_rounds=total_rounds,
             total_simulation_hours=total_hours,
             started_at=datetime.now().isoformat(),
+            society_mode=str(society_config.get("mode", "quick")),
         )
+        if state.society_mode == "quick":
+            state.society_metrics = dict(EMPTY_SOCIETY_CONTEXT["society_metrics"])
         
         cls._save_run_state(state)
 
@@ -551,6 +578,7 @@ class SimulationRunner:
 
             research_findings: List[ResearchFinding] = []
             task_type: Optional[str] = None
+            consumer_brief: Dict[str, Any] = {}
             consumer_config_path = os.path.join(cls.RUN_STATE_DIR, simulation_id, "consumer_config.json")
             if os.path.exists(consumer_config_path):
                 with open(consumer_config_path, "r", encoding="utf-8") as f:
@@ -560,6 +588,31 @@ class SimulationRunner:
                 consumer_brief = consumer_config.get("consumer_brief") or {}
                 if isinstance(consumer_brief, dict):
                     task_type = consumer_brief.get("task_type")
+
+            society_config = dict(config.get("society_config") or {"mode": "quick"})
+            if society_config.get("mode") in {"standard", "large_society"}:
+                society_context = cls._run_society_runtime(
+                    simulation_id=simulation_id,
+                    run_id=f"{simulation_id}:base",
+                    society_config=society_config,
+                    personas=personas,
+                    consumer_brief=consumer_brief,
+                    research_findings=research_findings,
+                    max_rounds=state.total_rounds,
+                )
+                state.society_mode = society_context.get("society_mode", society_config.get("mode", "standard"))
+                state.society_agents_count = society_context.get("society_agents_count", 0)
+                state.society_rounds_completed = society_context.get("society_rounds_completed", 0)
+                state.society_llm_budget_used = society_context.get("society_llm_budget_used", 0)
+                state.society_metrics = society_context.get("society_metrics", {})
+                state.current_round = state.society_rounds_completed
+                state.reddit_current_round = state.current_round
+                state.runner_status = RunnerStatus.COMPLETED
+                state.reddit_running = False
+                state.reddit_completed = True
+                state.completed_at = datetime.now().isoformat()
+                cls._save_run_state(state)
+                return
 
             previous_attitudes: Dict[str, str] = {}
             agent_states: Dict[str, PropagationState] = {}
@@ -657,6 +710,30 @@ class SimulationRunner:
             cls._monitor_threads.pop(simulation_id, None)
 
     @classmethod
+    def _run_society_runtime(
+        cls,
+        simulation_id: str,
+        run_id: str,
+        society_config: Dict[str, Any],
+        personas: List[Dict[str, Any]],
+        consumer_brief: Dict[str, Any],
+        research_findings: List[ResearchFinding],
+        max_rounds: int,
+    ) -> Dict[str, Any]:
+        config_payload = dict(society_config)
+        config_payload["max_rounds"] = max(1, int(max_rounds or config_payload.get("max_rounds") or 1))
+        config_payload.pop("max_agents", None)
+        run_config = ConsumerSocietyRunConfig(**config_payload)
+        return ConsumerSocietyRuntime(base_dir=cls.RUN_STATE_DIR).run(
+            simulation_id=simulation_id,
+            run_id=run_id,
+            config=run_config,
+            persona_pack=personas,
+            brief_context=consumer_brief or {},
+            research_findings=research_findings,
+        )
+
+    @classmethod
     def run_branch_simulation(
         cls,
         simulation_id: str,
@@ -727,6 +804,7 @@ class SimulationRunner:
 
             research_findings: List[ResearchFinding] = []
             task_type: Optional[str] = None
+            consumer_brief: Dict[str, Any] = {}
             consumer_config_path = os.path.join(cls.RUN_STATE_DIR, simulation_id, "consumer_config.json")
             if os.path.exists(consumer_config_path):
                 with open(consumer_config_path, "r", encoding="utf-8") as f:
@@ -736,6 +814,35 @@ class SimulationRunner:
                 consumer_brief = consumer_config.get("consumer_brief") or {}
                 if isinstance(consumer_brief, dict):
                     task_type = consumer_brief.get("task_type")
+
+            society_config = dict(config.get("society_config") or {"mode": "quick"})
+            if society_config.get("mode") in {"standard", "large_society"}:
+                society_context = cls._run_society_runtime(
+                    simulation_id=simulation_id,
+                    run_id=f"{simulation_id}:{branch_id}",
+                    society_config=society_config,
+                    personas=personas,
+                    consumer_brief=consumer_brief if isinstance(consumer_brief, dict) else {},
+                    research_findings=research_findings,
+                    max_rounds=total_rounds,
+                )
+                mgr.update_branch_run_status(
+                    simulation_id,
+                    branch_id,
+                    {
+                        "status": "completed",
+                        "branch_id": branch_id,
+                        "simulation_id": simulation_id,
+                        "fork_round": fork_round,
+                        "total_rounds": total_rounds,
+                        "current_round": total_rounds,
+                        "completed_at": datetime.now().isoformat(),
+                        "society_context": society_context,
+                        "run_id": f"{simulation_id}:{branch_id}",
+                    },
+                )
+                mgr.update_branch_status(simulation_id, branch_id, "completed")
+                return
 
             previous_attitudes: Dict[str, str] = {}
             agent_states: Dict[str, PropagationState] = {}

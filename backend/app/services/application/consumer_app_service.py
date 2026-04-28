@@ -21,6 +21,7 @@ from ...repositories.filesystem import (
 from ...services.consumer.api_guard import ConsumerApiGuard
 from ...services.consumer.brief_adapter import ConsumerBriefAdapter
 from ...services.consumer.report_context import ConsumerReportContextBuilder, build_consumer_report_context
+from ...services.consumer.society.report_adapter import SocietyReportAdapter
 from ...contracts.consumer_contracts import ConfidenceSummary, FindingConfidenceSummary
 from ...services.consumer.scoring import build_consumer_summary
 from ...services.simulation_manager import SimulationManager
@@ -58,6 +59,9 @@ class ConsumerAppService:
         builder = ConsumerReportContextBuilder()
         snapshots = accessor.load_consumer_rounds(simulation_id)
         if not snapshots:
+            society_context = SocietyReportAdapter().build_report_context(simulation_id)
+            if society_context.get("society_agents_count", 0) > 0:
+                return society_context
             raise ValueError(
                 f"consumer round snapshots not found for simulation {simulation_id}"
             )
@@ -179,4 +183,5 @@ class ConsumerAppService:
             if phase2_summary.finding_confidences:
                 context["finding_confidences"] = phase2_summary.finding_confidences
 
-        return context
+        society_context = SocietyReportAdapter().build_report_context(simulation_id)
+        return SocietyReportAdapter().merge_into_context(context, society_context)
