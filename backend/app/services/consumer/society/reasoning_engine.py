@@ -167,16 +167,32 @@ class LayeredSocietyReasoningEngine:
             if isinstance(finding, dict):
                 fid = finding.get("finding_id", "")
                 claim = finding.get("claim", "")
-                supporting = finding.get("supporting_evidence", [])
+                summary = finding.get("summary")
+                display_claim = summary if summary is not None else claim
+
+                evidence_snippets = finding.get("evidence_snippets")
+                if evidence_snippets is not None:
+                    supporting = list(evidence_snippets) if evidence_snippets else []
+                else:
+                    supporting = finding.get("supporting_evidence", [])
+
                 contradicting = finding.get("contradicting_evidence", [])
-                raw_source_quality = finding.get("source_quality", "")
+                raw_source_quality = self._derive_source_quality(finding)
                 raw_confidence = finding.get("confidence", "")
             else:
                 fid = getattr(finding, "finding_id", "")
                 claim = getattr(finding, "claim", "")
-                supporting = getattr(finding, "supporting_evidence", [])
+                summary = getattr(finding, "summary", None)
+                display_claim = summary if summary is not None else claim
+
+                evidence_snippets = getattr(finding, "evidence_snippets", None)
+                if evidence_snippets is not None:
+                    supporting = list(evidence_snippets) if evidence_snippets else []
+                else:
+                    supporting = getattr(finding, "supporting_evidence", [])
+
                 contradicting = getattr(finding, "contradicting_evidence", [])
-                raw_source_quality = getattr(finding, "source_quality", "")
+                raw_source_quality = self._derive_source_quality_from_obj(finding)
                 raw_confidence = getattr(finding, "confidence", "")
 
             source_quality = self._constrain_source_quality(raw_source_quality)
@@ -184,7 +200,7 @@ class LayeredSocietyReasoningEngine:
 
             digest.append({
                 "finding_id": fid,
-                "claim": claim,
+                "claim": display_claim,
                 "supporting_evidence": list(supporting) if supporting else [],
                 "contradicting_evidence": list(contradicting) if contradicting else [],
                 "source_quality": source_quality,
@@ -193,16 +209,62 @@ class LayeredSocietyReasoningEngine:
         return digest
 
     @staticmethod
+    def _derive_source_quality(finding: Dict[str, Any]) -> Any:
+        for key in ("source_quality", "source_label", "source_id", "lane", "source_lane"):
+            val = finding.get(key, "")
+            if val:
+                return val
+        source = finding.get("source")
+        if source and isinstance(source, dict):
+            lane = source.get("lane", "")
+            if lane:
+                return lane
+        return ""
+
+    @staticmethod
+    def _derive_source_quality_from_obj(finding: Any) -> Any:
+        for key in ("source_quality", "source_label", "source_id", "lane", "source_lane"):
+            val = getattr(finding, key, "")
+            if val:
+                return val
+        source = getattr(finding, "source", None)
+        if source is not None:
+            lane = getattr(source, "lane", "")
+            if lane:
+                return lane
+        return ""
+
+    @staticmethod
     def _constrain_source_quality(value: Any) -> str:
         allowed = {"lane_a", "lane_b", "simulation", "unknown"}
         v = str(value).strip().lower() if value else ""
-        return v if v in allowed else "unknown"
+        if v in allowed:
+            return v
+        if "public_web" in v or "lane_b" in v:
+            return "lane_b"
+        if "ingested_document" in v or "brief_background" in v or "lane_a" in v:
+            return "lane_a"
+        if "auto_enrich" in v or "simulation" in v:
+            return "simulation"
+        return "unknown"
 
     @staticmethod
     def _constrain_confidence(value: Any) -> str:
         allowed = {"high", "medium", "low", "unknown"}
-        v = str(value).strip().lower() if value else ""
-        return v if v in allowed else "unknown"
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            v = str(value).strip().lower() if value else ""
+            return v if v in allowed else "unknown"
+
+        if numeric >= 0.75:
+            return "high"
+        elif numeric >= 0.45:
+            return "medium"
+        elif numeric > 0:
+            return "low"
+        else:
+            return "unknown"
 
 
 __all__ = ["LayeredSocietyReasoningEngine", "VALID_REASONING_MODES"]

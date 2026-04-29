@@ -47,3 +47,58 @@ test('VirtualFocusGroupPanel.vue supports participant roles, moderator goal, fou
   }
   assert.ok(step5.includes('VirtualFocusGroupPanel'), 'Step5Interaction must mount VirtualFocusGroupPanel')
 })
+
+// --- Phase 6J P1: VirtualFocusGroupPanel explainability convergence ---
+
+test('VirtualFocusGroupPanel.vue imports ConsumerExplainabilityPanel', () => {
+  const component = readFileSync(
+    new URL('../src/components/consumer/VirtualFocusGroupPanel.vue', import.meta.url),
+    'utf-8'
+  )
+  assert.ok(component.includes("import ConsumerExplainabilityPanel from './ConsumerExplainabilityPanel.vue'"), 'must import ConsumerExplainabilityPanel')
+})
+
+test('VirtualFocusGroupPanel.vue renders ConsumerExplainabilityPanel for focus_group responses', () => {
+  const component = readFileSync(
+    new URL('../src/components/consumer/VirtualFocusGroupPanel.vue', import.meta.url),
+    'utf-8'
+  )
+  assert.ok(component.includes('ConsumerExplainabilityPanel'), 'must render ConsumerExplainabilityPanel')
+  assert.ok(component.includes('response.reasoning_metadata') || component.includes('reasoning_metadata'), 'must derive from response reasoning_metadata')
+})
+
+test('VirtualFocusGroupPanel.vue renders ConsumerExplainabilityPanel for next_what_if_experiments modification advice', () => {
+  const component = readFileSync(
+    new URL('../src/components/consumer/VirtualFocusGroupPanel.vue', import.meta.url),
+    'utf-8'
+  )
+  assert.ok(component.includes('next_what_if_experiments'), 'must reference next_what_if_experiments')
+  assert.ok(component.includes('ConsumerExplainabilityPanel'), 'must render ConsumerExplainabilityPanel')
+})
+
+test('VirtualFocusGroupPanel.vue derives audit data from response reasoning metadata, source, context, and evidence_map', () => {
+  const component = readFileSync(
+    new URL('../src/components/consumer/VirtualFocusGroupPanel.vue', import.meta.url),
+    'utf-8'
+  )
+  assert.ok(component.includes('reasoning_metadata'), 'must reference reasoning_metadata')
+  assert.ok(component.includes('evidence_map'), 'must reference evidence_map')
+})
+
+test('VirtualFocusGroupPanel.vue uses result.evidence_map and targetContext for explainability', () => {
+  const component = readFileSync(
+    new URL('../src/components/consumer/VirtualFocusGroupPanel.vue', import.meta.url),
+    'utf-8'
+  )
+  assert.ok(component.includes('result.evidence_map') || component.includes('result'), 'must reference result evidence_map')
+  assert.ok(component.includes('targetContext') || component.includes('target_context'), 'must reference targetContext')
+})
+
+test('VirtualFocusGroupPanel.vue normalizes object-shaped evidence_map for response and what-if explainability', () => {
+  const component = readFileSync(
+    new URL('../src/components/consumer/VirtualFocusGroupPanel.vue', import.meta.url),
+    'utf-8'
+  )
+  assert.ok(component.includes('normalizeEvidenceMap'), 'must use normalizeEvidenceMap helper')
+  assert.ok(component.includes('Object.values'), 'must support object-shaped evidence_map')
+})

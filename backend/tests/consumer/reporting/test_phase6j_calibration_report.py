@@ -281,3 +281,137 @@ def test_calibration_report_branch_base_isolation():
     assert base_report.golden_flow_result == "PASS"
     assert branch_report.golden_flow_result == "BLOCKED"
     assert base_report.to_dict() != branch_report.to_dict()
+
+
+def test_phase7_passes_with_tightened_gate():
+    """Phase7 PASS requires LLM>=0.5, template<=0.3, unknown_ratio<=0.05."""
+    service = Phase6JCalibrationService()
+    report = service.build_report(
+        gatekeeping_results=[
+            EvidenceGatekeepingResult(finding_id="f1", gatekeeping_status="allowed", policy_violations=[], gatekeeping_notes="ok"),
+        ],
+        reasoning_events=[
+            {"reasoning_backend": "llm", "reasoning_summary": "a"},
+            {"reasoning_backend": "llm", "reasoning_summary": "b"},
+            {"reasoning_backend": "llm", "reasoning_summary": "c"},
+            {"reasoning_backend": "llm", "reasoning_summary": "d"},
+            {"reasoning_backend": "template", "reasoning_summary": "e"},
+        ],
+        golden_flow_checks=[{"status": "passed", "check": "flow"}],
+    )
+    assert report.reasoning_backend_coverage == 0.8
+    assert report.template_fallback_coverage == 0.2
+    assert report.unknown_recommendation_count == 0
+    assert report.phase7_entry_decision == "PASS"
+
+
+def test_phase7_blocks_when_template_too_high():
+    """Template >= 0.4 blocks even if LLM coverage is >= 0.5."""
+    service = Phase6JCalibrationService()
+    report = service.build_report(
+        gatekeeping_results=[
+            EvidenceGatekeepingResult(finding_id="f1", gatekeeping_status="allowed", policy_violations=[], gatekeeping_notes="ok"),
+        ],
+        reasoning_events=[
+            {"reasoning_backend": "llm", "reasoning_summary": "a"},
+            {"reasoning_backend": "llm", "reasoning_summary": "b"},
+            {"reasoning_backend": "llm", "reasoning_summary": "c"},
+            {"reasoning_backend": "template_fallback", "reasoning_summary": "d"},
+            {"reasoning_backend": "template_fallback", "reasoning_summary": "e"},
+        ],
+        golden_flow_checks=[{"status": "passed", "check": "flow"}],
+    )
+    assert report.reasoning_backend_coverage == 0.6
+    assert report.template_fallback_coverage == 0.4
+    assert report.phase7_entry_decision == "BLOCKED"
+
+
+def test_phase7_blocks_when_template_exceeds_thirty_percent():
+    """Template fallback above 0.3 blocks Phase 7 entry."""
+    service = Phase6JCalibrationService()
+    report = service.build_report(
+        gatekeeping_results=[
+            EvidenceGatekeepingResult(finding_id="f1", gatekeeping_status="allowed", policy_violations=[], gatekeeping_notes="ok"),
+        ],
+        reasoning_events=[
+            {"reasoning_backend": "llm", "reasoning_summary": "a"},
+            {"reasoning_backend": "llm", "reasoning_summary": "b"},
+            {"reasoning_backend": "template_fallback", "reasoning_summary": "c"},
+        ],
+        golden_flow_checks=[{"status": "passed", "check": "flow"}],
+    )
+    assert report.reasoning_backend_coverage == 0.6667
+    assert report.template_fallback_coverage == 0.3333
+    assert report.phase7_entry_decision == "BLOCKED"
+
+
+def test_phase7_blocks_when_llm_coverage_low():
+    """LLM coverage below 0.5 blocks even if template coverage is low."""
+    service = Phase6JCalibrationService()
+    report = service.build_report(
+        gatekeeping_results=[
+            EvidenceGatekeepingResult(finding_id="f1", gatekeeping_status="allowed", policy_violations=[], gatekeeping_notes="ok"),
+        ],
+        reasoning_events=[
+            {"reasoning_backend": "llm", "reasoning_summary": "a"},
+            {"reasoning_backend": "llm", "reasoning_summary": "b"},
+            {"reasoning_backend": "other", "reasoning_summary": "c"},
+            {"reasoning_backend": "other", "reasoning_summary": "d"},
+            {"reasoning_backend": "other", "reasoning_summary": "e"},
+        ],
+        golden_flow_checks=[{"status": "passed", "check": "flow"}],
+    )
+    assert report.reasoning_backend_coverage == 0.4
+    assert report.template_fallback_coverage == 0.0
+    assert report.phase7_entry_decision == "BLOCKED"
+
+
+def test_phase7_passes_with_zero_unknown():
+    """Zero unknown count trivially satisfies the unknown ratio gate."""
+    service = Phase6JCalibrationService()
+    report = service.build_report(
+        gatekeeping_results=[
+            EvidenceGatekeepingResult(finding_id="f1", gatekeeping_status="allowed", policy_violations=[], gatekeeping_notes="ok"),
+        ],
+        reasoning_events=[
+            {"reasoning_backend": "llm", "reasoning_summary": "a"},
+            {"reasoning_backend": "llm", "reasoning_summary": "b"},
+            {"reasoning_backend": "llm", "reasoning_summary": "c"},
+            {"reasoning_backend": "template", "reasoning_summary": "d"},
+        ],
+        golden_flow_checks=[{"status": "passed", "check": "flow"}],
+    )
+    assert report.unknown_recommendation_count == 0
+    assert report.phase7_entry_decision == "PASS"
+
+
+def test_phase7_passes_with_one_unknown_in_twenty():
+    """One unknown in 20 events is exactly 0.05 and should PASS."""
+    service = Phase6JCalibrationService()
+    reasoning_events = [{"reasoning_backend": "llm", "reasoning_summary": f"r{i}"} for i in range(19)]
+    reasoning_events.append({"reasoning_backend": "llm", "reasoning_summary": ""})
+    report = service.build_report(
+        gatekeeping_results=[
+            EvidenceGatekeepingResult(finding_id="f1", gatekeeping_status="allowed", policy_violations=[], gatekeeping_notes="ok"),
+        ],
+        reasoning_events=reasoning_events,
+        golden_flow_checks=[{"status": "passed", "check": "flow"}],
+    )
+    assert report.unknown_recommendation_count == 1
+    assert report.phase7_entry_decision == "PASS"
+
+
+def test_phase7_blocks_with_one_unknown_in_ten():
+    """One unknown in 10 events is 0.1 and should BLOCK."""
+    service = Phase6JCalibrationService()
+    reasoning_events = [{"reasoning_backend": "llm", "reasoning_summary": f"r{i}"} for i in range(9)]
+    reasoning_events.append({"reasoning_backend": "llm", "reasoning_summary": ""})
+    report = service.build_report(
+        gatekeeping_results=[
+            EvidenceGatekeepingResult(finding_id="f1", gatekeeping_status="allowed", policy_violations=[], gatekeeping_notes="ok"),
+        ],
+        reasoning_events=reasoning_events,
+        golden_flow_checks=[{"status": "passed", "check": "flow"}],
+    )
+    assert report.unknown_recommendation_count == 1
+    assert report.phase7_entry_decision == "BLOCKED"

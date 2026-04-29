@@ -113,6 +113,52 @@
         <div v-for="(f, idx) in consumerRiskFindings" :key="idx" class="consumer-finding-item risk">
           <span class="finding-type">{{ f.typeLabel }}</span>
           <span class="finding-text">{{ f.text }}</span>
+          <ConsumerExplainabilityPanel
+            v-if="buildExplainabilityData(f)"
+            :data="buildExplainabilityData(f)"
+          />
+        </div>
+      </div>
+    </div>
+
+    <div v-if="isConsumerMode && consumerLowConfidenceRiskFindings.length > 0" class="consumer-findings-strip">
+      <div class="consumer-findings-header">{{ $t('consumer.step4.lowConfidenceRiskFindingsTitle') }}</div>
+      <div class="consumer-findings-list">
+        <div v-for="(f, idx) in consumerLowConfidenceRiskFindings" :key="idx" class="consumer-finding-item risk">
+          <span class="finding-type">{{ f.typeLabel }}</span>
+          <span class="finding-text">{{ f.text }}</span>
+          <ConsumerExplainabilityPanel
+            v-if="buildExplainabilityData(f)"
+            :data="buildExplainabilityData(f)"
+          />
+        </div>
+      </div>
+    </div>
+
+    <div v-if="isConsumerMode && consumerFindingsRequiringMoreEvidence.length > 0" class="consumer-findings-strip">
+      <div class="consumer-findings-header">{{ $t('consumer.step4.findingsRequiringMoreEvidenceTitle') }}</div>
+      <div class="consumer-findings-list">
+        <div v-for="(f, idx) in consumerFindingsRequiringMoreEvidence" :key="idx" class="consumer-finding-item">
+          <span class="finding-type">{{ f.typeLabel }}</span>
+          <span class="finding-text">{{ f.text }}</span>
+          <ConsumerExplainabilityPanel
+            v-if="buildExplainabilityData(f)"
+            :data="buildExplainabilityData(f)"
+          />
+        </div>
+      </div>
+    </div>
+
+    <div v-if="isConsumerMode && consumerCausalVocQuotes.length > 0" class="consumer-voc-strip">
+      <div class="consumer-voc-header">{{ $t('consumer.step4.causalVocQuotesTitle') }}</div>
+      <div class="consumer-voc-list">
+        <div v-for="(q, idx) in consumerCausalVocQuotes" :key="idx" class="consumer-voc-item">
+          <span class="consumer-voc-bucket">{{ q.bucket }}</span>
+          <span class="consumer-voc-text">"{{ q.quote }}"</span>
+          <ConsumerExplainabilityPanel
+            v-if="buildExplainabilityData(q)"
+            :data="buildExplainabilityData(q)"
+          />
         </div>
       </div>
     </div>
@@ -407,8 +453,97 @@
 <script setup>
 import { useI18n } from 'vue-i18n'
 import { getConfidenceBadgeClass, getConfidenceLabelText } from '../../utils/consumerMode'
+import ConsumerExplainabilityPanel from './ConsumerExplainabilityPanel.vue'
 
 const { t } = useI18n()
+
+function buildExplainabilityData(item) {
+  if (!item) return null
+  const out = {}
+
+  if (item.explainability) {
+    Object.assign(out, item.explainability)
+  }
+
+  if (item.audit) {
+    if (item.audit.evidence_validation_summary) {
+      out.evidence_validation_result = item.audit.evidence_validation_summary.overall_status || 'unknown'
+    }
+    if (item.audit.evidence_gatekeeping_summary) {
+      const gk = item.audit.evidence_gatekeeping_summary
+      const blocked = gk.blocked_count || 0
+      out.evidence_gatekeeping_result = blocked > 0 ? 'BLOCKED' : 'PASS'
+    }
+    if (item.audit.confidence !== undefined) {
+      out.confidence = item.audit.confidence
+    }
+  }
+
+  if (item.reasoningMetadata) {
+    if (item.reasoningMetadata.llm_invoked !== undefined) {
+      out.llm_invoked = item.reasoningMetadata.llm_invoked
+    }
+    if (item.reasoningMetadata.reasoning_backend) {
+      out.reasoning_backend = item.reasoningMetadata.reasoning_backend
+    }
+    if (item.reasoningMetadata.reasoning_error) {
+      out.reasoning_error = item.reasoningMetadata.reasoning_error
+    }
+  }
+
+  if (item.evidence) {
+    const srcCount = Number(item.evidence.source_count || 0)
+    const simCount = Number(item.evidence.simulation_quote_count || 0)
+    if (!out.source_type) {
+      if (srcCount > 0 && simCount > 0) {
+        out.source_type = 'mixed'
+      } else if (simCount > 0) {
+        out.source_type = 'simulation'
+      } else if (srcCount > 0) {
+        out.source_type = 'material'
+      }
+    }
+    if (!out.source_visibility) {
+      out.source_visibility = item.evidence.support_level || 'unknown'
+    }
+  }
+
+  if (item.support) {
+    if (!out.source_visibility) {
+      out.source_visibility = item.support
+    }
+  }
+
+  if (item.supportLevel) {
+    if (!out.source_visibility) {
+      out.source_visibility = item.supportLevel
+    }
+    if (!out.evidence_validation_result) {
+      out.evidence_validation_result = item.supportLevel
+    }
+    if (!out.evidence_gatekeeping_result) {
+      out.evidence_gatekeeping_result = item.supportLevel === 'supported'
+        ? 'PASS'
+        : item.supportLevel === 'weak_support'
+          ? 'downgraded'
+          : 'BLOCKED'
+    }
+  }
+
+  if (item.sourceLabel || item.sourceId) {
+    if (!out.source_visibility) {
+      out.source_visibility = item.sourceLabel || item.sourceId
+    }
+    if (!out.source_type) {
+      const sourceText = `${item.sourceLabel || ''} ${item.sourceId || ''}`.toLowerCase()
+      out.source_type = sourceText.includes('simulation') || sourceText.includes('auto_enrich')
+        ? 'simulation'
+        : 'material'
+    }
+  }
+
+  return Object.keys(out).length > 0 ? out : null
+}
 
 defineProps({
   reportId: String,
@@ -444,6 +579,9 @@ defineProps({
   consumerPriceObjections: { type: Array, default: () => [] },
   consumerPriceContext: String,
   branchComparisonFormatted: Object,
+  consumerLowConfidenceRiskFindings: { type: Array, default: () => [] },
+  consumerFindingsRequiringMoreEvidence: { type: Array, default: () => [] },
+  consumerCausalVocQuotes: { type: Array, default: () => [] },
 })
 </script>
 

@@ -40,6 +40,9 @@
             :consumer-price-objections="consumerPriceObjections"
             :consumer-price-context="consumerPriceContext"
             :branch-comparison-formatted="branchComparisonFormatted"
+            :consumer-low-confidence-risk-findings="consumerLowConfidenceRiskFindings"
+            :consumer-findings-requiring-more-evidence="consumerFindingsRequiringMoreEvidence"
+            :consumer-causal-voc-quotes="consumerCausalVocQuotes"
           />
 
           <SocietyRunSummary
@@ -642,6 +645,63 @@ const consumerRiskFindings = computed(() => {
   return (reportContext.value.top_risk_findings || []).map(f => ({
     typeLabel: f.finding_type || '',
     text: f.summary || '',
+    source: f.source || null,
+    sourceId: f.source_id || '',
+    sourceLabel: f.source_label || '',
+    evidence: f.evidence || null,
+    support: f.support || null,
+    supportLevel: f.support_level || f.evidence?.support_level || '',
+    explainability: f.explainability || null,
+    audit: f.audit || null,
+    reasoningMetadata: f.reasoning_metadata || null,
+  }))
+})
+
+const consumerLowConfidenceRiskFindings = computed(() => {
+  if (!isConsumerMode.value) return []
+  return (reportContext.value.low_confidence_risk_findings || []).map(f => ({
+    typeLabel: f.finding_type || '',
+    text: f.summary || '',
+    source: f.source || null,
+    sourceId: f.source_id || '',
+    sourceLabel: f.source_label || '',
+    evidence: f.evidence || null,
+    support: f.support || null,
+    supportLevel: f.support_level || f.evidence?.support_level || '',
+    explainability: f.explainability || null,
+    audit: f.audit || null,
+    reasoningMetadata: f.reasoning_metadata || null,
+  }))
+})
+
+const consumerFindingsRequiringMoreEvidence = computed(() => {
+  if (!isConsumerMode.value) return []
+  return (reportContext.value.findings_requiring_more_evidence || []).map(f => ({
+    typeLabel: f.finding_type || '',
+    text: f.summary || '',
+    source: f.source || null,
+    sourceId: f.source_id || '',
+    sourceLabel: f.source_label || '',
+    evidence: f.evidence || null,
+    support: f.support || null,
+    supportLevel: f.support_level || f.evidence?.support_level || '',
+    explainability: f.explainability || null,
+    audit: f.audit || null,
+    reasoningMetadata: f.reasoning_metadata || null,
+  }))
+})
+
+const consumerCausalVocQuotes = computed(() => {
+  if (!isConsumerMode.value) return []
+  return (reportContext.value.causal_voc_quotes || []).map(q => ({
+    quote: q.quote || '',
+    bucket: q.bucket || '',
+    source: q.source || null,
+    sourceId: q.source_id || '',
+    sourceLabel: q.source_label || '',
+    explainability: q.explainability || null,
+    audit: q.audit || null,
+    reasoningMetadata: q.reasoning_metadata || null,
   }))
 })
 

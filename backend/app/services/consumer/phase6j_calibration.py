@@ -134,7 +134,7 @@ class Phase6JCalibrationService:
         if not golden_flow_checks:
             golden_flow_result = "BLOCKED"
 
-        # Phase 7 entry decision: all gates must pass
+        # Phase 7 entry decision: tightened P0 gates
         phase7_entry_decision: Literal["PASS", "BLOCKED"] = "PASS"
         if golden_flow_result == "BLOCKED":
             phase7_entry_decision = "BLOCKED"
@@ -142,8 +142,11 @@ class Phase6JCalibrationService:
             phase7_entry_decision = "BLOCKED"
         elif total_reasoning == 0:
             phase7_entry_decision = "BLOCKED"
-        elif total_reasoning > 0 and reasoning_backend_coverage < 0.5 and template_fallback_coverage < 0.5:
-            # If no backend is covering at least 50% of reasoning events, block
+        elif reasoning_backend_coverage < 0.5:
+            phase7_entry_decision = "BLOCKED"
+        elif template_fallback_coverage > 0.3:
+            phase7_entry_decision = "BLOCKED"
+        elif total_reasoning > 0 and (unknown_count / total_reasoning) > 0.05:
             phase7_entry_decision = "BLOCKED"
 
         return Phase6JCalibrationReport(

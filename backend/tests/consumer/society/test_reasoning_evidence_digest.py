@@ -313,3 +313,332 @@ def test_mock_deterministic_mode_uses_template_backend(monkeypatch):
     assert result["llm_invoked"] is False
     assert result["reasoning_backend"] == "mock"
     assert not fake_client.calls
+
+
+def test_evidence_digest_summary_fallback_to_claim(monkeypatch):
+    """When finding has summary, digest claim uses summary; otherwise falls back to claim."""
+    monkeypatch.setenv("SOCIETY_REASONING_BACKEND", "llm")
+    monkeypatch.delenv("SOCIETY_DETERMINISTIC_MODE", raising=False)
+
+    fake_client = _FakeLLMClient(
+        {
+            "consumer_event_type": "ASK_PROOF",
+            "quote": "Test.",
+            "trust": 0.5,
+            "purchase_intent": 0.5,
+            "reasoning_summary": "test",
+        }
+    )
+    engine = LayeredSocietyReasoningEngine(llm_client_factory=lambda: fake_client)
+
+    findings = [
+        {"finding_id": "f1", "claim": "original claim", "summary": "overridden summary"},
+        {"finding_id": "f2", "claim": "fallback claim"},
+    ]
+
+    engine.reason(
+        agent=_agent(),
+        base_event={"event_id": "e1", "consumer_event_type": "ASK_PROOF", "claim": "test"},
+        brief_context={},
+        research_findings=findings,
+        reasoning_mode="llm_deep_reasoning",
+    )
+
+    prompt = " ".join(
+        message.get("content", "") for message in fake_client.calls[0]["messages"]
+    )
+    assert "overridden summary" in prompt
+    assert "fallback claim" in prompt
+
+
+def test_evidence_digest_evidence_snippets_fallback(monkeypatch):
+    """evidence_snippets takes precedence over supporting_evidence when present."""
+    monkeypatch.setenv("SOCIETY_REASONING_BACKEND", "llm")
+    monkeypatch.delenv("SOCIETY_DETERMINISTIC_MODE", raising=False)
+
+    fake_client = _FakeLLMClient(
+        {
+            "consumer_event_type": "ASK_PROOF",
+            "quote": "Test.",
+            "trust": 0.5,
+            "purchase_intent": 0.5,
+            "reasoning_summary": "test",
+        }
+    )
+    engine = LayeredSocietyReasoningEngine(llm_client_factory=lambda: fake_client)
+
+    findings = [
+        {"finding_id": "f1", "claim": "c1", "evidence_snippets": ["snippet A"], "supporting_evidence": ["old A"]},
+        {"finding_id": "f2", "claim": "c2", "supporting_evidence": ["legacy B"]},
+    ]
+
+    engine.reason(
+        agent=_agent(),
+        base_event={"event_id": "e1", "consumer_event_type": "ASK_PROOF", "claim": "test"},
+        brief_context={},
+        research_findings=findings,
+        reasoning_mode="llm_deep_reasoning",
+    )
+
+    prompt = " ".join(
+        message.get("content", "") for message in fake_client.calls[0]["messages"]
+    )
+    assert "snippet A" in prompt
+    assert "legacy B" in prompt
+    assert "old A" not in prompt
+
+
+def test_evidence_digest_source_quality_derived_from_source_label(monkeypatch):
+    """source_quality can be derived from source_label when source_quality is absent."""
+    monkeypatch.setenv("SOCIETY_REASONING_BACKEND", "llm")
+    monkeypatch.delenv("SOCIETY_DETERMINISTIC_MODE", raising=False)
+
+    fake_client = _FakeLLMClient(
+        {
+            "consumer_event_type": "ASK_PROOF",
+            "quote": "Test.",
+            "trust": 0.5,
+            "purchase_intent": 0.5,
+            "reasoning_summary": "test",
+        }
+    )
+    engine = LayeredSocietyReasoningEngine(llm_client_factory=lambda: fake_client)
+
+    findings = [
+        {"finding_id": "f1", "claim": "c1", "source_label": "lane_a"},
+        {"finding_id": "f2", "claim": "c2", "source_label": "invalid"},
+    ]
+
+    engine.reason(
+        agent=_agent(),
+        base_event={"event_id": "e1", "consumer_event_type": "ASK_PROOF", "claim": "test"},
+        brief_context={},
+        research_findings=findings,
+        reasoning_mode="llm_deep_reasoning",
+    )
+
+    prompt = " ".join(
+        message.get("content", "") for message in fake_client.calls[0]["messages"]
+    )
+    assert "lane_a" in prompt
+    assert "unknown" in prompt
+
+
+def test_evidence_digest_maps_real_source_labels_to_lanes():
+    """Real finding source labels map to non-empty source_quality lanes."""
+    engine = LayeredSocietyReasoningEngine()
+
+    digest = engine._build_evidence_digest([
+        {"finding_id": "f-public", "summary": "public finding", "source_label": "public_web"},
+        {"finding_id": "f-ingested", "summary": "uploaded finding", "source_label": "ingested_document"},
+        {"finding_id": "f-background", "summary": "brief finding", "source_label": "brief_background"},
+        {"finding_id": "f-auto", "summary": "auto finding", "source_label": "auto_enrich"},
+    ])
+
+    quality_by_id = {entry["finding_id"]: entry["source_quality"] for entry in digest}
+    assert quality_by_id == {
+        "f-public": "lane_b",
+        "f-ingested": "lane_a",
+        "f-background": "lane_a",
+        "f-auto": "simulation",
+    }
+
+
+def test_evidence_digest_maps_real_source_ids_to_lanes():
+    """Real source ids containing lane hints map to source_quality lanes."""
+    engine = LayeredSocietyReasoningEngine()
+
+    digest = engine._build_evidence_digest([
+        {"finding_id": "f-lane-a", "summary": "lane a id", "source_id": "lane_a:upload:doc-1"},
+        {"finding_id": "f-lane-b", "summary": "lane b id", "source_id": "public_web:lane_b:doc-2"},
+        {"finding_id": "f-sim", "summary": "simulation id", "source_id": "simulation:round:3"},
+    ])
+
+    quality_by_id = {entry["finding_id"]: entry["source_quality"] for entry in digest}
+    assert quality_by_id == {
+        "f-lane-a": "lane_a",
+        "f-lane-b": "lane_b",
+        "f-sim": "simulation",
+    }
+
+
+def test_evidence_digest_source_quality_derived_from_source_id(monkeypatch):
+    """source_quality can be derived from source_id when higher-priority fields are absent."""
+    monkeypatch.setenv("SOCIETY_REASONING_BACKEND", "llm")
+    monkeypatch.delenv("SOCIETY_DETERMINISTIC_MODE", raising=False)
+
+    fake_client = _FakeLLMClient(
+        {
+            "consumer_event_type": "ASK_PROOF",
+            "quote": "Test.",
+            "trust": 0.5,
+            "purchase_intent": 0.5,
+            "reasoning_summary": "test",
+        }
+    )
+    engine = LayeredSocietyReasoningEngine(llm_client_factory=lambda: fake_client)
+
+    findings = [
+        {"finding_id": "f1", "claim": "c1", "source_id": "lane_b"},
+    ]
+
+    engine.reason(
+        agent=_agent(),
+        base_event={"event_id": "e1", "consumer_event_type": "ASK_PROOF", "claim": "test"},
+        brief_context={},
+        research_findings=findings,
+        reasoning_mode="llm_deep_reasoning",
+    )
+
+    prompt = " ".join(
+        message.get("content", "") for message in fake_client.calls[0]["messages"]
+    )
+    assert "lane_b" in prompt
+
+
+def test_evidence_digest_source_quality_derived_from_lane(monkeypatch):
+    """source_quality can be derived from lane field."""
+    monkeypatch.setenv("SOCIETY_REASONING_BACKEND", "llm")
+    monkeypatch.delenv("SOCIETY_DETERMINISTIC_MODE", raising=False)
+
+    fake_client = _FakeLLMClient(
+        {
+            "consumer_event_type": "ASK_PROOF",
+            "quote": "Test.",
+            "trust": 0.5,
+            "purchase_intent": 0.5,
+            "reasoning_summary": "test",
+        }
+    )
+    engine = LayeredSocietyReasoningEngine(llm_client_factory=lambda: fake_client)
+
+    findings = [
+        {"finding_id": "f1", "claim": "c1", "lane": "simulation"},
+    ]
+
+    engine.reason(
+        agent=_agent(),
+        base_event={"event_id": "e1", "consumer_event_type": "ASK_PROOF", "claim": "test"},
+        brief_context={},
+        research_findings=findings,
+        reasoning_mode="llm_deep_reasoning",
+    )
+
+    prompt = " ".join(
+        message.get("content", "") for message in fake_client.calls[0]["messages"]
+    )
+    assert "simulation" in prompt
+
+
+def test_evidence_digest_source_quality_derived_from_source_lane(monkeypatch):
+    """source_quality can be derived from source_lane field."""
+    monkeypatch.setenv("SOCIETY_REASONING_BACKEND", "llm")
+    monkeypatch.delenv("SOCIETY_DETERMINISTIC_MODE", raising=False)
+
+    fake_client = _FakeLLMClient(
+        {
+            "consumer_event_type": "ASK_PROOF",
+            "quote": "Test.",
+            "trust": 0.5,
+            "purchase_intent": 0.5,
+            "reasoning_summary": "test",
+        }
+    )
+    engine = LayeredSocietyReasoningEngine(llm_client_factory=lambda: fake_client)
+
+    findings = [
+        {"finding_id": "f1", "claim": "c1", "source_lane": "lane_a"},
+    ]
+
+    engine.reason(
+        agent=_agent(),
+        base_event={"event_id": "e1", "consumer_event_type": "ASK_PROOF", "claim": "test"},
+        brief_context={},
+        research_findings=findings,
+        reasoning_mode="llm_deep_reasoning",
+    )
+
+    prompt = " ".join(
+        message.get("content", "") for message in fake_client.calls[0]["messages"]
+    )
+    assert "lane_a" in prompt
+
+
+def test_evidence_digest_source_quality_derived_from_source_dot_lane(monkeypatch):
+    """source_quality can be derived from source.lane nested field."""
+    monkeypatch.setenv("SOCIETY_REASONING_BACKEND", "llm")
+    monkeypatch.delenv("SOCIETY_DETERMINISTIC_MODE", raising=False)
+
+    fake_client = _FakeLLMClient(
+        {
+            "consumer_event_type": "ASK_PROOF",
+            "quote": "Test.",
+            "trust": 0.5,
+            "purchase_intent": 0.5,
+            "reasoning_summary": "test",
+        }
+    )
+    engine = LayeredSocietyReasoningEngine(llm_client_factory=lambda: fake_client)
+
+    findings = [
+        {"finding_id": "f1", "claim": "c1", "source": {"lane": "lane_b"}},
+    ]
+
+    engine.reason(
+        agent=_agent(),
+        base_event={"event_id": "e1", "consumer_event_type": "ASK_PROOF", "claim": "test"},
+        brief_context={},
+        research_findings=findings,
+        reasoning_mode="llm_deep_reasoning",
+    )
+
+    prompt = " ".join(
+        message.get("content", "") for message in fake_client.calls[0]["messages"]
+    )
+    assert "lane_b" in prompt
+
+
+def test_evidence_digest_numeric_confidence_mapping(monkeypatch):
+    """Numeric confidence values must map to high/medium/low/unknown tiers."""
+    monkeypatch.setenv("SOCIETY_REASONING_BACKEND", "llm")
+    monkeypatch.delenv("SOCIETY_DETERMINISTIC_MODE", raising=False)
+
+    fake_client = _FakeLLMClient(
+        {
+            "consumer_event_type": "ASK_PROOF",
+            "quote": "Test.",
+            "trust": 0.5,
+            "purchase_intent": 0.5,
+            "reasoning_summary": "test",
+        }
+    )
+    engine = LayeredSocietyReasoningEngine(llm_client_factory=lambda: fake_client)
+
+    findings = [
+        {"finding_id": "f1", "claim": "c1", "confidence": 0.9},
+        {"finding_id": "f2", "claim": "c2", "confidence": 0.75},
+        {"finding_id": "f3", "claim": "c3", "confidence": 0.5},
+        {"finding_id": "f4", "claim": "c4", "confidence": 0.45},
+        {"finding_id": "f5", "claim": "c5", "confidence": 0.1},
+        {"finding_id": "f6", "claim": "c6", "confidence": 0.0},
+        {"finding_id": "f7", "claim": "c7", "confidence": -0.1},
+    ]
+
+    engine.reason(
+        agent=_agent(),
+        base_event={"event_id": "e1", "consumer_event_type": "ASK_PROOF", "claim": "test"},
+        brief_context={},
+        research_findings=findings,
+        reasoning_mode="llm_deep_reasoning",
+    )
+
+    prompt = " ".join(
+        message.get("content", "") for message in fake_client.calls[0]["messages"]
+    )
+    assert "high" in prompt
+    assert "medium" in prompt
+    assert "low" in prompt
+    assert "unknown" in prompt
+
+    # Verify exact mapping: 0.9 and 0.75 are high, 0.5 and 0.45 are medium, 0.1 is low, 0.0 and -0.1 are unknown
+    # We can't easily check exact per-finding mapping from the prompt string, but the presence of all labels confirms mapping

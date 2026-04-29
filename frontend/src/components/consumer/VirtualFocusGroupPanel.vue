@@ -57,13 +57,19 @@
             <span class="turn-speaker">{{ turn.agent_id || 'Moderator' }}</span>
           </div>
           <div v-if="turn.responses" class="turn-responses">
-            <p
+            <div
               v-for="response in turn.responses"
               :key="`${idx}-${response.agent_id}-${response.role}`"
-              class="turn-text"
+              class="turn-response-block"
             >
-              <strong>{{ response.role }}</strong>: {{ response.response }}
-            </p>
+              <p class="turn-text">
+                <strong>{{ response.role }}</strong>: {{ response.response }}
+              </p>
+              <ConsumerExplainabilityPanel
+                v-if="buildExplainabilityData(response)"
+                :data="buildExplainabilityData(response)"
+              />
+            </div>
           </div>
           <p v-else class="turn-text">{{ turn.text }}</p>
         </div>
@@ -108,8 +114,16 @@
     <!-- what-if-output -->
     <div v-if="result && result.next_what_if_experiments" class="focus-section what-if-output">
       <span class="section-label">What-if</span>
-      <div class="what-if-card">
-        <p v-for="item in result.next_what_if_experiments" :key="item">{{ item }}</p>
+      <div
+        v-for="(item, idx) in result.next_what_if_experiments"
+        :key="idx"
+        class="what-if-card"
+      >
+        <p>{{ item }}</p>
+        <ConsumerExplainabilityPanel
+          v-if="buildWhatIfExplainabilityData(item, idx)"
+          :data="buildWhatIfExplainabilityData(item, idx)"
+        />
       </div>
     </div>
   </section>
@@ -122,6 +136,7 @@ import {
   buildFocusGroupRequest,
 } from '../../utils/consumerInterview'
 import { runFocusGroup as apiRunFocusGroup } from '../../api/consumer'
+import ConsumerExplainabilityPanel from './ConsumerExplainabilityPanel.vue'
 
 const props = defineProps({
   simulationId: { type: String, default: '' },
@@ -143,6 +158,94 @@ function toggleRole(role) {
     next.add(role)
   }
   selectedRoles.value = next
+}
+
+function buildExplainabilityData(response) {
+  if (!response) return null
+  const out = {}
+
+  if (response.reasoning_metadata) {
+    if (response.reasoning_metadata.llm_invoked !== undefined) {
+      out.llm_invoked = response.reasoning_metadata.llm_invoked
+    }
+    if (response.reasoning_metadata.reasoning_backend) {
+      out.reasoning_backend = response.reasoning_metadata.reasoning_backend
+    }
+    if (response.reasoning_metadata.reasoning_error) {
+      out.reasoning_error = response.reasoning_metadata.reasoning_error
+    }
+  }
+
+  if (response.source) {
+    if (!out.source_type) {
+      out.source_type = response.source
+    }
+  }
+
+  if (response.context) {
+    if (!out.source_visibility && response.context.support_level) {
+      out.source_visibility = response.context.support_level
+    }
+  }
+
+  if (response.evidence_map) {
+    const em = normalizeEvidenceMap(response.evidence_map)
+    if (em.length > 0) {
+      if (!out.source_visibility) {
+        out.source_visibility = em[0].support_level || 'unknown'
+      }
+      if (!out.source_type) {
+        const hasMaterial = em.some(e => e.source_type === 'material')
+        const hasSimulation = em.some(e => e.source_type === 'simulation')
+        if (hasMaterial && hasSimulation) {
+          out.source_type = 'mixed'
+        } else if (hasSimulation) {
+          out.source_type = 'simulation'
+        } else if (hasMaterial) {
+          out.source_type = 'material'
+        }
+      }
+    }
+  }
+
+  return Object.keys(out).length > 0 ? out : null
+}
+
+function buildWhatIfExplainabilityData(item, idx) {
+  if (!result.value) return null
+  const out = {}
+
+  if (result.value.evidence_map) {
+    const em = normalizeEvidenceMap(result.value.evidence_map)
+    if (em[idx]) {
+      if (em[idx].support_level) {
+        out.source_visibility = em[idx].support_level
+      }
+      if (em[idx].agent_id) {
+        out.reasoning_backend = em[idx].agent_id
+      }
+    }
+  }
+
+  if (props.targetContext) {
+    if (!out.source_type && props.targetContext.branch_id) {
+      out.source_type = 'material'
+    }
+    if (props.targetContext.simulation_id) {
+      if (!out.source_type) {
+        out.source_type = 'simulation'
+      }
+    }
+  }
+
+  return Object.keys(out).length > 0 ? out : null
+}
+
+function normalizeEvidenceMap(evidenceMap) {
+  if (!evidenceMap) return []
+  if (Array.isArray(evidenceMap)) return evidenceMap
+  if (typeof evidenceMap === 'object') return Object.values(evidenceMap)
+  return []
 }
 
 async function runFocusGroup() {
@@ -303,6 +406,18 @@ async function runFocusGroup() {
 .turn-speaker {
   font-size: 11px;
   color: #9CA3AF;
+}
+
+.turn-response-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 0;
+  border-bottom: 1px solid #F3F4F6;
+}
+
+.turn-response-block:last-child {
+  border-bottom: none;
 }
 
 .turn-text {
