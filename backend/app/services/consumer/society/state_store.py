@@ -39,11 +39,64 @@ class SocietyStateStore:
     def write_metrics(self, simulation_id: str, metrics: Mapping[str, Any]) -> None:
         self._write_json(self.society_dir(simulation_id) / "society_metrics.json", dict(metrics))
 
+    def write_channel_assignments(
+        self,
+        simulation_id: str,
+        assignments: Mapping[str, Iterable[str]],
+    ) -> None:
+        self._write_json(
+            self.society_dir(simulation_id) / "channel_assignments.json",
+            {channel_id: list(agent_ids) for channel_id, agent_ids in assignments.items()},
+        )
+
+    def write_channel_metrics(self, simulation_id: str, metrics: Mapping[str, Any]) -> None:
+        self._write_json(self.society_dir(simulation_id) / "channel_metrics.json", dict(metrics))
+
+    def write_channel_events(self, simulation_id: str, events: Iterable[Mapping[str, Any]]) -> None:
+        path = self.society_dir(simulation_id) / "channel_events.jsonl"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w", encoding="utf-8") as f:
+            for event in events:
+                f.write(json.dumps(dict(event), ensure_ascii=False, sort_keys=True) + "\n")
+
+    def write_propagation_paths(
+        self,
+        simulation_id: str,
+        paths: Iterable[Mapping[str, Any]],
+    ) -> None:
+        self._write_json(
+            self.society_dir(simulation_id) / "propagation_paths.json",
+            [dict(path) for path in paths],
+        )
+
     def read_metrics(self, simulation_id: str) -> Dict[str, Any]:
         path = self.society_dir(simulation_id) / "society_metrics.json"
         if not path.exists():
             return {}
         return json.loads(path.read_text(encoding="utf-8"))
+
+    def read_channel_metrics(self, simulation_id: str) -> Dict[str, Any]:
+        path = self.society_dir(simulation_id) / "channel_metrics.json"
+        if not path.exists():
+            return {}
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    def read_channel_events(self, simulation_id: str) -> List[Dict[str, Any]]:
+        path = self.society_dir(simulation_id) / "channel_events.jsonl"
+        if not path.exists():
+            return []
+        return [
+            json.loads(line)
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+
+    def read_propagation_paths(self, simulation_id: str) -> List[Dict[str, Any]]:
+        path = self.society_dir(simulation_id) / "propagation_paths.json"
+        if not path.exists():
+            return []
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        return payload if isinstance(payload, list) else []
 
     def read_config(self, simulation_id: str) -> Dict[str, Any]:
         path = self.society_dir(simulation_id) / "society_config.json"

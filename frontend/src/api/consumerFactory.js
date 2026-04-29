@@ -7,6 +7,18 @@ export function createConsumerApi(service) {
       return service.get(`/api/consumer/simulation/${simulationId}/consumer-summary`)
     },
 
+    getChannelSummary(simulationId) {
+      return service.get(`/api/consumer/simulations/${simulationId}/channel-summary`)
+    },
+
+    getChannelEvents(simulationId) {
+      return service.get(`/api/consumer/simulations/${simulationId}/channel-events`)
+    },
+
+    getPropagationPaths(simulationId) {
+      return service.get(`/api/consumer/simulations/${simulationId}/propagation-paths`)
+    },
+
     listBranches(simulationId) {
       return service.get(`/api/consumer/simulations/${simulationId}/branches`)
     },

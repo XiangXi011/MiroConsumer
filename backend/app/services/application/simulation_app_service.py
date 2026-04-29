@@ -17,6 +17,7 @@ from ...repositories.filesystem import (
 )
 from ...services.consumer.api_guard import ConsumerApiGuard
 from ...services.consumer.persona_pack import load_default_persona_pack
+from ...services.consumer.society.channel_policy import validate_enabled_channels
 from ...services.consumer.society.population_models import ConsumerSocietyRunConfig
 from ...services.prepare_manifest import read_manifest
 from ...services.simulation_manager import SimulationStatus
@@ -472,6 +473,8 @@ class SimulationAppService:
                 "society_seed",
                 "society_max_agents",
                 "society_audit_sample_size",
+                "enabled_channels",
+                "channel_seed",
             )
         )
         if (mode != "quick" or has_society_payload) and project_type != "consumer_test":
@@ -487,6 +490,8 @@ class SimulationAppService:
             raise ValueError(f"society_max_agents exceeds MAX_SOCIETY_AGENTS={max_allowed}")
 
         seed = int(data.get("society_seed") or 0)
+        enabled_channels = validate_enabled_channels(data.get("enabled_channels"), mode)
+        channel_seed = int(data.get("channel_seed") if data.get("channel_seed") is not None else seed)
         audit_sample_size = int(data.get("society_audit_sample_size") or cls._default_audit_sample_size(mode))
         core, expanded, shadow = cls._split_society_agents(mode, max_agents)
         run_config = ConsumerSocietyRunConfig(
@@ -498,6 +503,8 @@ class SimulationAppService:
             random_seed=seed,
             llm_budget_limit=int(data.get("llm_budget_limit") or cls._default_llm_budget(mode, max_agents)),
             audit_sample_size=audit_sample_size,
+            enabled_channels=enabled_channels,
+            channel_seed=channel_seed,
         )
         payload = run_config.to_dict()
         payload["max_agents"] = max_agents

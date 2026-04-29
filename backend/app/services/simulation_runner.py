@@ -723,6 +723,7 @@ class SimulationRunner:
         config_payload = dict(society_config)
         config_payload["max_rounds"] = max(1, int(max_rounds or config_payload.get("max_rounds") or 1))
         config_payload.pop("max_agents", None)
+        config_payload.pop("llm_budget_used", None)
         run_config = ConsumerSocietyRunConfig(**config_payload)
         return ConsumerSocietyRuntime(base_dir=cls.RUN_STATE_DIR).run(
             simulation_id=simulation_id,

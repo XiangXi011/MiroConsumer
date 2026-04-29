@@ -881,6 +881,7 @@ CONSUMER_PLAN_SYSTEM_PROMPT = """\
 【报告定位】
 - 聚焦于消费者反应、可传播卖点、质疑与误读、信任衰减、信任修复、证据影响
 - 关注下一轮预发布What-if实验的设计方向
+- 必须读取 Phase 6H channel context，并输出 best_launch_channel、highest_misread_channel、highest_evidence_demand_channel、highest_price_resistance_channel、KOL 种草渠道、expert_endorsement_channel
 - 消费者Agent的言行反映目标人群在特定条件下的真实反应模式
 - 不是泛泛的市场综述，而是基于模拟数据的精准洞察
 
@@ -922,6 +923,7 @@ CONSUMER_PLAN_USER_PROMPT_TEMPLATE = """\
 3. 信任衰减和信任修复的路径分别是什么？
 4. 证据（如声明、数据）对消费者态度产生了什么影响？
 5. 下一轮预发布What-if实验应该聚焦哪些方向？
+6. best_launch_channel、highest_misread_channel、highest_evidence_demand_channel、highest_price_resistance_channel、KOL 种草渠道、expert_endorsement_channel 分别是什么？
 
 根据消费者传播模拟结果，设计最合适的报告章节结构。
 
@@ -948,6 +950,7 @@ CONSUMER_SECTION_SYSTEM_PROMPT_TEMPLATE = """\
 - 发现可传播卖点、质疑与误读、信任衰减路径和信任修复路径
 - 评估证据（声明、数据）对消费者态度的影响
 - 提出下一轮预发布What-if实验的方向建议
+- 使用 channel_metrics 和 cross_channel_paths 说明 best_launch_channel、highest_misread_channel、highest_evidence_demand_channel、highest_price_resistance_channel、KOL 种草渠道、expert_endorsement_channel
 
 ═══════════════════════════════════════════════════════════════
 【最重要的规则 - 必须遵守】
@@ -1085,7 +1088,8 @@ CONSUMER_CHAT_SYSTEM_PROMPT_TEMPLATE = """\
 - 简洁直接，不要长篇大论
 - 使用 > 格式引用关键内容
 - 优先给出结论，再解释原因
-- 关注消费者反应、可传播卖点、质疑与误读、信任衰减、信任修复、证据影响、下一轮What-if实验方向"""
+- 关注消费者反应、可传播卖点、质疑与误读、信任衰减、信任修复、证据影响、下一轮What-if实验方向
+- 当问题涉及渠道时，必须引用 best_launch_channel、highest_misread_channel、highest_evidence_demand_channel、highest_price_resistance_channel、KOL 种草渠道、expert_endorsement_channel"""
 
 
 # ═══════════════════════════════════════════════════════════════

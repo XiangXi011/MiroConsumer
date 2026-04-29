@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, Mapping
 
+from .channel_report_adapter import ChannelReportAdapter
 from .state_store import SocietyStateStore
 
 
@@ -32,8 +33,9 @@ class SocietyReportAdapter:
         metrics = self.store.read_metrics(simulation_id)
         population = self.store.read_population(simulation_id)
         rounds = self.store.read_rounds(simulation_id)
+        channel_context = ChannelReportAdapter(base_dir=self.store.base_dir).build_report_context(simulation_id)
         if not config and not metrics and not population:
-            return dict(EMPTY_SOCIETY_CONTEXT)
+            return {**dict(EMPTY_SOCIETY_CONTEXT), **channel_context}
 
         event_summary: Dict[str, int] = {}
         for snapshot in rounds:
@@ -42,7 +44,7 @@ class SocietyReportAdapter:
                 if event_type:
                     event_summary[event_type] = event_summary.get(event_type, 0) + 1
 
-        return {
+        context = {
             "society_mode": config.get("mode", "quick"),
             "society_agents_count": len(population),
             "society_rounds_completed": len(rounds),
@@ -60,6 +62,8 @@ class SocietyReportAdapter:
                 "price_resistance_index": metrics.get("price_resistance_index", 0.0),
             },
         }
+        context.update(channel_context)
+        return context
 
     def merge_into_context(
         self,

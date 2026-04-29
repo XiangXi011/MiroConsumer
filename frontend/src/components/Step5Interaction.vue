@@ -260,6 +260,11 @@
             @update:comparison-snapshot="workspaceComparisonSnapshot = $event"
           />
 
+          <PropagationPathGraph
+            v-if="chatTarget === 'report_agent' && isConsumerMode"
+            :context="reportContext"
+          />
+
           <div
             v-if="chatTarget === 'report_agent' && isConsumerMode && (consumerQuickPrompts.length > 0 || consumerVocHighlights.length > 0)"
             class="consumer-chat-brief"
@@ -514,6 +519,7 @@ import {
   clearConsumerInterviewHandoff,
 } from '../utils/consumerResearchActions'
 import ComparisonSnapshotWorkspace from './consumer/ComparisonSnapshotWorkspace.vue'
+import PropagationPathGraph from './consumer/PropagationPathGraph.vue'
 
 const { t } = useI18n()
 
@@ -563,6 +569,8 @@ const profiles = ref([])
 const isConsumerMode = computed(() => (
   isConsumerProject(props.reportData) || isConsumerProject(props.projectData)
 ))
+
+const reportContext = computed(() => props.reportData?.report_context || {})
 
 const workspaceBranchComparison = ref(null)
 const workspaceComparisonSnapshot = ref(null)

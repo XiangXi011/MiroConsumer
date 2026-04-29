@@ -48,11 +48,15 @@ class ConsumerSocietyRunConfig:
     random_seed: int = 0
     llm_budget_limit: int = 0
     audit_sample_size: int = 0
+    enabled_channels: List[str] = field(default_factory=list)
+    channel_seed: int = 0
 
     def __post_init__(self) -> None:
         self.mode = str(self.mode or "quick")
         if self.mode not in VALID_MODES:
             raise ValueError(f"Unsupported society mode: {self.mode}")
+        if self.enabled_channels is None:
+            self.enabled_channels = []
 
     @property
     def target_population_size(self) -> int:

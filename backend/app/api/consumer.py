@@ -58,6 +58,45 @@ def get_consumer_summary(simulation_id: str):
         ), 500
 
 
+@consumer_bp.route("/simulations/<simulation_id>/channel-summary", methods=["GET"])
+def get_channel_summary(simulation_id: str):
+    """Return Phase 6H channel metrics and report context fields."""
+    try:
+        data = ConsumerAppService.get_channel_summary(simulation_id)
+        return jsonify({"success": True, "data": data})
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
+    except Exception as e:
+        logger.error(f"鑾峰彇娓犻亾鎽樿澶辫触: {str(e)}")
+        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+
+
+@consumer_bp.route("/simulations/<simulation_id>/channel-events", methods=["GET"])
+def get_channel_events(simulation_id: str):
+    """Return Phase 6H channel event stream."""
+    try:
+        data = ConsumerAppService.get_channel_events(simulation_id)
+        return jsonify({"success": True, "data": data})
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
+    except Exception as e:
+        logger.error(f"鑾峰彇娓犻亾浜嬩欢澶辫触: {str(e)}")
+        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+
+
+@consumer_bp.route("/simulations/<simulation_id>/propagation-paths", methods=["GET"])
+def get_propagation_paths(simulation_id: str):
+    """Return Phase 6H cross-channel propagation paths."""
+    try:
+        data = ConsumerAppService.get_propagation_paths(simulation_id)
+        return jsonify({"success": True, "data": data})
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
+    except Exception as e:
+        logger.error(f"鑾峰彇浼犳挱璺緞澶辫触: {str(e)}")
+        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+
+
 # ============== Branches ==============
 
 @consumer_bp.route("/simulations/<simulation_id>/branches", methods=["POST"])

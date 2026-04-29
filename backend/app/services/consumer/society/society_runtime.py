@@ -6,6 +6,7 @@ import os
 from typing import Any, Dict, Iterable, List, Mapping
 
 from .budget_manager import SocietyBudgetManager
+from .channel_runtime import ConsumerChannelRuntime
 from .event_mapper import ConsumerSocietyEventMapper
 from .metrics_aggregator import SocietyMetricsAggregator
 from .persona_quality_checker import PersonaQualityChecker
@@ -30,6 +31,7 @@ class ConsumerSocietyRuntime:
         self.event_mapper = event_mapper or ConsumerSocietyEventMapper()
         self.metrics_aggregator = metrics_aggregator or SocietyMetricsAggregator()
         self.quality_checker = PersonaQualityChecker()
+        self.channel_runtime = ConsumerChannelRuntime()
 
     def run(
         self,
@@ -85,6 +87,13 @@ class ConsumerSocietyRuntime:
             )
 
         final_metrics = snapshots[-1].metrics if snapshots else {}
+        channel_result = self.channel_runtime.run(
+            population=population,
+            society_events=all_events,
+            mode=config.mode,
+            enabled_channels=config.enabled_channels,
+            seed=config.channel_seed or config.random_seed,
+        )
         config_to_write = ConsumerSocietyRunConfig(**config.to_dict())
         config_payload = config_to_write.to_dict()
         config_payload["llm_budget_used"] = budget.used_llm_calls
@@ -98,6 +107,10 @@ class ConsumerSocietyRuntime:
         )
         self.store.write_rounds(simulation_id, snapshots)
         self.store.write_metrics(simulation_id, final_metrics)
+        self.store.write_channel_assignments(simulation_id, channel_result["assignments"])
+        self.store.write_channel_events(simulation_id, channel_result["events"])
+        self.store.write_channel_metrics(simulation_id, channel_result["channel_metrics"])
+        self.store.write_propagation_paths(simulation_id, channel_result["propagation_paths"])
 
         return SocietyReportAdapter(base_dir=self.store.base_dir).build_report_context(simulation_id)
 

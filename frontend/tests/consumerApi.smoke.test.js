@@ -20,6 +20,16 @@ test('consumer factory uses correct backend route for getConsumerSummary', () =>
   )
 })
 
+test('consumer factory uses correct backend routes for Phase 6H channel APIs', () => {
+  for (const path of [
+    '/api/consumer/simulations/${simulationId}/channel-summary',
+    '/api/consumer/simulations/${simulationId}/channel-events',
+    '/api/consumer/simulations/${simulationId}/propagation-paths',
+  ]) {
+    assert.ok(factorySrc.includes(path), `Expected factory to include ${path}`)
+  }
+})
+
 test('consumer factory uses correct backend route for listBranches', () => {
   assert.ok(
     factorySrc.includes('/api/consumer/simulations/${simulationId}/branches'),
@@ -106,6 +116,9 @@ test('consumer factory uses correct backend routes for research asset functions'
 test('consumer.js exports all required consumer functions', () => {
   const expectedExports = [
     'getConsumerSummary',
+    'getChannelSummary',
+    'getChannelEvents',
+    'getPropagationPaths',
     'listBranches',
     'createBranch',
     'getBranchComparison',

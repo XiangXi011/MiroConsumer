@@ -1,0 +1,8 @@
+{
+  "resonance": 0.30,
+  "purchase_intent_delta": 0.25,
+  "trust_repair_factor": 0.15,
+  "misread_risk": -0.15,
+  "price_resistance": -0.10,
+  "evidence_demand": -0.05
+}

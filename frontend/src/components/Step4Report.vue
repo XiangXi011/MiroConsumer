@@ -47,6 +47,12 @@
             :context="reportContext"
           />
 
+          <div v-if="isConsumerMode" class="channel-propagation-stack">
+            <ChannelFitPanel :context="reportContext" />
+            <ChannelHeatmap :channel-metrics="reportContext.channel_metrics || {}" />
+            <PropagationTimeline :context="reportContext" />
+          </div>
+
           <!-- Research Assets / Comparison Workspace -->
           <ResearchAssetWorkspace
             :project-id="projectId"
@@ -490,6 +496,9 @@ import ComparisonWorkspace from './consumer/ComparisonWorkspace.vue'
 import ConsumerResearchActionBar from './consumer/ConsumerResearchActionBar.vue'
 import ConsumerInsightDrawer from './consumer/ConsumerInsightDrawer.vue'
 import SocietyRunSummary from './consumer/SocietyRunSummary.vue'
+import ChannelFitPanel from './consumer/ChannelFitPanel.vue'
+import ChannelHeatmap from './consumer/ChannelHeatmap.vue'
+import PropagationTimeline from './consumer/PropagationTimeline.vue'
 import { runConsumerResearchAction } from '../api/consumer'
 import {
   normalizeConsumerResearchActionResponse,

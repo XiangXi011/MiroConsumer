@@ -36,6 +36,22 @@ test('getConsumerSummary uses GET /api/consumer/simulation/{id}/consumer-summary
   assert.strictEqual(result, fake.fakeResponse)
 })
 
+test('channel summary APIs use Phase 6H consumer routes', async () => {
+  const fake = makeFakeService()
+  const api = createConsumerApi(fake)
+
+  await api.getChannelSummary('sim-channel')
+  await api.getChannelEvents('sim-channel')
+  await api.getPropagationPaths('sim-channel')
+
+  assert.deepStrictEqual(fake.calls.map(call => call.url), [
+    '/api/consumer/simulations/sim-channel/channel-summary',
+    '/api/consumer/simulations/sim-channel/channel-events',
+    '/api/consumer/simulations/sim-channel/propagation-paths',
+  ])
+  assert.ok(fake.calls.every(call => call.method === 'get'))
+})
+
 test('listBranches uses GET /api/consumer/simulations/{id}/branches', async () => {
   const fake = makeFakeService()
   const api = createConsumerApi(fake)

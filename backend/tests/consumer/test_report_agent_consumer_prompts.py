@@ -83,6 +83,24 @@ class TestConsumerPromptConstants:
         for topic in required_topics:
             assert topic in combined, f"Required topic '{topic}' missing from consumer prompts"
 
+    def test_consumer_prompts_include_phase6h_channel_outputs(self):
+        """Phase 6H reports must instruct ReportAgent to use channel propagation context."""
+        combined = "\n".join([
+            CONSUMER_PLAN_SYSTEM_PROMPT,
+            CONSUMER_PLAN_USER_PROMPT_TEMPLATE,
+            CONSUMER_SECTION_SYSTEM_PROMPT_TEMPLATE,
+            CONSUMER_CHAT_SYSTEM_PROMPT_TEMPLATE,
+        ])
+        for topic in [
+            "best_launch_channel",
+            "highest_misread_channel",
+            "highest_evidence_demand_channel",
+            "highest_price_resistance_channel",
+            "KOL",
+            "expert_endorsement_channel",
+        ]:
+            assert topic in combined, f"Required channel topic '{topic}' missing"
+
 
 class TestReportAgentPromptSelection:
     def _make_agent(self, project_type="default"):

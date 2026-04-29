@@ -82,6 +82,7 @@
       </div>
 
       <SocietyRunSummary :context="societyRunContext" />
+      <ChannelFitPanel :context="societyRunContext" />
 
       <div v-if="consumerVocHighlights.length > 0" class="consumer-voc-banner">
         <div v-for="quote in consumerVocHighlights" :key="quote.bucket" class="consumer-voc-chip">
@@ -347,6 +348,7 @@ import {
 } from '../utils/consumerMode'
 import BranchInterventionWorkspace from './consumer/BranchInterventionWorkspace.vue'
 import SocietyRunSummary from './consumer/SocietyRunSummary.vue'
+import ChannelFitPanel from './consumer/ChannelFitPanel.vue'
 
 const { t } = useI18n()
 

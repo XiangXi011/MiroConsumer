@@ -960,5 +960,11 @@
     "llmSelectAgentFailed": "LLM选择Agent失败，使用默认选择: {error}",
     "generateInterviewQuestionsFailed": "生成采访问题失败: {error}",
     "generateInterviewSummaryFailed": "生成采访摘要失败: {error}"
+  },
+  "channel": {
+    "fitPanel": "渠道适配面板",
+    "heatmap": "渠道热力图",
+    "timeline": "传播时间线",
+    "pathGraph": "传播路径图"
   }
 }

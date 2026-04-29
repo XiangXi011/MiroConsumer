@@ -952,5 +952,11 @@
     "llmSelectAgentFailed": "LLM agent selection failed, using default selection: {error}",
     "generateInterviewQuestionsFailed": "Failed to generate interview questions: {error}",
     "generateInterviewSummaryFailed": "Failed to generate interview summary: {error}"
+  },
+  "channel": {
+    "fitPanel": "Channel Fit Panel",
+    "heatmap": "Channel Heatmap",
+    "timeline": "Propagation Timeline",
+    "pathGraph": "Propagation Path Graph"
   }
 }

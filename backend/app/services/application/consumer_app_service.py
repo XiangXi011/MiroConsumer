@@ -21,7 +21,9 @@ from ...repositories.filesystem import (
 from ...services.consumer.api_guard import ConsumerApiGuard
 from ...services.consumer.brief_adapter import ConsumerBriefAdapter
 from ...services.consumer.report_context import ConsumerReportContextBuilder, build_consumer_report_context
+from ...services.consumer.society.channel_report_adapter import ChannelReportAdapter
 from ...services.consumer.society.report_adapter import SocietyReportAdapter
+from ...services.consumer.society.state_store import SocietyStateStore
 from ...contracts.consumer_contracts import ConfidenceSummary, FindingConfidenceSummary
 from ...services.consumer.scoring import build_consumer_summary
 from ...services.simulation_manager import SimulationManager
@@ -41,19 +43,23 @@ class ConsumerAppService:
     )
 
     @classmethod
+    def _require_consumer_simulation(cls, simulation_id: str) -> Any:
+        state = cls._simulation_repo.get_simulation(simulation_id)
+        if not state:
+            raise ValueError(t("api.simulationNotFound", id=simulation_id))
+        ok, error = ConsumerApiGuard.check_consumer_simulation(state)
+        if not ok:
+            raise ValueError(error)
+        return state
+
+    @classmethod
     def get_consumer_summary(cls, simulation_id: str) -> Dict[str, Any]:
         """
         Build consumer propagation summary for a simulation.
 
         Raises ValueError on validation failure or missing data.
         """
-        state = cls._simulation_repo.get_simulation(simulation_id)
-        if not state:
-            raise ValueError(t("api.simulationNotFound", id=simulation_id))
-
-        ok, error = ConsumerApiGuard.check_consumer_simulation(state)
-        if not ok:
-            raise ValueError(error)
+        state = cls._require_consumer_simulation(simulation_id)
 
         accessor = cls._consumer_state_repo
         builder = ConsumerReportContextBuilder()
@@ -185,3 +191,18 @@ class ConsumerAppService:
 
         society_context = SocietyReportAdapter().build_report_context(simulation_id)
         return SocietyReportAdapter().merge_into_context(context, society_context)
+
+    @classmethod
+    def get_channel_summary(cls, simulation_id: str) -> Dict[str, Any]:
+        cls._require_consumer_simulation(simulation_id)
+        return ChannelReportAdapter().build_report_context(simulation_id)
+
+    @classmethod
+    def get_channel_events(cls, simulation_id: str) -> Dict[str, Any]:
+        cls._require_consumer_simulation(simulation_id)
+        return {"events": SocietyStateStore().read_channel_events(simulation_id)}
+
+    @classmethod
+    def get_propagation_paths(cls, simulation_id: str) -> Dict[str, Any]:
+        cls._require_consumer_simulation(simulation_id)
+        return {"paths": SocietyStateStore().read_propagation_paths(simulation_id)}

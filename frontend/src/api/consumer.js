@@ -3,6 +3,9 @@ import { createConsumerApi } from './consumerFactory'
 
 export const {
   getConsumerSummary,
+  getChannelSummary,
+  getChannelEvents,
+  getPropagationPaths,
   listBranches,
   createBranch,
   getBranchComparison,
