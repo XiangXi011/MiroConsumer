@@ -9,6 +9,7 @@ from .followup_question_engine import FollowupQuestionEngine
 from .history_store import HistoryStore
 from .interview_models import ConsumerInterviewRequest, FocusGroupSession
 from .disagreement_detector import DisagreementDetector
+from .focus_group_dialogue_engine import FocusGroupDialogueEngine
 from .moderator_prompt_engine import ModeratorPromptEngine
 from .representative_card_builder import RepresentativeCardBuilder
 
@@ -16,7 +17,7 @@ from .representative_card_builder import RepresentativeCardBuilder
 class FocusGroupService:
     """Run multi-agent focus groups with consensus/disagreement detection and history persistence."""
 
-    def __init__(self, base_dir=None, simulation_repo=None):
+    def __init__(self, base_dir=None, simulation_repo=None, dialogue_engine=None):
         self.base_dir = base_dir
         self.simulation_repo = simulation_repo
         self.card_builder = RepresentativeCardBuilder(base_dir=base_dir)
@@ -25,6 +26,7 @@ class FocusGroupService:
         self.history_store = HistoryStore(base_dir=base_dir)
         self.moderator_prompt_engine = ModeratorPromptEngine()
         self.disagreement_detector = DisagreementDetector()
+        self.dialogue_engine = dialogue_engine or FocusGroupDialogueEngine()
 
     def _validate_simulation(self, simulation_id: str) -> None:
         if self.simulation_repo is None:
@@ -129,28 +131,50 @@ class FocusGroupService:
             }
         return contexts
 
-    def _contextualize_response(self, base_response: str, context: Dict[str, Any]) -> str:
-        channel_id = context.get("channel_id", "")
-        event_quote = ""
-        if context.get("event_stream"):
-            event_quote = context["event_stream"][0].get("quote", "")
-        prior_answer = ""
-        if context.get("prior_answers"):
-            prior_answer = context["prior_answers"][-1].get("answer", "")
-        target_finding = context.get("target_finding", "")
+    def _role_template(self, turn_number: int, topic: str, card: Dict[str, Any]) -> str:
+        role = card.get("role", "")
+        if turn_number == 1:
+            if role == ConsumerRole.Skeptic.value:
+                return f"As a skeptic, I have doubts about {topic} and want more proof."
+            if role == ConsumerRole.Advocate.value:
+                return f"As an advocate, I support {topic} and see clear value."
+            if role == ConsumerRole.Misreader.value:
+                return f"I find {topic} confusing and need clearer messaging."
+            if role == ConsumerRole.PriceSensitive.value:
+                return f"My concern about {topic} is whether the price feels justified."
+            if role == ConsumerRole.Amplifier.value:
+                return f"If {topic} resonates, I would share it widely with my network."
+            if role == ConsumerRole.TrustRepairable.value:
+                return f"Regarding {topic}, I need reassurance before I can trust again."
+            if role == ConsumerRole.Blocker.value:
+                return f"I remain opposed to {topic} based on current information."
+            return f"I have a neutral opinion on {topic}."
 
-        details = []
-        if channel_id:
-            details.append(f"Channel context: {channel_id}.")
-        if event_quote:
-            details.append(f"Observed event: {event_quote}")
-        if prior_answer:
-            details.append(f"Prior answer: {prior_answer}")
-        if target_finding:
-            details.append(f"Target finding: {target_finding}.")
-        if not details:
-            return base_response
-        return f"{base_response} {' '.join(details)}"
+        if turn_number == 2:
+            if role == ConsumerRole.Skeptic.value:
+                return "I disagree with the optimistic view and want independent verification."
+            if role == ConsumerRole.Advocate.value:
+                return "I think the concerns are overblown; the product has real merit."
+            if role == ConsumerRole.Misreader.value:
+                return "I see now why others interpreted it differently from me."
+            if role == ConsumerRole.PriceSensitive.value:
+                return "Price is still my main barrier, regardless of what others say."
+            return "I see both sides of the argument and need more time to decide."
+
+        if turn_number == 3:
+            if role == ConsumerRole.Skeptic.value:
+                return "I need clinical proof before I can trust this claim."
+            if role == ConsumerRole.Advocate.value:
+                return "I trust the brand based on my positive past experience."
+            if role == ConsumerRole.Misreader.value:
+                return "Simpler wording would prevent the confusion I experienced."
+            if role == ConsumerRole.PriceSensitive.value:
+                return "A discount or guarantee would ease my price concern."
+            return "I would like to see independent third-party verification."
+
+        start = card.get("attitude_start", "neutral")
+        latest = card.get("attitude_latest", "neutral")
+        return f"My attitude changed from {start} to {latest} during this discussion."
 
     def _run_turn(
         self,
@@ -160,83 +184,51 @@ class FocusGroupService:
         moderator_prompt: str,
         target_context: Dict[str, Any],
         discussion_contexts: Dict[str, Dict[str, Any]],
+        prior_turns: List[Dict[str, Any]],
     ) -> Dict[str, Any]:
-        turn = {"turn": turn_number, "responses": []}
+        moderator_instruction = self.dialogue_engine.build_moderator_instruction(
+            turn_number=turn_number,
+            topic=topic,
+            moderator_prompt=moderator_prompt,
+            participant_cards=participant_cards,
+            target_context=target_context,
+            discussion_contexts=discussion_contexts,
+            prior_turns=prior_turns,
+        )
+        turn = {
+            "turn": turn_number,
+            "moderator_instruction": moderator_instruction,
+            "responses": [],
+        }
+        if turn_number == 3:
+            turn["moderator_prompt"] = moderator_instruction.get("instruction", "")
 
-        if turn_number == 1:
-            for card in participant_cards:
-                agent_id = card["agent_id"]
-                role = card.get("role", "")
-                if role == ConsumerRole.Skeptic.value:
-                    response = f"As a skeptic, I have doubts about {topic} and want more proof."
-                elif role == ConsumerRole.Advocate.value:
-                    response = f"As an advocate, I support {topic} and see clear value."
-                elif role == ConsumerRole.Misreader.value:
-                    response = f"I find {topic} confusing and need clearer messaging."
-                elif role == ConsumerRole.PriceSensitive.value:
-                    response = f"My concern about {topic} is whether the price feels justified."
-                elif role == ConsumerRole.Amplifier.value:
-                    response = f"If {topic} resonates, I would share it widely with my network."
-                elif role == ConsumerRole.TrustRepairable.value:
-                    response = f"Regarding {topic}, I need reassurance before I can trust again."
-                elif role == ConsumerRole.Blocker.value:
-                    response = f"I remain opposed to {topic} based on current information."
-                else:
-                    response = f"I have a neutral opinion on {topic}."
-                context = discussion_contexts.get(agent_id, {})
-                response = self._contextualize_response(response, context)
-                turn["responses"].append({"agent_id": agent_id, "role": role, "response": response, "context": context})
-
-        elif turn_number == 2:
-            for card in participant_cards:
-                agent_id = card["agent_id"]
-                role = card.get("role", "")
-                if role == ConsumerRole.Skeptic.value:
-                    response = "I disagree with the optimistic view and want independent verification."
-                elif role == ConsumerRole.Advocate.value:
-                    response = "I think the concerns are overblown; the product has real merit."
-                elif role == ConsumerRole.Misreader.value:
-                    response = "I see now why others interpreted it differently from me."
-                elif role == ConsumerRole.PriceSensitive.value:
-                    response = "Price is still my main barrier, regardless of what others say."
-                else:
-                    response = "I see both sides of the argument and need more time to decide."
-                context = discussion_contexts.get(agent_id, {})
-                response = self._contextualize_response(response, context)
-                turn["responses"].append({"agent_id": agent_id, "role": role, "response": response, "context": context})
-
-        elif turn_number == 3:
-            turn["moderator_prompt"] = (
-                "Moderator asks: Can anyone provide evidence for their claim? "
-                "What about price concerns? Any trust issues or misreadings to clarify?"
+        for card in participant_cards:
+            agent_id = card["agent_id"]
+            role = card.get("role", "")
+            context = discussion_contexts.get(agent_id, {})
+            role_template = self._role_template(turn_number, topic, card)
+            generated = self.dialogue_engine.generate_participant_response(
+                turn_number=turn_number,
+                topic=topic,
+                card=card,
+                role_template=role_template,
+                moderator_instruction=moderator_instruction,
+                discussion_context=context,
+                prior_turns=prior_turns,
+                target_context=target_context,
             )
-            for card in participant_cards:
-                agent_id = card["agent_id"]
-                role = card.get("role", "")
-                if role == ConsumerRole.Skeptic.value:
-                    response = "I need clinical proof before I can trust this claim."
-                elif role == ConsumerRole.Advocate.value:
-                    response = "I trust the brand based on my positive past experience."
-                elif role == ConsumerRole.Misreader.value:
-                    response = "Simpler wording would prevent the confusion I experienced."
-                elif role == ConsumerRole.PriceSensitive.value:
-                    response = "A discount or guarantee would ease my price concern."
-                else:
-                    response = "I would like to see independent third-party verification."
-                context = discussion_contexts.get(agent_id, {})
-                response = self._contextualize_response(response, context)
-                turn["responses"].append({"agent_id": agent_id, "role": role, "response": response, "context": context})
-
-        elif turn_number == 4:
-            for card in participant_cards:
-                agent_id = card["agent_id"]
-                role = card.get("role", "")
-                start = card.get("attitude_start", "neutral")
-                latest = card.get("attitude_latest", "neutral")
-                response = f"My attitude changed from {start} to {latest} during this discussion."
-                context = discussion_contexts.get(agent_id, {})
-                response = self._contextualize_response(response, context)
-                turn["responses"].append({"agent_id": agent_id, "role": role, "response": response, "context": context})
+            turn["responses"].append(
+                {
+                    "agent_id": agent_id,
+                    "role": role,
+                    "response": generated.get("response", ""),
+                    "source": generated.get("source", "unknown"),
+                    "reasoning_summary": generated.get("reasoning_summary", ""),
+                    "role_template": role_template,
+                    "context": context,
+                }
+            )
 
         return turn
 
@@ -267,6 +259,7 @@ class FocusGroupService:
                 moderator_prompt,
                 request.target_context,
                 discussion_contexts,
+                turns,
             )
             turns.append(turn)
 
