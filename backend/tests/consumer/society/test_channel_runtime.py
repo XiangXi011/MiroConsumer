@@ -29,6 +29,7 @@ def _society_event(index, event_type=ConsumerEventType.FIRST_IMPRESSION.value, r
         "event_id": f"society-{index}",
         "round_index": round_index,
         "agent_id": f"agent-{index}",
+        "segment": f"segment-{index % 4}",
         "consumer_event_type": event_type,
         "claim": "low sugar",
         "quote": "consumer quote",
@@ -63,6 +64,7 @@ def test_channel_runtime_assigns_agents_and_emits_channel_events():
     assert first["channel_id"] in {"xiaohongshu", "douyin", "wechat_group"}
     assert first["channel_label"]
     assert first["actor_id"].startswith("agent-")
+    assert first["segment"] == "segment-0"
     assert first["consumer_event_type"] in {event.value for event in ConsumerEventType}
     assert 0.0 <= first["strength"] <= 1.0
     assert "channel_metrics" in result
@@ -92,3 +94,4 @@ def test_channel_runtime_triggers_cross_channel_migration_paths():
     assert result["propagation_paths"]
     path = result["propagation_paths"][0]
     assert {"source_channel_id", "target_channel_id", "trigger_metric", "affected_segments"}.issubset(path)
+    assert all(segment.startswith("segment-") for segment in path["affected_segments"])

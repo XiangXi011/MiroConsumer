@@ -31,6 +31,7 @@ class ChannelEventMapper:
             channel_id=channel_id,
             round_index=int(event.get("round_index", 0) or 0),
             actor_id=actor_id,
+            segment=str(event.get("segment") or ""),
             target_ids=[str(target) for target in event.get("target_ids", [])],
             claim_id=str(claim),
             finding_ids=[str(fid) for fid in event.get("finding_ids", [])],

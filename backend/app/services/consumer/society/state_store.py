@@ -49,6 +49,19 @@ class SocietyStateStore:
             {channel_id: list(agent_ids) for channel_id, agent_ids in assignments.items()},
         )
 
+    def read_channel_assignments(self, simulation_id: str) -> Dict[str, List[str]]:
+        path = self.society_dir(simulation_id) / "channel_assignments.json"
+        if not path.exists():
+            return {}
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            return {}
+        return {
+            str(channel_id): [str(agent_id) for agent_id in agent_ids]
+            for channel_id, agent_ids in payload.items()
+            if isinstance(agent_ids, list)
+        }
+
     def write_channel_metrics(self, simulation_id: str, metrics: Mapping[str, Any]) -> None:
         self._write_json(self.society_dir(simulation_id) / "channel_metrics.json", dict(metrics))
 

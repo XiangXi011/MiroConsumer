@@ -150,6 +150,7 @@ class ConsumerChannelRuntime:
                 channel_id=target,
                 round_index=max_round + 1,
                 actor_id=str(first.get("actor_id") or ""),
+                segment=str(first.get("segment") or ""),
                 target_ids=[str(item) for item in target_ids],
                 claim_id=str(first.get("claim_id") or "claim-1"),
                 finding_ids=[str(item) for item in first.get("finding_ids", [])],

@@ -81,6 +81,7 @@
 
 <script setup>
 import { isPhase6IInterviewHandoff } from '../../utils/consumerResearchActions'
+import { renderSafeMarkdown } from '../../utils/safeMarkdown'
 
 const props = defineProps({
   result: Object,
@@ -97,19 +98,7 @@ function emitOpenHandoff() {
 }
 
 function renderMarkdown(content) {
-  if (!content) return ''
-  let html = content
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>')
-    .replace(/^### (.+)$/gm, '<h4 class="md-h4">$1</h4>')
-    .replace(/^## (.+)$/gm, '<h3 class="md-h3">$1</h3>')
-    .replace(/^- (.+)$/gm, '<li class="md-li">$1</li>')
-    .replace(/\n\n/g, '</p><p class="md-p">')
-    .replace(/\n/g, '<br>')
-  html = '<p class="md-p">' + html + '</p>'
-  html = html.replace(/<p class="md-p"><\/p>/g, '')
-  html = html.replace(/(<li class="md-li"[^>]*>.*?<\/li>\s*)+/g, '<ul class="md-ul">$&</ul>')
-  return html
+  return renderSafeMarkdown(content)
 }
 </script>
 

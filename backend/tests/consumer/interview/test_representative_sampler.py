@@ -88,3 +88,44 @@ def test_representative_sampler_uses_society_roles_without_new_enum(tmp_path):
     assert rows[0]["key_quote"] == "Show me proof before I believe this."
     assert rows[0]["event_ids"] == ["event-skeptic", "channel-1"]
     assert rows[0]["finding_ids"] == ["finding-1"]
+
+
+def test_representative_sampler_prefers_channel_assignments_over_generic_affinity(tmp_path):
+    simulation_id = "sim-assignment"
+    store = SocietyStateStore(base_dir=tmp_path)
+    store.write_population(
+        simulation_id,
+        [
+            ConsumerSocietyAgent(
+                agent_id="agent-assigned",
+                parent_persona_id="persona-1",
+                layer="core",
+                segment="ingredient readers",
+                role=ConsumerRole.Skeptic,
+                channel_affinity={"consumer_society": 1.0},
+            ),
+            ConsumerSocietyAgent(
+                agent_id="agent-other",
+                parent_persona_id="persona-2",
+                layer="core",
+                segment="busy parents",
+                role=ConsumerRole.Advocate,
+                channel_affinity={"consumer_society": 1.0},
+            ),
+        ],
+    )
+    store.write_channel_assignments(
+        simulation_id,
+        {
+            "xiaohongshu": ["agent-assigned"],
+            "wechat_group": ["agent-other"],
+        },
+    )
+
+    rows = RepresentativeSampler(base_dir=tmp_path).sample(
+        simulation_id,
+        roles=[ConsumerRole.Skeptic.value],
+        limit=4,
+    )
+
+    assert rows[0]["channel_id"] == "xiaohongshu"

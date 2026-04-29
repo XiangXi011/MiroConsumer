@@ -15,6 +15,12 @@ class RepresentativeSampler:
         population = self.store.read_population(simulation_id)
         rounds = self.store.read_rounds(simulation_id)
         channel_events = self.store.read_channel_events(simulation_id)
+        assignments = self.store.read_channel_assignments(simulation_id)
+        assignment_by_agent = {
+            str(agent_id): str(channel_id)
+            for channel_id, agent_ids in assignments.items()
+            for agent_id in agent_ids
+        }
 
         if roles:
             population = [a for a in population if a.get("role") in roles]
@@ -27,7 +33,14 @@ class RepresentativeSampler:
             role = agent.get("role", "")
 
             affinities = agent.get("channel_affinity", {})
-            channel_id = max(affinities, key=affinities.get) if affinities else ""
+            channel_id = assignment_by_agent.get(agent_id, "")
+            if not channel_id:
+                real_affinities = {
+                    channel: score
+                    for channel, score in affinities.items()
+                    if channel != "consumer_society"
+                }
+                channel_id = max(real_affinities, key=real_affinities.get) if real_affinities else ""
 
             event_ids = []
             finding_ids = []
@@ -48,6 +61,8 @@ class RepresentativeSampler:
 
             for ce in channel_events:
                 if ce.get("actor_id") == agent_id:
+                    if not channel_id and ce.get("channel_id"):
+                        channel_id = str(ce.get("channel_id"))
                     ceid = ce.get("event_id")
                     if ceid:
                         event_ids.append(ceid)

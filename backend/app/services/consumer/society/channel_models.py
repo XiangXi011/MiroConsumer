@@ -33,6 +33,7 @@ class ConsumerChannelEvent:
     channel_id: str
     round_index: int
     actor_id: str
+    segment: str = ""
     target_ids: List[str] = field(default_factory=list)
     claim_id: str = ""
     finding_ids: List[str] = field(default_factory=list)

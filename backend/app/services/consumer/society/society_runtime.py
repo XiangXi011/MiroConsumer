@@ -12,6 +12,7 @@ from .metrics_aggregator import SocietyMetricsAggregator
 from .persona_quality_checker import PersonaQualityChecker
 from .population_factory import PopulationFactory
 from .population_models import ConsumerSocietyAgent, ConsumerSocietyRunConfig, ConsumerSocietySnapshot
+from .reasoning_engine import LayeredSocietyReasoningEngine
 from .report_adapter import SocietyReportAdapter
 from .state_store import SocietyStateStore
 
@@ -25,11 +26,13 @@ class ConsumerSocietyRuntime:
         population_factory: PopulationFactory | None = None,
         event_mapper: ConsumerSocietyEventMapper | None = None,
         metrics_aggregator: SocietyMetricsAggregator | None = None,
+        reasoning_engine: LayeredSocietyReasoningEngine | None = None,
     ):
         self.store = SocietyStateStore(base_dir=base_dir)
         self.population_factory = population_factory or PopulationFactory()
         self.event_mapper = event_mapper or ConsumerSocietyEventMapper()
         self.metrics_aggregator = metrics_aggregator or SocietyMetricsAggregator()
+        self.reasoning_engine = reasoning_engine or LayeredSocietyReasoningEngine()
         self.quality_checker = PersonaQualityChecker()
         self.channel_runtime = ConsumerChannelRuntime()
 
@@ -55,8 +58,6 @@ class ConsumerSocietyRuntime:
         for round_index in range(config.max_rounds):
             round_events: List[Dict[str, Any]] = []
             for agent in population:
-                if budget.allow_llm_call(agent.layer):
-                    budget.record_llm_call(agent.layer)
                 event = self.event_mapper.map_agent_event(
                     agent=agent,
                     round_index=round_index,
@@ -65,6 +66,25 @@ class ConsumerSocietyRuntime:
                     brief_context=brief_context,
                     research_findings=research_findings,
                 )
+                reasoning_mode = self._reasoning_mode_for_layer(agent.layer)
+                if reasoning_mode is None:
+                    event["reasoning_layer"] = agent.layer
+                    event["reasoning_method"] = "rule_state_machine"
+                    event["reasoning_backend"] = "rules"
+                    event["llm_invoked"] = False
+                elif budget.record_llm_call(agent.layer):
+                    event = self.reasoning_engine.reason(
+                        agent=agent,
+                        base_event=event,
+                        brief_context=brief_context,
+                        research_findings=research_findings,
+                        reasoning_mode=reasoning_mode,
+                    )
+                else:
+                    event["reasoning_layer"] = agent.layer
+                    event["reasoning_method"] = "rule_fallback_budget_exhausted"
+                    event["reasoning_backend"] = "rules"
+                    event["llm_invoked"] = False
                 self._update_agent_state(agent, event)
                 round_events.append(event)
 
@@ -127,6 +147,15 @@ class ConsumerSocietyRuntime:
         agent.state["trust"] = round(max(0.0, min(1.0, trust)), 4)
         agent.state["purchase_intent"] = round(max(0.0, min(1.0, purchase)), 4)
         agent.state["awareness"] = 1.0
+
+    def _reasoning_mode_for_layer(self, layer: str) -> str | None:
+        if layer == "core":
+            return "llm_deep_reasoning"
+        if layer == "expanded":
+            return "lightweight_llm"
+        if layer == "audit_sample":
+            return "llm_audit_sample"
+        return None
 
 
 __all__ = ["ConsumerSocietyRuntime"]
