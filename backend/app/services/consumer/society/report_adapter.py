@@ -19,6 +19,12 @@ EMPTY_SOCIETY_CONTEXT = {
     "society_event_summary": {},
     "society_risk_summary": {},
     "society_purchase_intent_summary": {},
+    "society_reasoning_summary": {
+        "backend_counts": {},
+        "llm_invoked_count": 0,
+        "calibration_status": "golden_case_not_run",
+        "production_readiness": "requires_golden_case_calibration",
+    },
 }
 
 
@@ -38,11 +44,27 @@ class SocietyReportAdapter:
             return {**dict(EMPTY_SOCIETY_CONTEXT), **channel_context}
 
         event_summary: Dict[str, int] = {}
+        backend_counts: Dict[str, int] = dict(config.get("reasoning_backend_counts", {}) or {})
+        llm_invoked_count = int(config.get("llm_invoked_count", 0) or 0)
+        should_count_backends_from_rounds = not backend_counts
+        should_count_llm_invocations_from_rounds = "llm_invoked_count" not in config
         for snapshot in rounds:
             for event in snapshot.get("events", []):
                 event_type = event.get("consumer_event_type", "")
                 if event_type:
                     event_summary[event_type] = event_summary.get(event_type, 0) + 1
+                if should_count_backends_from_rounds:
+                    backend = str(event.get("reasoning_backend", "unknown") or "unknown")
+                    backend_counts[backend] = backend_counts.get(backend, 0) + 1
+                if should_count_llm_invocations_from_rounds and event.get("llm_invoked"):
+                    llm_invoked_count += 1
+
+        calibration_status = str(config.get("reasoning_calibration_status", "golden_case_not_run"))
+        production_readiness = (
+            "ready_for_calibrated_reporting"
+            if calibration_status == "golden_case_passed"
+            else "requires_golden_case_calibration"
+        )
 
         context = {
             "society_mode": config.get("mode", "quick"),
@@ -60,6 +82,12 @@ class SocietyReportAdapter:
             "society_purchase_intent_summary": {
                 "purchase_intent_delta": metrics.get("purchase_intent_delta", 0.0),
                 "price_resistance_index": metrics.get("price_resistance_index", 0.0),
+            },
+            "society_reasoning_summary": {
+                "backend_counts": backend_counts,
+                "llm_invoked_count": llm_invoked_count,
+                "calibration_status": calibration_status,
+                "production_readiness": production_readiness,
             },
         }
         context.update(channel_context)

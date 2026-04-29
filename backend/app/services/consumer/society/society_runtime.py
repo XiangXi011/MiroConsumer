@@ -116,7 +116,20 @@ class ConsumerSocietyRuntime:
         )
         config_to_write = ConsumerSocietyRunConfig(**config.to_dict())
         config_payload = config_to_write.to_dict()
+        backend_counts: Dict[str, int] = {}
+        llm_invoked_count = 0
+        for event in all_events:
+            backend = str(event.get("reasoning_backend", "unknown") or "unknown")
+            backend_counts[backend] = backend_counts.get(backend, 0) + 1
+            if event.get("llm_invoked"):
+                llm_invoked_count += 1
         config_payload["llm_budget_used"] = budget.used_llm_calls
+        config_payload["reasoning_backend_counts"] = backend_counts
+        config_payload["llm_invoked_count"] = llm_invoked_count
+        config_payload["reasoning_calibration_status"] = os.environ.get(
+            "SOCIETY_GOLDEN_CASE_CALIBRATION_STATUS",
+            "golden_case_not_run",
+        )
 
         self.store.write_population(simulation_id, population)
         self.store.write_config(simulation_id, config_to_write)

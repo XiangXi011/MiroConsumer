@@ -12,12 +12,39 @@ from .representative_card_builder import RepresentativeCardBuilder
 from .summary_synthesizer import InterviewSummarySynthesizer
 
 
+class SimulationRunnerLiveInterviewClient:
+    """Thin adapter over the legacy live interview IPC path."""
+
+    def check_env_alive(self, simulation_id: str) -> bool:
+        from ...simulation_runner import SimulationRunner
+
+        return SimulationRunner.check_env_alive(simulation_id)
+
+    def interview_agents_batch(
+        self,
+        *,
+        simulation_id: str,
+        interviews: list[dict[str, Any]],
+        platform: str | None = None,
+        timeout: float = 120.0,
+    ) -> dict[str, Any]:
+        from ...simulation_runner import SimulationRunner
+
+        return SimulationRunner.interview_agents_batch(
+            simulation_id=simulation_id,
+            interviews=interviews,
+            platform=platform,
+            timeout=timeout,
+        )
+
+
 class SingleInterviewService:
     """Run single-consumer interviews with evidence binding and history persistence."""
 
-    def __init__(self, base_dir=None, simulation_repo=None):
+    def __init__(self, base_dir=None, simulation_repo=None, live_runner=None):
         self.base_dir = base_dir
         self.simulation_repo = simulation_repo
+        self.live_runner = live_runner or SimulationRunnerLiveInterviewClient()
         self.card_builder = RepresentativeCardBuilder(base_dir=base_dir)
         self.evidence_binder = InterviewEvidenceBinder()
         self.followup_engine = FollowupQuestionEngine()
@@ -36,13 +63,12 @@ class SingleInterviewService:
             raise ValueError("Simulation is not a consumer_test simulation")
 
     def _is_live_available(self, simulation_id: str) -> bool:
-        if self.simulation_repo is None:
+        if self.live_runner is None:
             return False
-        sim = self.simulation_repo.get_simulation(simulation_id)
-        if sim is None:
+        try:
+            return bool(self.live_runner.check_env_alive(simulation_id))
+        except Exception:
             return False
-        from ...simulation_manager import SimulationStatus
-        return getattr(sim, "status", None) == SimulationStatus.RUNNING
 
     def _select_agents(self, request: ConsumerInterviewRequest) -> list:
         cards = []
@@ -79,6 +105,25 @@ class SingleInterviewService:
             f"Target question: {question}",
         ]
         return " ".join(prompt_parts)
+
+    def _legacy_agent_id_for_card(self, card: dict, fallback_index: int) -> int:
+        candidates = [
+            card.get("legacy_agent_id"),
+            card.get("oasis_agent_id"),
+            card.get("raw_agent_id"),
+            card.get("state", {}).get("legacy_agent_id") if isinstance(card.get("state"), dict) else None,
+            card.get("traits", {}).get("legacy_agent_id") if isinstance(card.get("traits"), dict) else None,
+            card.get("agent_id"),
+        ]
+        for value in candidates:
+            if value is None:
+                continue
+            if isinstance(value, int):
+                return value
+            text = str(value).strip()
+            if text.isdigit():
+                return int(text)
+        return fallback_index
 
     def _generate_answer(self, card: dict, question: str, prompt: str) -> str:
         role = card.get("role", "")
@@ -118,10 +163,109 @@ class SingleInterviewService:
                 f"The question '{question}' makes me think more carefully before deciding."
             )
 
+    def _extract_legacy_response_text(self, payload: dict) -> str:
+        if not isinstance(payload, dict):
+            return str(payload)
+        if payload.get("response"):
+            return str(payload["response"])
+        result = payload.get("result")
+        if isinstance(result, dict):
+            for key in ("response", "answer", "text", "content"):
+                if result.get(key):
+                    return str(result[key])
+        for key in ("answer", "text", "content"):
+            if payload.get(key):
+                return str(payload[key])
+        return str(payload)
+
+    def _run_live_interview(
+        self,
+        *,
+        request: ConsumerInterviewRequest,
+        cards: list[dict],
+        questions: list[str],
+    ) -> list[dict[str, Any]]:
+        interviews = []
+        refs = []
+        for index, card in enumerate(cards):
+            for question in questions:
+                prompt = self._build_prompt(card, question, request.target_context)
+                legacy_agent_id = self._legacy_agent_id_for_card(card, index)
+                interviews.append({"agent_id": legacy_agent_id, "prompt": prompt})
+                refs.append(
+                    {
+                        "legacy_agent_id": legacy_agent_id,
+                        "consumer_agent_id": card["agent_id"],
+                        "card": card,
+                        "question": question,
+                        "prompt": prompt,
+                    }
+                )
+
+        if not interviews:
+            return []
+
+        result = self.live_runner.interview_agents_batch(
+            simulation_id=request.simulation_id,
+            interviews=interviews,
+            platform=request.target_context.get("platform"),
+            timeout=float(request.target_context.get("timeout", 120)),
+        )
+        if not result.get("success", False):
+            raise LiveInterviewUnavailable(str(result.get("error") or "live interview failed"))
+
+        raw_results = result.get("result", {}).get("results", {})
+        if isinstance(raw_results, list):
+            iterable_results = list(enumerate(raw_results))
+        elif isinstance(raw_results, dict):
+            iterable_results = list(raw_results.items())
+        else:
+            iterable_results = []
+
+        answers = []
+        used_ref_indexes: set[int] = set()
+        for key, payload in iterable_results:
+            if not isinstance(payload, dict):
+                payload = {"response": payload}
+            legacy_agent_id = payload.get("agent_id")
+            ref_index = None
+            for idx, ref in enumerate(refs):
+                if idx in used_ref_indexes:
+                    continue
+                if legacy_agent_id is None or ref["legacy_agent_id"] == legacy_agent_id:
+                    ref_index = idx
+                    break
+            if ref_index is None and refs:
+                ref_index = 0
+            if ref_index is None:
+                continue
+            used_ref_indexes.add(ref_index)
+            ref = refs[ref_index]
+            card = ref["card"]
+            answers.append(
+                {
+                    "agent_id": card["agent_id"],
+                    "consumer_agent_id": card["agent_id"],
+                    "legacy_agent_id": ref["legacy_agent_id"],
+                    "role": card.get("role", ""),
+                    "question": ref["question"],
+                    "answer": self._extract_legacy_response_text(payload),
+                    "prompt": ref["prompt"],
+                    "platform": payload.get("platform"),
+                    "live_result_key": str(key),
+                    "source": "legacy_live_interview",
+                }
+            )
+
+        if not answers:
+            raise LiveInterviewUnavailable("live interview returned no answers")
+        return answers
+
     def run(self, request: ConsumerInterviewRequest) -> ConsumerInterviewResult:
         self._validate_simulation(request.simulation_id)
 
         mode = request.mode
+        requested_mode = mode
         if mode == "live":
             if not self._is_live_available(request.simulation_id):
                 raise LiveInterviewUnavailable("live mode environment is not running")
@@ -145,19 +289,40 @@ class SingleInterviewService:
         answers = []
         evidence_map = {}
 
+        if mode == "live":
+            try:
+                answers = self._run_live_interview(request=request, cards=cards, questions=questions)
+            except LiveInterviewUnavailable:
+                if requested_mode == "auto":
+                    mode = "snapshot"
+                    answers = []
+                else:
+                    raise
+
         for card in cards:
             agent_id = card["agent_id"]
-            for question in questions:
-                prompt = self._build_prompt(card, question, request.target_context)
-                answer_text = self._generate_answer(card, question, prompt)
+            card_answers = [a for a in answers if a.get("agent_id") == agent_id]
+            if not card_answers:
+                for question in questions:
+                    prompt = self._build_prompt(card, question, request.target_context)
+                    answer_text = self._generate_answer(card, question, prompt)
+                    card_answers.append(
+                        {
+                            "agent_id": agent_id,
+                            "role": card.get("role", ""),
+                            "question": question,
+                            "answer": answer_text,
+                            "prompt": prompt,
+                            "source": "snapshot_template",
+                        }
+                    )
+                answers.extend(card_answers)
+
+            for answer_record in card_answers:
                 answer_record = {
-                    "agent_id": agent_id,
+                    **answer_record,
                     "role": card.get("role", ""),
-                    "question": question,
-                    "answer": answer_text,
-                    "prompt": prompt,
                 }
-                answers.append(answer_record)
                 evidence = self.evidence_binder.bind_answer(
                     card=card,
                     answer=answer_record,

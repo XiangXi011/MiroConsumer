@@ -58,7 +58,109 @@ class FocusGroupService:
             f"Source rule: {plan['source_rule']}."
         )
 
-    def _run_turn(self, turn_number: int, topic: str, participant_cards: List[Dict[str, Any]], moderator_prompt: str, target_context: Dict[str, Any]) -> Dict[str, Any]:
+    def _build_discussion_contexts(
+        self,
+        simulation_id: str,
+        participant_cards: List[Dict[str, Any]],
+        target_context: Dict[str, Any],
+    ) -> Dict[str, Dict[str, Any]]:
+        rounds = self.card_builder.store.read_rounds(simulation_id)
+        channel_events = self.card_builder.store.read_channel_events(simulation_id)
+        channel_metrics = self.card_builder.store.read_channel_metrics(simulation_id).get("channels", {})
+        prior_interviews = self.history_store.list_interviews(simulation_id)
+        evidence_map = dict(target_context.get("evidence_map", {}) or {})
+        target_finding = str(target_context.get("finding_id", ""))
+
+        contexts: Dict[str, Dict[str, Any]] = {}
+        for card in participant_cards:
+            agent_id = card["agent_id"]
+            event_stream = []
+            for snapshot in rounds:
+                for event in snapshot.get("events", []):
+                    if event.get("agent_id") == agent_id:
+                        event_stream.append(
+                            {
+                                "event_id": event.get("event_id", ""),
+                                "event_type": event.get("consumer_event_type", ""),
+                                "quote": event.get("quote", ""),
+                                "finding_ids": list(event.get("finding_ids", []) or []),
+                            }
+                        )
+
+            agent_channel_events = [
+                event
+                for event in channel_events
+                if event.get("actor_id") == agent_id
+                or event.get("agent_id") == agent_id
+                or event.get("source_agent_id") == agent_id
+            ]
+
+            prior_answers = []
+            for interview in prior_interviews:
+                for answer in interview.get("answers", []):
+                    if answer.get("agent_id") == agent_id or answer.get("consumer_agent_id") == agent_id:
+                        prior_answers.append(
+                            {
+                                "interview_id": interview.get("interview_id", ""),
+                                "answer": answer.get("answer", ""),
+                                "question": answer.get("question", ""),
+                            }
+                        )
+
+            channel_id = card.get("channel_id", "")
+            contexts[agent_id] = {
+                "agent_history": {
+                    "attitude_start": card.get("attitude_start", "neutral"),
+                    "attitude_latest": card.get("attitude_latest", "neutral"),
+                    "purchase_intent_start": card.get("purchase_intent_start", 0.5),
+                    "purchase_intent_latest": card.get("purchase_intent_latest", 0.5),
+                    "key_quote": card.get("key_quote", ""),
+                },
+                "event_stream": event_stream[:5],
+                "channel_id": channel_id,
+                "channel_context": {
+                    "channel_id": channel_id,
+                    "metrics": dict(channel_metrics.get(channel_id, {}) or {}),
+                    "events": agent_channel_events[:5],
+                },
+                "evidence_map": evidence_map,
+                "prior_answers": prior_answers[-5:],
+                "target_finding": target_finding,
+            }
+        return contexts
+
+    def _contextualize_response(self, base_response: str, context: Dict[str, Any]) -> str:
+        channel_id = context.get("channel_id", "")
+        event_quote = ""
+        if context.get("event_stream"):
+            event_quote = context["event_stream"][0].get("quote", "")
+        prior_answer = ""
+        if context.get("prior_answers"):
+            prior_answer = context["prior_answers"][-1].get("answer", "")
+        target_finding = context.get("target_finding", "")
+
+        details = []
+        if channel_id:
+            details.append(f"Channel context: {channel_id}.")
+        if event_quote:
+            details.append(f"Observed event: {event_quote}")
+        if prior_answer:
+            details.append(f"Prior answer: {prior_answer}")
+        if target_finding:
+            details.append(f"Target finding: {target_finding}.")
+        if not details:
+            return base_response
+        return f"{base_response} {' '.join(details)}"
+
+    def _run_turn(
+        self,
+        turn_number: int,
+        topic: str,
+        participant_cards: List[Dict[str, Any]],
+        moderator_prompt: str,
+        target_context: Dict[str, Any],
+        discussion_contexts: Dict[str, Dict[str, Any]],
+    ) -> Dict[str, Any]:
         turn = {"turn": turn_number, "responses": []}
 
         if turn_number == 1:
@@ -81,7 +183,9 @@ class FocusGroupService:
                     response = f"I remain opposed to {topic} based on current information."
                 else:
                     response = f"I have a neutral opinion on {topic}."
-                turn["responses"].append({"agent_id": agent_id, "role": role, "response": response})
+                context = discussion_contexts.get(agent_id, {})
+                response = self._contextualize_response(response, context)
+                turn["responses"].append({"agent_id": agent_id, "role": role, "response": response, "context": context})
 
         elif turn_number == 2:
             for card in participant_cards:
@@ -97,7 +201,9 @@ class FocusGroupService:
                     response = "Price is still my main barrier, regardless of what others say."
                 else:
                     response = "I see both sides of the argument and need more time to decide."
-                turn["responses"].append({"agent_id": agent_id, "role": role, "response": response})
+                context = discussion_contexts.get(agent_id, {})
+                response = self._contextualize_response(response, context)
+                turn["responses"].append({"agent_id": agent_id, "role": role, "response": response, "context": context})
 
         elif turn_number == 3:
             turn["moderator_prompt"] = (
@@ -117,7 +223,9 @@ class FocusGroupService:
                     response = "A discount or guarantee would ease my price concern."
                 else:
                     response = "I would like to see independent third-party verification."
-                turn["responses"].append({"agent_id": agent_id, "role": role, "response": response})
+                context = discussion_contexts.get(agent_id, {})
+                response = self._contextualize_response(response, context)
+                turn["responses"].append({"agent_id": agent_id, "role": role, "response": response, "context": context})
 
         elif turn_number == 4:
             for card in participant_cards:
@@ -126,7 +234,9 @@ class FocusGroupService:
                 start = card.get("attitude_start", "neutral")
                 latest = card.get("attitude_latest", "neutral")
                 response = f"My attitude changed from {start} to {latest} during this discussion."
-                turn["responses"].append({"agent_id": agent_id, "role": role, "response": response})
+                context = discussion_contexts.get(agent_id, {})
+                response = self._contextualize_response(response, context)
+                turn["responses"].append({"agent_id": agent_id, "role": role, "response": response, "context": context})
 
         return turn
 
@@ -142,11 +252,21 @@ class FocusGroupService:
         moderator_prompt = self._build_moderator_prompt(
             request.topic, moderator_goal, participants, request.target_context
         )
+        discussion_contexts = self._build_discussion_contexts(
+            request.simulation_id,
+            participants,
+            request.target_context,
+        )
 
         turns = []
         for turn_num in range(1, 5):
             turn = self._run_turn(
-                turn_num, request.topic, participants, moderator_prompt, request.target_context
+                turn_num,
+                request.topic,
+                participants,
+                moderator_prompt,
+                request.target_context,
+                discussion_contexts,
             )
             turns.append(turn)
 
