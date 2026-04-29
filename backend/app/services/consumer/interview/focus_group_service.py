@@ -28,6 +28,68 @@ class FocusGroupService:
         self.disagreement_detector = DisagreementDetector()
         self.dialogue_engine = dialogue_engine or FocusGroupDialogueEngine()
 
+    def _build_next_what_if_experiments(
+        self,
+        topic: str,
+        target_context: Dict[str, Any],
+        disagreements: List[str],
+    ) -> List[str]:
+        """Build dynamic what-if experiments from target context and disagreements."""
+        task_type = str(target_context.get("task_type", "concept_test") or "concept_test")
+        finding_id = str(target_context.get("finding_id", "") or "")
+        claim = str(target_context.get("claim", "") or "")
+        risk_points = list(target_context.get("risk_points") or [])
+        evidence_map = dict(target_context.get("evidence_map", {}) or {})
+
+        experiments: List[str] = []
+
+        # Experiment 1: finding-specific probe
+        parts: List[str] = []
+        if finding_id:
+            parts.append(f"finding {finding_id}")
+        if claim:
+            parts.append(f"claim '{claim}'")
+        if topic:
+            parts.append(f"topic '{topic}'")
+        if parts:
+            experiments.append(f"What if we test a revised version addressing {', '.join(parts)}?")
+
+        # Experiment 2: risk-point probe
+        if risk_points:
+            experiments.append(f"What if we resolve the risk: {risk_points[0]}?")
+        elif claim:
+            experiments.append(f"What if we resolve the main concern around '{claim}'?")
+        else:
+            experiments.append(f"What if we address the top concern for '{topic}'?")
+
+        # Experiment 3: evidence-map support probe
+        support_parts: List[str] = []
+        for fid, info in evidence_map.items():
+            level = str(info.get("support_level", "") or "") if isinstance(info, dict) else ""
+            if level:
+                support_parts.append(f"{fid} ({level})")
+        if support_parts:
+            experiments.append(f"What if we strengthen evidence for {', '.join(support_parts)}?")
+        elif disagreements:
+            experiments.append(f"What if we reconcile the disagreement: {disagreements[0]}?")
+        else:
+            experiments.append(f"What if we validate assumptions for '{task_type}'?")
+
+        # Experiment 4: task-type specific probe
+        experiments.append(f"What if we redesign the '{task_type}' experiment based on focus group feedback?")
+
+        # Ensure we never emit the three banned exact strings
+        banned = {
+            "What if pricing were 20% lower?",
+            "What if clinical evidence were front and center?",
+            "What if packaging claims were simplified?",
+        }
+        for i, exp in enumerate(experiments):
+            if exp in banned:
+                experiments[i] = f"What if we re-evaluate the approach for '{topic}'?"
+
+        return experiments
+
     def _validate_simulation(self, simulation_id: str) -> None:
         if self.simulation_repo is None:
             return
@@ -275,11 +337,9 @@ class FocusGroupService:
         consensus = self.disagreement_detector.detect_consensus(turns)
         disagreements = self.disagreement_detector.detect(turns)
 
-        next_what_if = [
-            "What if pricing were 20% lower?",
-            "What if clinical evidence were front and center?",
-            "What if packaging claims were simplified?",
-        ]
+        next_what_if = self._build_next_what_if_experiments(
+            request.topic, request.target_context, disagreements
+        )
 
         focus_group_id = f"focus-group-{uuid.uuid4().hex[:8]}"
         session = FocusGroupSession(

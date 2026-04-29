@@ -152,6 +152,8 @@ class ConsumerPhase2Summary:
     evidence_validation_summary: Optional[Dict[str, Any]] = None
     evidence_gatekeeping_summary: Optional[Dict[str, Any]] = None
     task_type: str = ""
+    low_confidence_risk_findings: List[Dict[str, Any]] = field(default_factory=list)
+    findings_requiring_more_evidence: List[Dict[str, Any]] = field(default_factory=list)
     # Task-aware fields (populated downstream when task_type is known)
     top_packaging_hooks: List[str] = field(default_factory=list)
     top_trust_objections: List[str] = field(default_factory=list)
@@ -184,6 +186,8 @@ class ConsumerPhase2Summary:
             "resisted_price_points": self.resisted_price_points,
             "top_price_objections": self.top_price_objections,
             "price_context": self.price_context,
+            "low_confidence_risk_findings": self.low_confidence_risk_findings,
+            "findings_requiring_more_evidence": self.findings_requiring_more_evidence,
         }
         if self.finding_confidences:
             result["finding_confidences"] = self.finding_confidences
@@ -362,6 +366,7 @@ def build_consumer_summary(
                 "finding_type": finding.finding_type,
                 "summary": finding.summary,
                 "visibility": finding.visibility.value if hasattr(finding.visibility, "value") else str(finding.visibility),
+                "source_id": finding.source_id if hasattr(finding, "source_id") else finding.get("source_id", ""),
             })
 
     # Build clarification opportunities from recovery events
@@ -422,6 +427,8 @@ def build_consumer_summary(
     report_confidence: Optional[Dict[str, Any]] = None
     evidence_validation_summary: Optional[Dict[str, Any]] = None
     evidence_gatekeeping_summary: Optional[Dict[str, Any]] = None
+    low_confidence_risk_findings: List[Dict[str, Any]] = []
+    findings_requiring_more_evidence: List[Dict[str, Any]] = []
 
     if typed_findings:
         from .evidence_validator import validate_findings, build_evidence_validation_summary
@@ -460,6 +467,44 @@ def build_consumer_summary(
                 else:
                     typed_sources.append(s)
 
+        # Phase 5C: synthesise chunks and sources from finding evidence when no
+        # external artifacts are provided so that validation can still proceed.
+        if not typed_chunks:
+            from .models import DocumentChunk
+            synthetic_chunks = []
+            seen_chunk_ids = set()
+            for f in typed_findings:
+                sid = f.snippet_id if hasattr(f, "snippet_id") else f.get("snippet_id", "")
+                if sid and sid not in seen_chunk_ids:
+                    seen_chunk_ids.add(sid)
+                    txt = " ".join(
+                        f.evidence_snippets if hasattr(f, "evidence_snippets") else f.get("evidence_snippets", [])
+                    )
+                    src = f.source_id if hasattr(f, "source_id") else f.get("source_id", "")
+                    synthetic_chunks.append(
+                        DocumentChunk(chunk_id=sid, doc_id=sid, source_id=src or "synthetic", text=txt or sid)
+                    )
+            typed_chunks = synthetic_chunks
+
+        if not typed_sources:
+            from .models import ResearchSource, ResearchSourceLane, ResearchSourceType
+            synthetic_sources = []
+            seen_source_ids = set()
+            for f in typed_findings:
+                src = f.source_id if hasattr(f, "source_id") else f.get("source_id", "")
+                if src and src not in seen_source_ids:
+                    seen_source_ids.add(src)
+                    synthetic_sources.append(
+                        ResearchSource(
+                            source_id=src,
+                            lane=ResearchSourceLane.LaneA,
+                            source_type=ResearchSourceType.Upload,
+                            label="synthetic",
+                            trust_tier=1,
+                        )
+                    )
+            typed_sources = synthetic_sources
+
         validation_results = validate_findings(typed_findings, traces=typed_traces, chunks=typed_chunks)
         evidence_validation_summary = build_evidence_validation_summary(validation_results)
 
@@ -486,6 +531,25 @@ def build_consumer_summary(
             g.finding_id for g in gatekeeping_results
             if g.gatekeeping_status == "allowed"
         }
+        downgraded_finding_ids = {
+            g.finding_id for g in gatekeeping_results
+            if g.gatekeeping_status == "downgraded"
+        }
+        blocked_finding_ids = {
+            g.finding_id for g in gatekeeping_results
+            if g.gatekeeping_status == "blocked"
+        }
+
+        # Build support-level lookup from gatekeeping results
+        support_level_by_id: Dict[str, str] = {}
+        for g in gatekeeping_results:
+            if g.gatekeeping_status == "allowed":
+                support_level_by_id[g.finding_id] = "supported"
+            elif g.gatekeeping_status == "downgraded":
+                support_level_by_id[g.finding_id] = "weak_support"
+            else:
+                support_level_by_id[g.finding_id] = "insufficient_support"
+
         top_risk_findings = [
             f for f in top_risk_findings
             if f["finding_id"] in allowed_finding_ids
@@ -494,6 +558,20 @@ def build_consumer_summary(
             f for f in top_clarification_opportunities
             if f["finding_id"] in allowed_finding_ids
         ]
+
+        # Route downgraded (weak_support) and blocked (insufficient_support) findings
+        for finding in typed_findings:
+            base = {
+                "finding_id": finding.finding_id,
+                "finding_type": finding.finding_type,
+                "summary": finding.summary,
+                "visibility": finding.visibility.value if hasattr(finding.visibility, "value") else str(finding.visibility),
+                "support_level": support_level_by_id.get(finding.finding_id, "insufficient_support"),
+            }
+            if finding.finding_id in downgraded_finding_ids:
+                low_confidence_risk_findings.append(base)
+            elif finding.finding_id in blocked_finding_ids:
+                findings_requiring_more_evidence.append(base)
 
     task_aware = _extract_task_aware_fields(typed_events, task_type=task_type, brief=brief)
 
@@ -510,6 +588,8 @@ def build_consumer_summary(
         report_confidence=report_confidence,
         evidence_validation_summary=evidence_validation_summary,
         evidence_gatekeeping_summary=evidence_gatekeeping_summary,
+        low_confidence_risk_findings=low_confidence_risk_findings,
+        findings_requiring_more_evidence=findings_requiring_more_evidence,
         top_packaging_hooks=task_aware["top_packaging_hooks"],
         top_trust_objections=task_aware["top_trust_objections"],
         top_confusion_triggers=task_aware["top_confusion_triggers"],

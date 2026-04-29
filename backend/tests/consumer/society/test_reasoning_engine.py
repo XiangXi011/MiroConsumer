@@ -95,3 +95,53 @@ def test_reasoning_engine_llm_exception_falls_back_to_template(monkeypatch):
     assert result["reasoning_error"] == "llm unavailable"
     assert result["consumer_event_type"] == "ASK_PROOF"
     assert "ingredient readers / skeptic" in result["quote"]
+
+
+def test_reasoning_engine_prompt_includes_structured_evidence_digest(monkeypatch):
+    monkeypatch.setenv("SOCIETY_REASONING_BACKEND", "llm")
+    monkeypatch.delenv("SOCIETY_DETERMINISTIC_MODE", raising=False)
+    fake_client = _FakeLLMClient(
+        {
+            "consumer_event_type": "ASK_PROOF",
+            "quote": "The ingredient-source proof matters before I buy.",
+            "trust": 0.42,
+            "purchase_intent": 0.31,
+            "reasoning_summary": "used evidence digest",
+        }
+    )
+    engine = LayeredSocietyReasoningEngine(llm_client_factory=lambda: fake_client)
+
+    engine.reason(
+        agent=_agent(),
+        base_event={
+            "event_id": "event-digest",
+            "consumer_event_type": "ASK_PROOF",
+            "claim": "low sugar",
+            "trust": 0.4,
+            "purchase_intent": 0.6,
+        },
+        brief_context={"claims": ["low sugar"]},
+        research_findings=[
+            {
+                "finding_id": "finding-proof",
+                "claim": "low sugar",
+                "summary": "Ingredient-source proof reduces skepticism.",
+                "supporting_evidence": ["ingredient-source proof from uploaded QA"],
+                "contradicting_evidence": ["reviewers doubt sweetener aftertaste"],
+                "source_quality": "lane_a",
+                "confidence": "high",
+            }
+        ],
+        reasoning_mode="llm_deep_reasoning",
+    )
+
+    prompt = " ".join(
+        message.get("content", "")
+        for message in fake_client.calls[0]["messages"]
+    )
+    assert "evidence_digest" in prompt
+    assert "finding-proof" in prompt
+    assert "ingredient-source proof from uploaded QA" in prompt
+    assert "reviewers doubt sweetener aftertaste" in prompt
+    assert "lane_a" in prompt
+    assert "high" in prompt

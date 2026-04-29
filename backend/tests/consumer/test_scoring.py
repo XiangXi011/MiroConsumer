@@ -209,6 +209,95 @@ def test_scoring_blocks_unsupported_risk_findings():
     assert summary.evidence_gatekeeping_summary["blocked_count"] == 1
 
 
+def test_hard_gatekeeping_routes_weak_and_insufficient_findings_out_of_top_findings():
+    supported = ResearchFinding(
+        finding_id="r-supported",
+        finding_type="risk_signal",
+        summary="Supported safety concern",
+        visibility=GraphVisibility.Restricted,
+        evidence_snippets=["supported snippet a", "supported snippet b"],
+        snippet_id="chk_supported",
+        retrieval_trace_id="trace_supported",
+        source_id="src_a",
+    )
+    weak = ResearchFinding(
+        finding_id="r-weak",
+        finding_type="trend_signal",
+        summary="Weak price concern",
+        visibility=GraphVisibility.Restricted,
+        evidence_snippets=["weak price concern"],
+        snippet_id="chk_weak",
+        source_id="src_b",
+    )
+    insufficient = ResearchFinding(
+        finding_id="r-missing",
+        finding_type="category_context",
+        summary="Missing proof concern",
+        visibility=GraphVisibility.Restricted,
+    )
+    events = [
+        PropagationEvent(
+            event_id="e-supported",
+            event_type="risk_discovery",
+            actor_id="agent_1",
+            target_ids=[],
+            trigger_finding_ids=["r-supported", "r-weak", "r-missing"],
+            supporting_quote="I need proof before I trust this.",
+            round_index=1,
+        )
+    ]
+
+    summary = build_consumer_summary(
+        events=events,
+        findings=[supported, weak, insufficient],
+        traces=[
+            RetrievalTrace(
+                trace_id="trace_supported",
+                query="safety",
+                lane=ResearchSourceLane.LaneA,
+                chunk_ids=["chk_supported"],
+                scores=[0.9],
+            )
+        ],
+        chunks=[
+            DocumentChunk(
+                chunk_id="chk_supported",
+                doc_id="doc_1",
+                source_id="src_a",
+                text="supported snippet a",
+            ),
+            DocumentChunk(
+                chunk_id="chk_weak",
+                doc_id="doc_2",
+                source_id="src_b",
+                text="weak price concern",
+            ),
+        ],
+        sources=[
+            ResearchSource(
+                source_id="src_a",
+                lane=ResearchSourceLane.LaneA,
+                source_type=ResearchSourceType.Upload,
+                label="Uploaded QA",
+                trust_tier=1,
+            ),
+            ResearchSource(
+                source_id="src_b",
+                lane=ResearchSourceLane.LaneB,
+                source_type=ResearchSourceType.PublicWeb,
+                label="Public review",
+                trust_tier=2,
+            ),
+        ],
+    )
+
+    assert [f["finding_id"] for f in summary.top_risk_findings] == ["r-supported"]
+    assert [f["finding_id"] for f in summary.low_confidence_risk_findings] == ["r-weak"]
+    assert [f["finding_id"] for f in summary.findings_requiring_more_evidence] == ["r-missing"]
+    assert summary.to_dict()["low_confidence_risk_findings"][0]["support_level"] == "weak_support"
+    assert summary.to_dict()["findings_requiring_more_evidence"][0]["support_level"] == "insufficient_support"
+
+
 def test_report_context_keeps_trigger_finding_and_event_chain():
     summary = build_consumer_summary(
         events=[

@@ -283,3 +283,44 @@ def test_focus_group_dialogue_engine_uses_fake_llm_for_moderator_and_participant
         "LLM participant cites prior proof demand and weak_support before changing trust."
     )
     assert first_response["reasoning_summary"] == "participant used memory and evidence context"
+
+
+def test_focus_group_builds_dynamic_what_if_experiments_from_context(tmp_path):
+    _write_society_fixture(tmp_path, simulation_id="sim-dynamic-what-if")
+    service = FocusGroupService(base_dir=tmp_path, simulation_repo=_Repo())
+    request = ConsumerInterviewRequest(
+        simulation_id="sim-dynamic-what-if",
+        topic="29.9 price point for low sugar yogurt",
+        questions=[],
+        agent_ids=["agent-skeptic"],
+        roles=["skeptic"],
+        mode="snapshot",
+        max_agents=1,
+        target_context={
+            "task_type": "price_test",
+            "finding_id": "finding-price",
+            "claim": "29.9 price point",
+            "risk_points": ["students resist 29.9 without stronger value proof"],
+            "evidence_map": {
+                "finding-price": {
+                    "support_level": "weak_support",
+                    "source_count": 1,
+                }
+            },
+        },
+    )
+
+    session = service.run_focus_group(request, moderator_goal="Find price repair experiments")
+
+    fixed_defaults = [
+        "What if pricing were 20% lower?",
+        "What if clinical evidence were front and center?",
+        "What if packaging claims were simplified?",
+    ]
+    assert session.next_what_if_experiments != fixed_defaults
+    assert len(session.next_what_if_experiments) >= 3
+    joined = " ".join(session.next_what_if_experiments)
+    assert "finding-price" in joined
+    assert "weak_support" in joined
+    assert "29.9" in joined
+    assert "clinical evidence were front and center" not in joined

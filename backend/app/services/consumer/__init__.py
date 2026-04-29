@@ -40,6 +40,7 @@ from .confidence_scoring import (
     compute_finding_confidence,
     compute_report_confidence,
 )
+from .phase6j_calibration import Phase6JCalibrationReport, Phase6JCalibrationService
 from .propagation_state import PropagationState, create_initial_state
 
 __all__ = [
@@ -79,6 +80,8 @@ __all__ = [
     "compute_comparison_confidence",
     "compute_finding_confidence",
     "compute_report_confidence",
+    "Phase6JCalibrationReport",
+    "Phase6JCalibrationService",
     "PropagationState",
     "create_initial_state",
 ]

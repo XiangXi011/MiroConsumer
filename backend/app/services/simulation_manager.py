@@ -790,6 +790,10 @@ class SimulationManager:
             writer.writeheader()
             writer.writerows(rows)
 
+    def save_simulation(self, state: SimulationState) -> None:
+        """Public wrapper to persist a simulation state via the repository."""
+        self._save_simulation_state(state)
+
     def get_simulation(self, simulation_id: str) -> Optional[SimulationState]:
         return self._load_simulation_state(simulation_id)
 

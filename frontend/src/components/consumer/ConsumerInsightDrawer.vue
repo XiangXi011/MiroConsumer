@@ -52,6 +52,11 @@
             </div>
           </div>
 
+          <ConsumerExplainabilityPanel
+            v-if="hasExplainabilityData"
+            :data="explainabilityData"
+          />
+
           <div v-if="result.tool_trace" class="content-section">
             <div class="section-label">Tool Trace</div>
             <div class="trace-row">
@@ -80,6 +85,8 @@
 </template>
 
 <script setup>
+import { computed } from 'vue'
+import ConsumerExplainabilityPanel from './ConsumerExplainabilityPanel.vue'
 import { isPhase6IInterviewHandoff } from '../../utils/consumerResearchActions'
 import { renderSafeMarkdown } from '../../utils/safeMarkdown'
 
@@ -90,6 +97,75 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['close', 'open-handoff'])
+
+const hasExplainabilityData = computed(() => {
+  if (!props.result) return false
+  return (
+    props.result.evidence != null ||
+    props.result.explainability != null ||
+    props.result.audit != null ||
+    props.result.reasoning_metadata != null
+  )
+})
+
+const explainabilityData = computed(() => {
+  if (!props.result) return {}
+  const r = props.result
+  const out = {}
+
+  if (r.explainability) {
+    Object.assign(out, r.explainability)
+  }
+
+  if (r.audit) {
+    if (r.audit.evidence_validation_summary) {
+      out.evidence_validation_result = r.audit.evidence_validation_summary.overall_status || 'unknown'
+    }
+    if (r.audit.evidence_gatekeeping_summary) {
+      const gk = r.audit.evidence_gatekeeping_summary
+      const blocked = gk.blocked_count || 0
+      out.evidence_gatekeeping_result = blocked > 0 ? 'BLOCKED' : 'PASS'
+    }
+    if (r.audit.confidence !== undefined) {
+      out.confidence = r.audit.confidence
+    }
+  }
+
+  if (r.reasoning_metadata) {
+    if (r.reasoning_metadata.llm_invoked !== undefined) {
+      out.llm_invoked = r.reasoning_metadata.llm_invoked
+    }
+    if (r.reasoning_metadata.reasoning_backend) {
+      out.reasoning_backend = r.reasoning_metadata.reasoning_backend
+    }
+    if (r.reasoning_metadata.reasoning_error) {
+      out.reasoning_error = r.reasoning_metadata.reasoning_error
+    }
+  }
+
+  if (r.evidence) {
+    const srcCount = Number(r.evidence.source_count || 0)
+    const simCount = Number(r.evidence.simulation_quote_count || 0)
+    if (!out.source_type) {
+      if (srcCount > 0 && simCount > 0) {
+        out.source_type = 'mixed'
+      } else if (simCount > 0) {
+        out.source_type = 'simulation'
+      } else if (srcCount > 0) {
+        out.source_type = 'material'
+      }
+    }
+    if (!out.source_visibility) {
+      out.source_visibility = r.evidence.support_level || 'unknown'
+    }
+    if (!out.evidence_gatekeeping_result && r.evidence.gatekeeping_status) {
+      const gs = String(r.evidence.gatekeeping_status).toLowerCase()
+      out.evidence_gatekeeping_result = gs === 'handoff' ? 'BLOCKED' : gs === 'allowed' ? 'PASS' : gs
+    }
+  }
+
+  return out
+})
 
 function emitOpenHandoff() {
   if (props.result && props.result.handoff && props.result.handoff.target_context) {

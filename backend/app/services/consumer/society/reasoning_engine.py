@@ -143,6 +143,8 @@ class LayeredSocietyReasoningEngine:
         research_findings: Iterable[Any],
         reasoning_mode: str,
     ) -> str:
+        findings_list = list(research_findings)
+        evidence_digest = self._build_evidence_digest(findings_list)
         return (
             "Reason about this consumer agent as part of MiroConsumer society runtime.\n"
             f"reasoning_mode: {reasoning_mode}\n"
@@ -152,10 +154,55 @@ class LayeredSocietyReasoningEngine:
             f"role: {agent.role.value}\n"
             f"traits: {agent.traits}\n"
             f"brief_context: {dict(brief_context)}\n"
-            f"research_findings_count: {len(list(research_findings))}\n"
+            f"research_findings_count: {len(findings_list)}\n"
+            f"evidence_digest: {evidence_digest}\n"
             f"base_event: {dict(base_event)}\n"
             "Return JSON with keys: consumer_event_type, quote, trust, purchase_intent, reasoning_summary."
         )
+
+    def _build_evidence_digest(self, findings: List[Any]) -> List[Dict[str, Any]]:
+        """Build a structured evidence digest from research findings."""
+        digest: List[Dict[str, Any]] = []
+        for finding in findings:
+            if isinstance(finding, dict):
+                fid = finding.get("finding_id", "")
+                claim = finding.get("claim", "")
+                supporting = finding.get("supporting_evidence", [])
+                contradicting = finding.get("contradicting_evidence", [])
+                raw_source_quality = finding.get("source_quality", "")
+                raw_confidence = finding.get("confidence", "")
+            else:
+                fid = getattr(finding, "finding_id", "")
+                claim = getattr(finding, "claim", "")
+                supporting = getattr(finding, "supporting_evidence", [])
+                contradicting = getattr(finding, "contradicting_evidence", [])
+                raw_source_quality = getattr(finding, "source_quality", "")
+                raw_confidence = getattr(finding, "confidence", "")
+
+            source_quality = self._constrain_source_quality(raw_source_quality)
+            confidence = self._constrain_confidence(raw_confidence)
+
+            digest.append({
+                "finding_id": fid,
+                "claim": claim,
+                "supporting_evidence": list(supporting) if supporting else [],
+                "contradicting_evidence": list(contradicting) if contradicting else [],
+                "source_quality": source_quality,
+                "confidence": confidence,
+            })
+        return digest
+
+    @staticmethod
+    def _constrain_source_quality(value: Any) -> str:
+        allowed = {"lane_a", "lane_b", "simulation", "unknown"}
+        v = str(value).strip().lower() if value else ""
+        return v if v in allowed else "unknown"
+
+    @staticmethod
+    def _constrain_confidence(value: Any) -> str:
+        allowed = {"high", "medium", "low", "unknown"}
+        v = str(value).strip().lower() if value else ""
+        return v if v in allowed else "unknown"
 
 
 __all__ = ["LayeredSocietyReasoningEngine", "VALID_REASONING_MODES"]

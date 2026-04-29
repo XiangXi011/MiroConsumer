@@ -2182,24 +2182,25 @@ class ReportAgent:
                 loaded_from_project = True
 
         consumer_config: Dict[str, Any] = {}
+        consumer_config_path = os.path.join(
+            Config.UPLOAD_FOLDER, "simulations", self.simulation_id, "consumer_config.json"
+        )
+        if os.path.exists(consumer_config_path):
+            with open(consumer_config_path, "r", encoding="utf-8") as f:
+                consumer_config = json.load(f)
         if not loaded_from_project:
-            consumer_config_path = os.path.join(
-                Config.UPLOAD_FOLDER, "simulations", self.simulation_id, "consumer_config.json"
-            )
-            if os.path.exists(consumer_config_path):
-                with open(consumer_config_path, "r", encoding="utf-8") as f:
-                    consumer_config = json.load(f)
-                research_findings = consumer_config.get("research_findings", [])
-                retrieval_traces = consumer_config.get("retrieval_traces", [])
-                research_snapshot = consumer_config.get("research_snapshot", {})
+            research_findings = consumer_config.get("research_findings", [])
+            retrieval_traces = consumer_config.get("retrieval_traces", [])
+            research_snapshot = consumer_config.get("research_snapshot", {})
         else:
             # Even when loaded from project, try to read consumer_config for task_type
-            consumer_config_path = os.path.join(
-                Config.UPLOAD_FOLDER, "simulations", self.simulation_id, "consumer_config.json"
-            )
-            if os.path.exists(consumer_config_path):
-                with open(consumer_config_path, "r", encoding="utf-8") as f:
-                    consumer_config = json.load(f)
+            # Prefer consumer_config research_findings when present to include fixture evidence
+            if consumer_config.get("research_findings"):
+                research_findings = consumer_config["research_findings"]
+            if consumer_config.get("retrieval_traces"):
+                retrieval_traces = consumer_config["retrieval_traces"]
+            if consumer_config.get("research_snapshot"):
+                research_snapshot = consumer_config["research_snapshot"]
 
         # Extract task_type from consumer brief when available
         task_type: Optional[str] = None
@@ -2240,15 +2241,21 @@ class ReportAgent:
                 findings=research_findings,
                 initial_labels=initial_labels,
                 final_labels=final_labels,
+                traces=retrieval_traces,
                 task_type=task_type,
                 brief=brief,
             )
+            # Avoid revalidating against an empty snapshot; phase2_summary already
+            # carries the gatekeeping result built from consumer_config traces.
+            report_snapshot = persisted_snapshot if loaded_from_project else None
+            if report_snapshot is not None and not getattr(report_snapshot, "chunks", None) and not getattr(report_snapshot, "sources", None):
+                report_snapshot = None
             phase2_context = build_consumer_report_context(
                 summary=phase2_summary,
                 findings=research_findings,
                 events=all_events,
                 traces=retrieval_traces,
-                snapshot=persisted_snapshot if loaded_from_project else None,
+                snapshot=report_snapshot,
             )
 
             context["event_counts"] = phase2_summary.event_counts
@@ -2259,6 +2266,10 @@ class ReportAgent:
             context["source_catalog"] = phase2_context.get("source_catalog")
             context["enriched_findings"] = phase2_context.get("enriched_findings")
             context["enriched_traces"] = phase2_context.get("enriched_traces")
+            context["evidence_gatekeeping_summary"] = (
+                phase2_context.get("evidence_gatekeeping_summary")
+                or phase2_summary.evidence_gatekeeping_summary
+            )
 
             # Inject task-aware fields from Phase 2 summary into context
             context["top_packaging_hooks"] = phase2_summary.top_packaging_hooks or context.get("top_packaging_hooks", [])
