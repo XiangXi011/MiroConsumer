@@ -34,4 +34,10 @@ python "C:\Users\05537\.agents\skills\delegating-to-claude-code\invoke_claude_ex
 
 Codex must inspect the resulting diff and rerun critical checks before reporting completion.
 
+## Timeout Policy
+
+Codex must not use a 300-second timeout for Claude Code delegation. The default timeout for delegated implementation, editing, or verification work is at least 900 seconds.
+
+For broad implementation work, full regression checks, documentation generation, or multi-file verification, Codex must use at least 1800 seconds or split the work into smaller delegated tasks with separate audits.
+
 This rule is repository-wide and applies to all future tasks unless the user explicitly disables Claude Code delegation for a specific task.
