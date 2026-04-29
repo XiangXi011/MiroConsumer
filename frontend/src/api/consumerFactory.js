@@ -75,5 +75,25 @@ export function createConsumerApi(service) {
     runConsumerResearchAction(simulationId, data) {
       return service.post(`/api/consumer/simulations/${simulationId}/research-actions`, data)
     },
+
+    listRepresentativeAgents(simulationId) {
+      return service.get(`/api/consumer/simulations/${simulationId}/representative-agents`)
+    },
+
+    runConsumerInterview(simulationId, data) {
+      return service.post(`/api/consumer/simulations/${simulationId}/interviews`, data)
+    },
+
+    runFocusGroup(simulationId, data) {
+      return service.post(`/api/consumer/simulations/${simulationId}/focus-groups`, data)
+    },
+
+    listInterviewHistory(simulationId) {
+      return service.get(`/api/consumer/simulations/${simulationId}/interviews/history`)
+    },
+
+    listFocusGroupHistory(simulationId) {
+      return service.get(`/api/consumer/simulations/${simulationId}/focus-groups/history`)
+    },
   }
 }

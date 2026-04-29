@@ -30,6 +30,18 @@ test('consumer factory uses correct backend routes for Phase 6H channel APIs', (
   }
 })
 
+test('consumer factory uses correct backend routes for Phase 6I interview APIs', () => {
+  for (const path of [
+    '/api/consumer/simulations/${simulationId}/representative-agents',
+    '/api/consumer/simulations/${simulationId}/interviews',
+    '/api/consumer/simulations/${simulationId}/focus-groups',
+    '/api/consumer/simulations/${simulationId}/interviews/history',
+    '/api/consumer/simulations/${simulationId}/focus-groups/history',
+  ]) {
+    assert.ok(factorySrc.includes(path), `Expected factory to include ${path}`)
+  }
+})
+
 test('consumer factory uses correct backend route for listBranches', () => {
   assert.ok(
     factorySrc.includes('/api/consumer/simulations/${simulationId}/branches'),
@@ -119,6 +131,11 @@ test('consumer.js exports all required consumer functions', () => {
     'getChannelSummary',
     'getChannelEvents',
     'getPropagationPaths',
+    'listRepresentativeAgents',
+    'runConsumerInterview',
+    'runFocusGroup',
+    'listInterviewHistory',
+    'listFocusGroupHistory',
     'listBranches',
     'createBranch',
     'getBranchComparison',

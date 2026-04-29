@@ -52,6 +52,30 @@ test('channel summary APIs use Phase 6H consumer routes', async () => {
   assert.ok(fake.calls.every(call => call.method === 'get'))
 })
 
+test('Phase 6I interview APIs use fixed consumer routes', async () => {
+  const fake = makeFakeService()
+  const api = createConsumerApi(fake)
+  const interviewPayload = { topic: 'proof', mode: 'snapshot' }
+  const focusPayload = { topic: 'proof', moderator_goal: 'find disagreement' }
+
+  await api.listRepresentativeAgents('sim-interview')
+  await api.runConsumerInterview('sim-interview', interviewPayload)
+  await api.runFocusGroup('sim-interview', focusPayload)
+  await api.listInterviewHistory('sim-interview')
+  await api.listFocusGroupHistory('sim-interview')
+
+  assert.deepStrictEqual(fake.calls.map(call => call.method), ['get', 'post', 'post', 'get', 'get'])
+  assert.deepStrictEqual(fake.calls.map(call => call.url), [
+    '/api/consumer/simulations/sim-interview/representative-agents',
+    '/api/consumer/simulations/sim-interview/interviews',
+    '/api/consumer/simulations/sim-interview/focus-groups',
+    '/api/consumer/simulations/sim-interview/interviews/history',
+    '/api/consumer/simulations/sim-interview/focus-groups/history',
+  ])
+  assert.deepStrictEqual(fake.calls[1].data, interviewPayload)
+  assert.deepStrictEqual(fake.calls[2].data, focusPayload)
+})
+
 test('listBranches uses GET /api/consumer/simulations/{id}/branches', async () => {
   const fake = makeFakeService()
   const api = createConsumerApi(fake)

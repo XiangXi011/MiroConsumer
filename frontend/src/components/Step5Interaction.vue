@@ -402,6 +402,24 @@
           </div>
         </div>
 
+        <!-- Consumer Interview Workspace -->
+        <div v-if="isConsumerMode" class="consumer-interview-workspace">
+          <RepresentativeConsumerInterview
+            :simulation-id="simulationId"
+            :target-context="interviewHandoffContext"
+            @add-log="addLog"
+          />
+          <VirtualFocusGroupPanel
+            :simulation-id="simulationId"
+            :target-context="interviewHandoffContext"
+            @add-log="addLog"
+          />
+          <InterviewHistoryPanel
+            :simulation-id="simulationId"
+            @add-log="addLog"
+          />
+        </div>
+
         <!-- Survey Mode -->
         <div v-if="activeTab === 'survey'" class="survey-container">
           <!-- Survey Setup -->
@@ -520,6 +538,9 @@ import {
 } from '../utils/consumerResearchActions'
 import ComparisonSnapshotWorkspace from './consumer/ComparisonSnapshotWorkspace.vue'
 import PropagationPathGraph from './consumer/PropagationPathGraph.vue'
+import RepresentativeConsumerInterview from './consumer/RepresentativeConsumerInterview.vue'
+import VirtualFocusGroupPanel from './consumer/VirtualFocusGroupPanel.vue'
+import InterviewHistoryPanel from './consumer/InterviewHistoryPanel.vue'
 
 const { t } = useI18n()
 

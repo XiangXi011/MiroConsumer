@@ -966,5 +966,11 @@
     "heatmap": "渠道热力图",
     "timeline": "传播时间线",
     "pathGraph": "传播路径图"
+  },
+  "interview": {
+    "representativeConsumer": "代表性消费者",
+    "singleInterview": "消费者访谈",
+    "focusGroup": "虚拟焦点小组",
+    "history": "访谈历史"
   }
 }

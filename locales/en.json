@@ -958,5 +958,11 @@
     "heatmap": "Channel Heatmap",
     "timeline": "Propagation Timeline",
     "pathGraph": "Propagation Path Graph"
+  },
+  "interview": {
+    "representativeConsumer": "Representative Consumer",
+    "singleInterview": "Consumer Interview",
+    "focusGroup": "Virtual Focus Group",
+    "history": "Interview History"
   }
 }

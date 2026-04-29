@@ -206,3 +206,91 @@ class ConsumerAppService:
     def get_propagation_paths(cls, simulation_id: str) -> Dict[str, Any]:
         cls._require_consumer_simulation(simulation_id)
         return {"paths": SocietyStateStore().read_propagation_paths(simulation_id)}
+
+    # ============== Phase 6I: Interview & Focus Group ==============
+
+    @classmethod
+    def list_representative_agents(cls, simulation_id: str) -> Dict[str, Any]:
+        cls._require_consumer_simulation(simulation_id)
+        from ...services.consumer.interview.representative_card_builder import RepresentativeCardBuilder
+        cards = RepresentativeCardBuilder().build_cards(simulation_id, roles=[], limit=100)
+        return {"items": cards}
+
+    @classmethod
+    def run_consumer_interview(cls, simulation_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        cls._require_consumer_simulation(simulation_id)
+        from ...services.consumer.interview.interview_models import ConsumerInterviewRequest, LiveInterviewUnavailable
+        from ...services.consumer.interview.single_interview_service import SingleInterviewService
+        request = ConsumerInterviewRequest(
+            simulation_id=simulation_id,
+            topic=payload.get("topic", ""),
+            questions=payload.get("questions", []),
+            agent_ids=payload.get("agent_ids", []),
+            roles=payload.get("roles", []),
+            mode=payload.get("mode", "snapshot"),
+            max_agents=payload.get("max_agents", 1),
+            target_context=payload.get("target_context", {}),
+        )
+        try:
+            result = SingleInterviewService(simulation_repo=cls._simulation_repo).run(request)
+        except LiveInterviewUnavailable as exc:
+            raise ValueError(str(exc)) from exc
+        return {
+            "interview_id": result.interview_id,
+            "simulation_id": result.simulation_id,
+            "topic": result.topic,
+            "mode": result.mode,
+            "answers": result.answers,
+            "evidence_map": result.evidence_map,
+            "summary": result.summary,
+            "followup_questions": result.followup_questions,
+        }
+
+    @classmethod
+    def run_focus_group(cls, simulation_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        cls._require_consumer_simulation(simulation_id)
+        from ...services.consumer.interview.interview_models import ConsumerInterviewRequest
+        from ...services.consumer.interview.focus_group_service import FocusGroupService
+        request = ConsumerInterviewRequest(
+            simulation_id=simulation_id,
+            topic=payload.get("topic", ""),
+            questions=payload.get("questions", []),
+            agent_ids=payload.get("agent_ids", []),
+            roles=payload.get("roles", []),
+            mode=payload.get("mode", "snapshot"),
+            max_agents=payload.get("max_agents", 8),
+            target_context=payload.get("target_context", {}),
+        )
+        result = FocusGroupService(simulation_repo=cls._simulation_repo).run_focus_group(
+            request, moderator_goal=payload.get("moderator_goal", "")
+        )
+        return {
+            "focus_group_id": result.focus_group_id,
+            "simulation_id": result.simulation_id,
+            "topic": result.topic,
+            "moderator_goal": result.moderator_goal,
+            "participant_cards": result.participant_cards,
+            "turns": result.turns,
+            "consensus": result.consensus,
+            "disagreements": result.disagreements,
+            "next_what_if_experiments": result.next_what_if_experiments,
+            "evidence_map": result.evidence_map,
+        }
+
+    @classmethod
+    def list_interview_history(cls, simulation_id: str) -> Dict[str, Any]:
+        cls._require_consumer_simulation(simulation_id)
+        from ...services.consumer.interview.history_store import HistoryStore
+        history = HistoryStore().list_interviews(simulation_id)
+        if not history:
+            raise ValueError("history not found")
+        return {"items": history}
+
+    @classmethod
+    def list_focus_group_history(cls, simulation_id: str) -> Dict[str, Any]:
+        cls._require_consumer_simulation(simulation_id)
+        from ...services.consumer.interview.history_store import HistoryStore
+        history = HistoryStore().list_focus_groups(simulation_id)
+        if not history:
+            raise ValueError("history not found")
+        return {"items": history}
