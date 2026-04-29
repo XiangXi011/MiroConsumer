@@ -7,7 +7,7 @@
 | 日期 | 2026-04-29 |
 | 子阶段 | 7A |
 | 子阶段名称 | 持久化基础 |
-| 上游依赖 | Phase 6F 至 Phase 6I 稳定 schema |
+| 上游依赖 | Phase 6J readiness gate；Phase 6F 至 Phase 6I 稳定 schema |
 | 下游依赖 | Phase 7B、7C、7D、7E、7F |
 | 文档状态 | 审核基线 |
 
@@ -21,6 +21,7 @@
 - Phase 6G society snapshot schema（只读引用，禁止修改）。
 - Phase 6H channel event schema（只读引用，禁止修改）。
 - Phase 6I interview history schema（只读引用，禁止修改）。
+- Phase 6J readiness gate（前置门禁，必须通过）。
 
 ### 2.2 输出依赖
 

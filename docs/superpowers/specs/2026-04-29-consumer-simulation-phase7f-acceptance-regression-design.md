@@ -1,4 +1,4 @@
-# MiroConsumer Phase 7F 验收回归规格
+# MiroConsumer Phase 7F 生产化验收规格
 
 ## 1. 文档状态
 
@@ -6,8 +6,8 @@
 |---|---|
 | 日期 | 2026-04-29 |
 | 子阶段 | 7F |
-| 子阶段名称 | 验收回归 |
-| 上游依赖 | Phase 7A 至 7E 全部交付物 |
+| 子阶段名称 | 生产化验收 |
+| 上游依赖 | Phase 6J readiness gate；Phase 7A 至 7E 全部交付物 |
 | 下游依赖 | 无（Phase 7 最终子阶段） |
 | 文档状态 | 审核基线 |
 
@@ -15,6 +15,7 @@
 
 ### 2.1 输入依赖
 
+- Phase 6J 交付的 consumer golden cases 与 calibration report 作为只读前置门禁。
 - Phase 7A 交付的 repository factory、全部 SQLAlchemy repositories、contract tests。
 - Phase 7B 交付的 QueueTaskExecutor、worker recovery、dead-letter queue、idempotency。
 - Phase 7C 交付的 simulation lock、branch fork lock、report generation lock、optimistic version、409 mapping。
@@ -28,83 +29,49 @@ Phase 7F 为 Phase 7 最终子阶段，无下游依赖。
 
 ## 3. 交付物
 
-### 3.1 Whole-Phase Smoke Test
+### 3.1 Production Smoke Test
 
 必须新增以下文件：
 
 ```text
-backend/tests/smoke/test_whole_phase_consumer_flow.py
+backend/tests/smoke/test_phase7_production_flow.py
 scripts/smoke_consumer_flow.py
 ```
 
-Smoke 流程固定为以下 14 步：
+Production smoke 流程固定为：
 
-1. 创建 consumer brief。
-2. 构建 graph。
-3. prepare simulation。
-4. run simulation。
-5. 获取 consumer summary。
-6. 生成 report。
-7. 创建 branch。
-8. 注入 evidence。
-9. resume branch。
-10. 创建 comparison。
-11. 导出 research asset。
-12. 获取 representative agents。
-13. 执行 consumer interview。
-14. 读取 audit chain。
+1. 文件系统 repository 模式启动。
+2. SQLite repository 模式启动。
+3. QueueTaskExecutor thread mode 启动。
+4. QueueTaskExecutor sqlite mode 启动。
+5. lock service 启动。
+6. run estimate API 返回固定结构。
+7. audit chain API 返回固定结构。
+8. local storage backend 启动。
+9. production compose 配置解析通过。
 
-每一步必须断言 HTTP status 与 response schema。
-
-### 3.2 Golden Case Regression
-
-必须新增目录：
+每一步必须断言：
 
 ```text
-backend/tests/golden_cases/
+HTTP status
+response schema
+trace_id
+repository backend
+task status
 ```
 
-必须包含五个案例文件：
+### 3.2 Phase 6J 前置门禁
 
-```text
-high_price_new_product.json
-low_sugar_health_food.json
-packaging_redesign.json
-ab_copy_test.json
-negative_review_repair.json
-```
+Phase 7F 禁止重新定义 consumer golden cases。
 
-每个案例文件必须包含以下结构：
+Phase 7F 必须读取 Phase 6J calibration report，并验证：
 
-```json
-{
-  "input_materials": {},
-  "expected_propagating_claims": [],
-  "expected_risks": [],
-  "expected_skeptic_segments": [],
-  "expected_repair_evidence": [],
-  "forbidden_strong_claims": []
-}
-```
-
-Regression 必须验证以下规则：
-
-- 正确 claim 出现。
-- 正确 risk 出现。
-- 正确 skeptic segment 出现。
-- 修复证据被识别。
-- forbidden strong claims 未出现。
-- weak evidence 被降级。
+- `Phase 7 entry decision` 为 `PASS`。
+- End-to-end golden flow 已通过。
+- Evidence gatekeeping hard rules 已通过。
+- Explainability panel acceptance 已通过。
 
 ### 3.3 Rollback Gates
-
-必须定义以下 rollback 规则：
-
-- Smoke test 失败时禁止合并到主分支。
-- Golden case regression 失败时禁止合并到主分支。
-- Contract test 失败时禁止合并到主分支。
-- `docker-compose.prod.yml` 配置校验失败时禁止合并到主分支。
-- `git diff --check` 输出非空时禁止合并到主分支。
 
 必须新增 rollback gate 测试文件：
 
@@ -121,6 +88,14 @@ backend/tests/smoke/test_phase7_rollback_modes.py
 - `DB_URL` 为空时 PostgreSQL 不启用。
 - `STORAGE_BACKEND` 不为 `s3` 时 S3 不启用。
 
+Rollback 规则固定为：
+
+- Production smoke test 失败时禁止合并到主分支。
+- Phase 6J readiness gate 失败时禁止合并到主分支。
+- Contract test 失败时禁止合并到主分支。
+- `docker-compose.prod.yml` 配置校验失败时禁止合并到主分支。
+- `git diff --check` 输出非空时禁止合并到主分支。
+
 ### 3.4 CI Gates
 
 后端 CI 必须执行以下命令序列：
@@ -134,9 +109,8 @@ python -m pytest tests/concurrency/ -q
 python -m pytest tests/services/application/test_llm_budget_manager.py -q
 python -m pytest tests/services/application/test_audit_chain_service.py -q
 python -m pytest tests/services/storage/ -q
-python -m pytest tests/smoke/test_whole_phase_consumer_flow.py -q
+python -m pytest tests/smoke/test_phase7_production_flow.py -q
 python -m pytest tests/smoke/test_phase7_rollback_modes.py -q
-python -m pytest tests/golden_cases/ -q
 python -m pytest tests/ --tb=short -q
 ```
 
@@ -164,37 +138,32 @@ docker compose -f docker-compose.prod.yml config
 
 本子阶段禁止纳入以下工作：
 
-- 修改 repository 表结构（归属 Phase 7A）。
-- 实现队列逻辑（归属 Phase 7B）。
-- 实现并发锁逻辑（归属 Phase 7C）。
-- 实现成本预算控制（归属 Phase 7D）。
-- 修改部署配置（归属 Phase 7E）。
-- 修改 consumer API response schema。
-- 新增消费者模拟内核或渠道规则。
-- 新增前端产品面。
+- repository schema 新增。
+- queue backend 新增。
+- lock 行为新增。
+- budget 行为新增。
+- audit chain 行为新增。
+- storage backend 新增。
+- Dockerfile 行为新增。
+- consumer golden case 行为新增。
+- 既有 API response schema 修改。
 
 ## 5. 退出条件
 
 Phase 7F 退出必须同时满足：
 
-1. `test_whole_phase_consumer_flow.py` 存在且覆盖 14 步 smoke 流程。
-2. Smoke 流程每一步断言 HTTP status 与 response schema。
-3. `scripts/smoke_consumer_flow.py` 存在且作为独立脚本可运行。
-4. `backend/tests/golden_cases/` 目录存在。
-5. 五个 golden case 文件（high_price_new_product、low_sugar_health_food、packaging_redesign、ab_copy_test、negative_review_repair）全部存在。
-6. 每个 golden case 包含 `input_materials`、`expected_propagating_claims`、`expected_risks`、`expected_skeptic_segments`、`expected_repair_evidence`、`forbidden_strong_claims`。
-7. Golden case regression 验证正确 claim 出现。
-8. Golden case regression 验证正确 risk 出现。
-9. Golden case regression 验证正确 skeptic segment 出现。
-10. Golden case regression 验证修复证据被识别。
-11. Golden case regression 验证 forbidden strong claims 未出现。
-12. Golden case regression 验证 weak evidence 被降级。
-13. Repository contract tests 在 CI 中通过。
-14. Smoke test 在 CI 中通过。
-15. Golden case regression 在 CI 中通过。
-16. 全量后端测试在 CI 中通过。
-17. 前端 node 测试在 CI 中通过。
-18. 前端 build 在 CI 中通过。
-19. `docker compose -f docker-compose.prod.yml config` 在 CI 中通过。
-20. `git diff --check` 在 CI 中无输出。
-21. 以上任一 CI gate 失败时阻止代码合并。
+1. Phase 6J calibration report 的 `Phase 7 entry decision` 为 `PASS`。
+2. Production smoke test 通过。
+3. Rollback gates 通过。
+4. Repository tests 通过。
+5. Queue tests 通过。
+6. Concurrency tests 通过。
+7. Budget tests 通过。
+8. Audit chain tests 通过。
+9. Storage tests 通过。
+10. 全量后端测试通过。
+11. 前端 node 测试通过。
+12. 前端 build 通过。
+13. `docker compose -f docker-compose.prod.yml config` 通过。
+14. `git diff --check` 无输出。
+15. Phase 7 总规格的总退出条件全部通过。

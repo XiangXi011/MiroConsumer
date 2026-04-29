@@ -18,6 +18,7 @@ Phase 6F 消费者语义激活
   -> Phase 6G 大规模消费者社会桥接
   -> Phase 6H 多渠道消费者传播
   -> Phase 6I 虚拟焦点小组
+  -> Phase 6J 校准与可信度验收
   -> Phase 7 生产化
 ```
 
@@ -27,7 +28,8 @@ Phase 6F 消费者语义激活
 - Phase 6I 必须依赖 Phase 6F 的 consumer event ontology。
 - Phase 6I 必须依赖 Phase 6G 的 unified role enum、society agent state、society metrics。
 - Phase 6I 必须依赖 Phase 6H 的 channel context、channel metrics、propagation path。
-- Phase 7 必须依赖 Phase 6I 的 interview history schema 稳定版本。
+- Phase 6J 必须依赖 Phase 6I 的 interview history schema 稳定版本。
+- Phase 7 必须依赖 Phase 6J readiness gate 通过。
 
 ## 2. 阶段目标
 
