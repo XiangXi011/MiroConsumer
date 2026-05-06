@@ -2,7 +2,7 @@
   <section
     v-if="visible"
     class="society-run-summary"
-    aria-label="Society Mode Agents Rounds LLM Budget Reach Misread Trust Recovery Purchase Intent"
+    aria-label="Society Mode Agents Rounds LLM Budget Reach Misread Trust Recovery Purchase Intent Progress Agent Progress Current Layer Backend LLM Calls Rules Fallback Failed"
   >
     <div class="society-summary-head">
       <span class="society-kicker">Consumer Society Runtime</span>

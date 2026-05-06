@@ -18,11 +18,13 @@ class LLMClient:
         self,
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
-        model: Optional[str] = None
+        model: Optional[str] = None,
+        request_timeout: Optional[float] = None,
     ):
         self.api_key = api_key or Config.LLM_API_KEY
         self.base_url = base_url or Config.LLM_BASE_URL
         self.model = model or Config.LLM_MODEL_NAME
+        self.request_timeout = request_timeout
         
         if not self.api_key:
             raise ValueError("LLM_API_KEY 未配置")
@@ -37,7 +39,8 @@ class LLMClient:
         messages: List[Dict[str, str]],
         temperature: float = 0.7,
         max_tokens: int = 4096,
-        response_format: Optional[Dict] = None
+        response_format: Optional[Dict] = None,
+        timeout: Optional[float] = None,
     ) -> str:
         """
         发送聊天请求
@@ -60,6 +63,9 @@ class LLMClient:
         
         if response_format:
             kwargs["response_format"] = response_format
+        request_timeout = timeout if timeout is not None else self.request_timeout
+        if request_timeout is not None:
+            kwargs["timeout"] = request_timeout
         
         response = self.client.chat.completions.create(**kwargs)
         content = response.choices[0].message.content
@@ -72,7 +78,8 @@ class LLMClient:
         messages: List[Dict[str, str]],
         temperature: float = 0.7,
         max_tokens: int = 4096,
-        response_format: Optional[Dict] = None
+        response_format: Optional[Dict] = None,
+        timeout: Optional[float] = None,
     ) -> tuple[str, str]:
         """
         发送聊天请求并返回内容及其finish_reason
@@ -95,6 +102,9 @@ class LLMClient:
 
         if response_format:
             kwargs["response_format"] = response_format
+        request_timeout = timeout if timeout is not None else self.request_timeout
+        if request_timeout is not None:
+            kwargs["timeout"] = request_timeout
 
         response = self.client.chat.completions.create(**kwargs)
         content = response.choices[0].message.content
@@ -150,6 +160,7 @@ class LLMClient:
         temperature: float = 0.3,
         max_tokens: int = 4096,
         fallback_on_failure: bool = True,
+        timeout: Optional[float] = None,
     ) -> Dict[str, Any]:
         """
         发送聊天请求并返回JSON
@@ -172,6 +183,7 @@ class LLMClient:
             temperature=temperature,
             max_tokens=max_tokens,
             fallback_on_failure=fallback_on_failure,
+            timeout=timeout,
         )
         return data
 
@@ -181,6 +193,7 @@ class LLMClient:
         temperature: float = 0.3,
         max_tokens: int = 4096,
         fallback_on_failure: bool = True,
+        timeout: Optional[float] = None,
     ) -> tuple[Dict[str, Any], Dict[str, Any]]:
         """
         发送聊天请求并返回JSON及解析诊断信息
@@ -221,6 +234,7 @@ class LLMClient:
                 temperature=temperature,
                 max_tokens=max_tokens,
                 response_format={"type": "json_object"},
+                timeout=timeout,
             )
             diagnostics["raw_preview"] = content[:500]
             data = self.extract_json(content)
@@ -261,6 +275,7 @@ class LLMClient:
                 messages=fallback_messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
+                timeout=timeout,
             )
             diagnostics["raw_preview"] = content[:500]
             data = self.extract_json(content)

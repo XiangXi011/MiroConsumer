@@ -20,6 +20,7 @@ from ..services.simulation_manager import SimulationState, SimulationStatus
 from ..services.consumer.intervention_manager import ConsumerInterventionManager
 from ..services.consumer.simulation_state_accessor import ConsumerSimulationStateAccessor
 from ..services.consumer import benchmark_registry, benchmark_replay
+from ..utils.atomic_json import atomic_write_json
 from . import (
     ConsumerProjectResearchContext,
     ConsumerProjectResearchProvider,
@@ -167,8 +168,7 @@ class FilesystemSimulationRepository(SimulationRepository):
         sim_dir = self._get_simulation_dir(state.simulation_id)
         state_file = os.path.join(sim_dir, "state.json")
         state.updated_at = datetime.now().isoformat()
-        with open(state_file, "w", encoding="utf-8") as f:
-            json.dump(state.to_dict(), f, ensure_ascii=False, indent=2)
+        atomic_write_json(state_file, state.to_dict())
 
     def create_simulation(
         self,
@@ -244,8 +244,7 @@ class FilesystemSimulationRepository(SimulationRepository):
     def save_simulation_config(self, simulation_id: str, config: Dict[str, Any]) -> None:
         sim_dir = self._get_simulation_dir(simulation_id)
         config_path = os.path.join(sim_dir, "simulation_config.json")
-        with open(config_path, "w", encoding="utf-8") as f:
-            json.dump(config, f, ensure_ascii=False, indent=2)
+        atomic_write_json(config_path, config)
 
     def load_simulation_config(self, simulation_id: str) -> Optional[Dict[str, Any]]:
         sim_dir = self._get_simulation_dir(simulation_id)
@@ -258,8 +257,7 @@ class FilesystemSimulationRepository(SimulationRepository):
     def save_consumer_config(self, simulation_id: str, config: Dict[str, Any]) -> None:
         sim_dir = self._get_simulation_dir(simulation_id)
         config_path = os.path.join(sim_dir, "consumer_config.json")
-        with open(config_path, "w", encoding="utf-8") as f:
-            json.dump(config, f, ensure_ascii=False, indent=2)
+        atomic_write_json(config_path, config)
 
     def load_consumer_config(self, simulation_id: str) -> Optional[Dict[str, Any]]:
         sim_dir = self._get_simulation_dir(simulation_id)

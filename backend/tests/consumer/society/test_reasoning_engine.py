@@ -1,6 +1,7 @@
 from app.services.consumer.society.consumer_roles import ConsumerRole
 from app.services.consumer.society.population_models import ConsumerSocietyAgent
 from app.services.consumer.society.reasoning_engine import LayeredSocietyReasoningEngine
+import time
 
 
 class _FakeLLMClient:
@@ -145,3 +146,69 @@ def test_reasoning_engine_prompt_includes_structured_evidence_digest(monkeypatch
     assert "reviewers doubt sweetener aftertaste" in prompt
     assert "lane_a" in prompt
     assert "high" in prompt
+
+
+def test_reasoning_engine_passes_request_timeout_to_llm_client(monkeypatch):
+    monkeypatch.setenv("SOCIETY_REASONING_BACKEND", "llm")
+    monkeypatch.delenv("SOCIETY_DETERMINISTIC_MODE", raising=False)
+    fake_client = _FakeLLMClient(
+        {
+            "consumer_event_type": "ASK_PROOF",
+            "quote": "timeout aware response",
+            "trust": 0.5,
+            "purchase_intent": 0.4,
+        }
+    )
+    engine = LayeredSocietyReasoningEngine(
+        llm_client_factory=lambda: fake_client,
+        per_call_timeout_seconds=2,
+    )
+
+    engine.reason(
+        agent=_agent(),
+        base_event={
+            "event_id": "event-timeout",
+            "consumer_event_type": "ASK_PROOF",
+            "claim": "low sugar",
+            "trust": 0.4,
+            "purchase_intent": 0.6,
+        },
+        brief_context={"claims": ["low sugar"]},
+        research_findings=[],
+        reasoning_mode="llm_deep_reasoning",
+    )
+
+    assert fake_client.calls[0]["timeout"] == 2
+
+
+def test_reasoning_engine_per_call_timeout_falls_back(monkeypatch):
+    monkeypatch.setenv("SOCIETY_REASONING_BACKEND", "llm")
+    monkeypatch.delenv("SOCIETY_DETERMINISTIC_MODE", raising=False)
+
+    class SlowClient:
+        def chat_json(self, **kwargs):
+            time.sleep(0.2)
+            return {"quote": "too late"}
+
+    engine = LayeredSocietyReasoningEngine(
+        llm_client_factory=lambda: SlowClient(),
+        per_call_timeout_seconds=0.01,
+    )
+
+    result = engine.reason(
+        agent=_agent(),
+        base_event={
+            "event_id": "event-timeout-fallback",
+            "consumer_event_type": "ASK_PROOF",
+            "claim": "low sugar",
+            "trust": 0.4,
+            "purchase_intent": 0.6,
+        },
+        brief_context={"claims": ["low sugar"]},
+        research_findings=[],
+        reasoning_mode="llm_deep_reasoning",
+    )
+
+    assert result["reasoning_backend"] == "template_fallback"
+    assert result["llm_invoked"] is False
+    assert "TimeoutError" in result["reasoning_error"]

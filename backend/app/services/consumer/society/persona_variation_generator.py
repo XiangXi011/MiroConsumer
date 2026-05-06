@@ -52,8 +52,27 @@ class PersonaVariationGenerator:
         risk_memory = _clamp((skepticism_score + evidence_sensitivity) / 2 + rng.uniform(-0.15, 0.15))
         social_influence_weight = _clamp((influence_weight + share_propensity) / 2)
 
+        segment = str(persona.get("label") or persona.get("name") or persona_id).strip() or persona_id
+        if "evidence_sensitivity" in persona:
+            evidence_sensitivity = _clamp(float(persona.get("evidence_sensitivity") or evidence_sensitivity))
+        if "price_sensitivity" in persona:
+            price_sensitivity = _clamp(float(persona.get("price_sensitivity") or price_sensitivity))
+
+        profile_traits = {
+            "name": persona.get("name") or segment,
+            "age_range": persona.get("age_range", ""),
+            "city_tier": persona.get("city_tier", ""),
+            "income_level": persona.get("income_level", ""),
+            "family_structure": persona.get("family_structure", ""),
+            "purchase_channel": list(persona.get("purchase_channel", [])),
+            "category_usage_frequency": persona.get("category_usage_frequency", ""),
+            "bio": persona.get("bio", ""),
+            "persona": persona.get("persona", ""),
+            "source": persona.get("source", ""),
+        }
+
         return {
-            "segment": str(persona.get("label", persona_id)).strip() or persona_id,
+            "segment": segment,
             "role": role,
             "traits": {
                 "attention_drivers": list(persona.get("attention_drivers", [])),
@@ -62,6 +81,7 @@ class PersonaVariationGenerator:
                 "category_familiarity": category_familiarity,
                 "risk_memory": risk_memory,
                 "social_influence_weight": social_influence_weight,
+                **profile_traits,
             },
             "channel_affinity": {
                 "consumer_society": _clamp(0.5 + rng.uniform(-0.2, 0.2)),

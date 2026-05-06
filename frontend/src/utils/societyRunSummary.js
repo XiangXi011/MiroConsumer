@@ -13,6 +13,8 @@ export function formatSocietyDelta(value) {
 
 export function buildSocietyRunSummaryItems(context = {}) {
   const metrics = context.society_metrics || {}
+  const completedAgents = Number(context.completed_agents ?? context.society_completed_agents ?? 0)
+  const totalAgents = Number(context.total_agents ?? context.society_agents_count ?? 0)
   return [
     {
       key: 'mode',
@@ -53,6 +55,46 @@ export function buildSocietyRunSummaryItems(context = {}) {
       key: 'purchaseIntentDelta',
       label: 'Purchase Intent',
       value: formatSocietyDelta(metrics.purchase_intent_delta),
+    },
+    {
+      key: 'progressStatus',
+      label: 'Progress',
+      value: context.status || context.progress_status || 'idle',
+    },
+    {
+      key: 'agentProgress',
+      label: 'Agent Progress',
+      value: `${Number.isFinite(completedAgents) ? completedAgents : 0} / ${Number.isFinite(totalAgents) ? totalAgents : 0}`,
+    },
+    {
+      key: 'currentLayer',
+      label: 'Current Layer',
+      value: context.current_layer || '-',
+    },
+    {
+      key: 'currentBackend',
+      label: 'Backend',
+      value: context.reasoning_backend || '-',
+    },
+    {
+      key: 'llmInvoked',
+      label: 'LLM Calls',
+      value: String(context.llm_invoked_count ?? 0),
+    },
+    {
+      key: 'rulesCount',
+      label: 'Rules',
+      value: String(context.rules_count ?? 0),
+    },
+    {
+      key: 'fallbackCount',
+      label: 'Fallback',
+      value: String(context.template_fallback_count ?? 0),
+    },
+    {
+      key: 'failedCount',
+      label: 'Failed',
+      value: String(context.failed_count ?? 0),
     },
   ]
 }

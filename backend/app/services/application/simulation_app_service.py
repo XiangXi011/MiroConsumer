@@ -502,6 +502,7 @@ class SimulationAppService:
                 "society_seed",
                 "society_max_agents",
                 "society_audit_sample_size",
+                "advanced_society_mode",
                 "enabled_channels",
                 "channel_seed",
             )
@@ -515,8 +516,11 @@ class SimulationAppService:
 
         max_allowed = int(os.environ.get("MAX_SOCIETY_AGENTS", "1000"))
         max_agents = int(data.get("society_max_agents") or cls._default_society_agents(mode))
+        advanced_society_mode = bool(data.get("advanced_society_mode", False))
         if max_agents > max_allowed:
             raise ValueError(f"society_max_agents exceeds MAX_SOCIETY_AGENTS={max_allowed}")
+        if mode == "standard" and max_agents > 32 and not advanced_society_mode:
+            raise ValueError("advanced_society_mode=true is required when standard society_max_agents exceeds 32")
 
         seed = int(data.get("society_seed") or 0)
         enabled_channels = validate_enabled_channels(data.get("enabled_channels"), mode)
@@ -544,7 +548,7 @@ class SimulationAppService:
         if mode == "large_society":
             return 1000
         if mode == "standard":
-            return 252
+            return 32
         return 8
 
     @staticmethod
@@ -552,7 +556,7 @@ class SimulationAppService:
         if mode == "large_society":
             return 24
         if mode == "standard":
-            return 12
+            return 4
         return 0
 
     @staticmethod
@@ -560,7 +564,9 @@ class SimulationAppService:
         if mode == "large_society":
             return max(1, int(max_agents * 0.08))
         if mode == "standard":
-            return 32
+            if max_agents == 100:
+                return 16
+            return 12
         return max_agents
 
     @staticmethod
@@ -572,6 +578,10 @@ class SimulationAppService:
             expanded = min(250, max(100, int(max_agents * 0.2)))
             shadow = max(0, max_agents - core - expanded)
             return core, expanded, shadow
+        if max_agents == 32:
+            return 8, 16, 8
+        if max_agents == 100:
+            return 8, 72, 20
         core = min(20, max(12, int(max_agents * 0.08)))
         shadow = min(200, max(0, int(max_agents * 0.8)))
         expanded = max(0, max_agents - core - shadow)

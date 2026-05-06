@@ -168,6 +168,11 @@ ALLOWED_MiroFish_PATHS = {
     "docs/superpowers",
     # Test file may mention the old name in assertions or comments
     "tests/test_phase5a_identity.py",
+    # Phase7G explicitly reintroduces native profile capability naming while
+    # keeping the consumer runtime/product identity separate.
+    "app/services/consumer/society/mirofish_profile_adapter.py",
+    "app/services/consumer/society/profile_generator.py",
+    "tests/consumer/society/test_mirofish_profile_adapter.py",
 }
 
 

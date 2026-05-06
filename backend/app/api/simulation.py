@@ -13,6 +13,7 @@ from ..services.zep_entity_reader import ZepEntityReader
 from ..services.oasis_profile_generator import OasisProfileGenerator
 from ..services.simulation_manager import SimulationManager, SimulationStatus
 from ..services.simulation_runner import SimulationRunner
+from ..services.consumer.society.state_store import SocietyStateStore
 from ..utils.logger import get_logger
 from ..utils.locale import t
 from ..models.project import ProjectManager
@@ -1290,9 +1291,13 @@ def stop_simulation():
             state.status = SimulationStatus.PAUSED
             manager._save_simulation_state(state)
         
+        data = run_state.to_dict()
+        progress = SocietyStateStore(base_dir=SimulationRunner.RUN_STATE_DIR).read_progress(simulation_id)
+        if progress:
+            data.update(progress)
         return jsonify({
             "success": True,
-            "data": run_state.to_dict()
+            "data": data
         })
         
     except ValueError as e:

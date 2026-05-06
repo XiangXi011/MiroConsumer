@@ -255,6 +255,7 @@ def test_consumer_concept_test_golden_flow_is_structurally_complete(tmp_path, mo
             "society_mode": "standard",
             "society_seed": 42,
             "society_max_agents": 240,
+            "advanced_society_mode": True,
             "society_audit_sample_size": 8,
             "max_rounds": 2,
         },

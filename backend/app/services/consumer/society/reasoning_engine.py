@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from typing import Any, Callable, Dict, Iterable, Mapping
 
 from ..event_ontology import ConsumerEventType
@@ -27,8 +28,17 @@ def _clamp(value: Any, fallback: float = 0.5) -> float:
 class LayeredSocietyReasoningEngine:
     """Apply L1/L2/L4 reasoning while keeping L3 shadow agents rule-only."""
 
-    def __init__(self, llm_client_factory: Callable[[], Any] | None = None):
+    def __init__(
+        self,
+        llm_client_factory: Callable[[], Any] | None = None,
+        per_call_timeout_seconds: float | None = None,
+    ):
         self.llm_client_factory = llm_client_factory
+        self.per_call_timeout_seconds = float(
+            per_call_timeout_seconds
+            if per_call_timeout_seconds is not None
+            else os.environ.get("SOCIETY_LLM_TIMEOUT_SECONDS", "30")
+        )
 
     def reason(
         self,
@@ -97,20 +107,32 @@ class LayeredSocietyReasoningEngine:
     ) -> Dict[str, Any]:
         client = self._build_llm_client()
         prompt = self._build_prompt(agent, base_event, brief_context, research_findings, reasoning_mode)
-        payload = client.chat_json(
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a consumer society reasoning adapter. "
-                        "Return JSON only and keep values inside the provided schema."
-                    ),
-                },
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0.2 if reasoning_mode == "llm_deep_reasoning" else 0.35,
-            max_tokens=700,
-        )
+        def _call_llm() -> Dict[str, Any]:
+            return client.chat_json(
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are a consumer society reasoning adapter. "
+                            "Return JSON only and keep values inside the provided schema."
+                        ),
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.2 if reasoning_mode == "llm_deep_reasoning" else 0.35,
+                max_tokens=700,
+                timeout=self.per_call_timeout_seconds,
+            )
+
+        executor = ThreadPoolExecutor(max_workers=1)
+        future = executor.submit(_call_llm)
+        try:
+            payload = future.result(timeout=self.per_call_timeout_seconds)
+        except FutureTimeoutError as exc:
+            future.cancel()
+            raise TimeoutError(f"TimeoutError: LLM reasoning exceeded {self.per_call_timeout_seconds}s") from exc
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
 
         event = dict(base_event)
         requested_type = str(payload.get("consumer_event_type", event.get("consumer_event_type", "")))

@@ -18,6 +18,16 @@ test('buildSocietyRunSummaryItems formats fixed Phase 6G fields', () => {
     society_agents_count: 252,
     society_rounds_completed: 3,
     society_llm_budget_used: 8,
+    status: 'running',
+    current_agent_id: 'expanded_M03_17_xxx',
+    current_layer: 'expanded',
+    reasoning_backend: 'llm',
+    completed_agents: 17,
+    total_agents: 32,
+    llm_invoked_count: 8,
+    rules_count: 9,
+    template_fallback_count: 1,
+    failed_count: 0,
     society_metrics: {
       reach_rate: 0.42,
       misread_rate: 0.12,
@@ -35,9 +45,19 @@ test('buildSocietyRunSummaryItems formats fixed Phase 6G fields', () => {
     'misread',
     'trustRecovery',
     'purchaseIntentDelta',
+    'progressStatus',
+    'agentProgress',
+    'currentLayer',
+    'currentBackend',
+    'llmInvoked',
+    'rulesCount',
+    'fallbackCount',
+    'failedCount',
   ])
   assert.equal(items.find(item => item.key === 'reach').value, '42%')
   assert.equal(items.find(item => item.key === 'purchaseIntentDelta').value, '+18pp')
+  assert.equal(items.find(item => item.key === 'agentProgress').value, '17 / 32')
+  assert.equal(items.find(item => item.key === 'currentBackend').value, 'llm')
 })
 
 test('formatSocietyDelta includes sign and percentage point suffix', () => {
@@ -59,6 +79,14 @@ test('SocietyRunSummary.vue renders all required labels', () => {
     'Misread',
     'Trust Recovery',
     'Purchase Intent',
+    'Progress',
+    'Agent Progress',
+    'Current Layer',
+    'Backend',
+    'LLM Calls',
+    'Rules',
+    'Fallback',
+    'Failed',
   ]) {
     assert.ok(content.includes(label), `missing ${label}`)
   }

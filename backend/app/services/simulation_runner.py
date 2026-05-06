@@ -22,6 +22,7 @@ from ..config import Config
 from ..models.project import ProjectManager
 from ..utils.logger import get_logger
 from ..utils.locale import get_locale, set_locale
+from ..utils.atomic_json import atomic_write_json
 from .consumer.hybrid_kernel import HybridSimulationKernel
 from .consumer.models import ResearchFinding
 from .consumer.orchestrator import ConsumerSimulationOrchestrator
@@ -330,8 +331,7 @@ class SimulationRunner:
         
         data = state.to_detail_dict()
         
-        with open(state_file, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        atomic_write_json(state_file, data)
         
         cls._run_states[state.simulation_id] = state
     
@@ -1793,8 +1793,7 @@ class SimulationRunner:
                                 state_data = json.load(f)
                             state_data['status'] = 'stopped'
                             state_data['updated_at'] = datetime.now().isoformat()
-                            with open(state_file, 'w', encoding='utf-8') as f:
-                                json.dump(state_data, f, indent=2, ensure_ascii=False)
+                            atomic_write_json(state_file, state_data)
                             logger.info(f"已更新 state.json 状态为 stopped: {simulation_id}")
                         else:
                             logger.warning(f"state.json 不存在: {state_file}")
