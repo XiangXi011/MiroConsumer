@@ -19,6 +19,10 @@ from ..services.application.consumer_research_action_service import (
     ConsumerResearchActionService,
 )
 from ..services.application.research_asset_app_service import ResearchAssetAppService
+from ..services.application import queue_app_service
+from ..services.application.audit_chain_service import AuditChainService
+from ..services.application.simulation_app_service import SimulationAppService
+from ..contracts.errors import ConcurrencyConflictError
 from ..utils.logger import get_logger
 
 logger = get_logger("miroconsumer.api.consumer")
@@ -26,6 +30,8 @@ logger = get_logger("miroconsumer.api.consumer")
 
 def _status_from_value_error(e: ValueError) -> int:
     """Map ValueError messages to HTTP status codes for backward compatibility."""
+    if isinstance(e, ConcurrencyConflictError):
+        return 409
     msg = str(e).lower()
     if "parent branch not found" in msg:
         return 400
@@ -36,6 +42,12 @@ def _status_from_value_error(e: ValueError) -> int:
     if "live mode environment is not running" in msg:
         return 409
     return 400
+
+
+def _value_error_response(e: ValueError):
+    if isinstance(e, ConcurrencyConflictError):
+        return jsonify(e.to_response()), 409
+    return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
 
 
 # ============== Consumer Summary ==============
@@ -67,7 +79,7 @@ def get_channel_summary(simulation_id: str):
         data = ConsumerAppService.get_channel_summary(simulation_id)
         return jsonify({"success": True, "data": data})
     except ValueError as e:
-        return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
+        return _value_error_response(e)
     except Exception as e:
         logger.error(f"鑾峰彇娓犻亾鎽樿澶辫触: {str(e)}")
         return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
@@ -80,7 +92,7 @@ def get_channel_events(simulation_id: str):
         data = ConsumerAppService.get_channel_events(simulation_id)
         return jsonify({"success": True, "data": data})
     except ValueError as e:
-        return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
+        return _value_error_response(e)
     except Exception as e:
         logger.error(f"鑾峰彇娓犻亾浜嬩欢澶辫触: {str(e)}")
         return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
@@ -212,7 +224,7 @@ def resume_branch(simulation_id: str, branch_id: str):
         )
         return jsonify({"success": True, "data": result})
     except ValueError as e:
-        return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
+        return _value_error_response(e)
     except Exception as e:
         logger.error(f"启动分支模拟失败: {str(e)}")
         return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
@@ -427,4 +439,46 @@ def list_focus_group_history(simulation_id: str):
         return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"获取焦点小组历史失败: {str(e)}")
+        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+
+
+# ============== Task Queue Dead Letters ==============
+
+@consumer_bp.route("/simulations/<simulation_id>/run-estimate", methods=["POST"])
+def get_run_estimate(simulation_id: str):
+    """Return Phase 7D pre-run LLM budget estimate."""
+    try:
+        data = request.get_json(silent=True) or {}
+        data["simulation_id"] = simulation_id
+        result = SimulationAppService.estimate_run(data)
+        return jsonify({"success": True, "data": result})
+    except ValueError as e:
+        return _value_error_response(e)
+    except Exception as e:
+        logger.error(f"获取运行成本估算失败: {str(e)}")
+        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+
+
+@consumer_bp.route("/reports/<report_id>/audit-chain", methods=["GET"])
+def get_report_audit_chain(report_id: str):
+    """Return Phase 7D report audit chain."""
+    try:
+        result = AuditChainService().build_report_chain(report_id)
+        return jsonify({"success": True, "data": result})
+    except ValueError as e:
+        return _value_error_response(e)
+    except Exception as e:
+        logger.error(f"获取报告审计链失败: {str(e)}")
+        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+
+@consumer_bp.route("/task-queue/dead-letters", methods=["GET"])
+def get_task_queue_dead_letters():
+    """List dead letters for the current queue backend."""
+    try:
+        result = queue_app_service.list_dead_letters()
+        return jsonify({"success": True, "data": result})
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        logger.error(f"获取死信列表失败: {str(e)}")
         return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500

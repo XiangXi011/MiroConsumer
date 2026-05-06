@@ -9,6 +9,29 @@ import logging
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 
+TRACE_FIELD_NAMES = [
+    "trace_id",
+    "run_id",
+    "simulation_id",
+    "branch_id",
+    "agent_id",
+    "channel_id",
+    "event_id",
+    "finding_id",
+    "source_id",
+    "task_id",
+]
+
+
+class TraceContextFilter(logging.Filter):
+    """Ensure every application log record has Phase 7D trace fields."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        for name in TRACE_FIELD_NAMES:
+            if not hasattr(record, name):
+                setattr(record, name, "")
+        return True
+
 
 def _ensure_utf8_stdout():
     """
@@ -53,13 +76,20 @@ def setup_logger(name: str = 'miroconsumer', level: int = logging.DEBUG) -> logg
         return logger
     
     # 日志格式
+    trace_format = (
+        'trace_id=%(trace_id)s run_id=%(run_id)s simulation_id=%(simulation_id)s '
+        'branch_id=%(branch_id)s agent_id=%(agent_id)s channel_id=%(channel_id)s '
+        'event_id=%(event_id)s finding_id=%(finding_id)s source_id=%(source_id)s '
+        'task_id=%(task_id)s'
+    )
+
     detailed_formatter = logging.Formatter(
-        '[%(asctime)s] %(levelname)s [%(name)s.%(funcName)s:%(lineno)d] %(message)s',
+        f'[%(asctime)s] %(levelname)s [%(name)s.%(funcName)s:%(lineno)d] {trace_format} %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
     
     simple_formatter = logging.Formatter(
-        '[%(asctime)s] %(levelname)s: %(message)s',
+        f'[%(asctime)s] %(levelname)s: {trace_format} %(message)s',
         datefmt='%H:%M:%S'
     )
     
@@ -73,6 +103,7 @@ def setup_logger(name: str = 'miroconsumer', level: int = logging.DEBUG) -> logg
     )
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(detailed_formatter)
+    file_handler.addFilter(TraceContextFilter())
     
     # 2. 控制台处理器 - 简洁日志（INFO及以上）
     # 确保 Windows 下使用 UTF-8 编码，避免中文乱码
@@ -80,6 +111,7 @@ def setup_logger(name: str = 'miroconsumer', level: int = logging.DEBUG) -> logg
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(logging.INFO)
     console_handler.setFormatter(simple_formatter)
+    console_handler.addFilter(TraceContextFilter())
     
     # 添加处理器
     logger.addHandler(file_handler)

@@ -7,11 +7,7 @@ Thin wrapper around benchmark registry and replay for route-level orchestration.
 from typing import Any, Dict, List, Optional
 
 from ...repositories import BenchmarkRepository, ProjectRepository, SimulationRepository
-from ...repositories.filesystem import (
-    FilesystemBenchmarkRepository,
-    FilesystemProjectRepository,
-    FilesystemSimulationRepository,
-)
+from ...repositories.factory import create_repository_bundle
 from ...services.consumer.api_guard import ConsumerApiGuard
 from ...services.consumer.asset_library import get_asset
 from ...utils.locale import t
@@ -20,9 +16,10 @@ from ...utils.locale import t
 class BenchmarkAppService:
     """Application service for benchmark registration and replay."""
 
-    _project_repo: ProjectRepository = FilesystemProjectRepository()
-    _simulation_repo: SimulationRepository = FilesystemSimulationRepository()
-    _benchmark_repo: BenchmarkRepository = FilesystemBenchmarkRepository()
+    _repository_bundle = create_repository_bundle()
+    _project_repo: ProjectRepository = _repository_bundle.project_repo
+    _simulation_repo: SimulationRepository = _repository_bundle.simulation_repo
+    _benchmark_repo: BenchmarkRepository = _repository_bundle.benchmark_repo
 
     @classmethod
     def register_benchmark(

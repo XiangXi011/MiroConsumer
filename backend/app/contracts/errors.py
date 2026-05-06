@@ -38,3 +38,21 @@ class ConflictError(CanonicalError):
 
     def __init__(self, message: str):
         super().__init__("conflict", message)
+
+
+class ConcurrencyConflictError(ConflictError):
+    """A concurrent operation is already holding the requested resource."""
+
+    def __init__(self, resource: str, resource_id: str, reason: str):
+        self.resource = resource
+        self.resource_id = resource_id
+        self.reason = reason
+        super().__init__(f"conflict on {resource}({resource_id}): {reason}")
+
+    def to_response(self):
+        return {
+            "error": "conflict",
+            "resource": self.resource,
+            "resource_id": self.resource_id,
+            "reason": self.reason,
+        }

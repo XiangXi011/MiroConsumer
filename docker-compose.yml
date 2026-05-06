@@ -1,8 +1,6 @@
 services:
   miroconsumer:
-    image: ghcr.io/666ghj/miroconsumer:latest
-    # 加速镜像（如拉取缓慢可替换上方地址）
-    # image: ghcr.nju.edu.cn/666ghj/miroconsumer:latest
+    image: ${MIROCONSUMER_IMAGE:-ghcr.io/xiangxi011/miroconsumer:latest}
     container_name: miroconsumer
     env_file:
       - .env

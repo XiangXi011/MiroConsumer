@@ -19,12 +19,15 @@ from ..models.project import ProjectManager
 from ..services.application.simulation_app_service import SimulationAppService
 from ..services.application.branch_app_service import BranchAppService
 from ..services.application.consumer_app_service import ConsumerAppService
+from ..contracts.errors import ConcurrencyConflictError
 
 logger = get_logger('miroconsumer.api.simulation')
 
 
 def _status_from_value_error(e: ValueError) -> int:
     """Map ValueError messages to HTTP status codes for backward compatibility."""
+    if isinstance(e, ConcurrencyConflictError):
+        return 409
     msg = str(e).lower()
     if "parent branch not found" in msg:
         return 400
@@ -33,6 +36,15 @@ def _status_from_value_error(e: ValueError) -> int:
     if "already running" in msg:
         return 409
     return 400
+
+
+def _value_error_response(e: ValueError):
+    if isinstance(e, ConcurrencyConflictError):
+        return jsonify(e.to_response()), 409
+    return jsonify({
+        "success": False,
+        "error": str(e)
+    }), _status_from_value_error(e)
 
 
 def _check_simulation_prepared(simulation_id: str):
@@ -219,10 +231,7 @@ def create_simulation():
             "data": result
         })
     except ValueError as e:
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), _status_from_value_error(e)
+        return _value_error_response(e)
     except Exception as e:
         logger.error(f"创建模拟失败: {str(e)}")
         return jsonify({
@@ -290,10 +299,7 @@ def prepare_simulation():
         })
 
     except ValueError as e:
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), _status_from_value_error(e)
+        return _value_error_response(e)
 
     except Exception as e:
         logger.error(f"启动准备任务失败: {str(e)}")
@@ -844,7 +850,7 @@ def resume_branch(simulation_id: str, branch_id: str):
         )
         return jsonify({"success": True, "data": result})
     except ValueError as e:
-        return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
+        return _value_error_response(e)
     except Exception as e:
         logger.error(f"启动分支模拟失败: {str(e)}")
         return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
@@ -1234,10 +1240,7 @@ def start_simulation():
         })
 
     except ValueError as e:
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), _status_from_value_error(e)
+        return _value_error_response(e)
 
     except Exception as e:
         logger.error(f"启动模拟失败: {str(e)}")

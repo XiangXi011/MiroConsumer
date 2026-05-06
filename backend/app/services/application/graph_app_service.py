@@ -14,7 +14,7 @@ from ...config import Config
 from ...models.project import ProjectStatus
 from ...models.task import TaskManager, TaskStatus
 from ...repositories import ProjectRepository
-from ...repositories.filesystem import FilesystemProjectRepository
+from ...repositories.factory import create_repository_bundle
 from ...services.graph_builder import GraphBuilderService
 from ...services.text_processor import TextProcessor
 from ...services.consumer import ConsumerBriefAdapter, ConsumerGraphBuilder
@@ -183,7 +183,8 @@ def _build_consumer_graph(project, text: str, project_repo: ProjectRepository):
 class GraphAppService:
     """Application service for graph build orchestration."""
 
-    _project_repo: ProjectRepository = FilesystemProjectRepository()
+    _repository_bundle = create_repository_bundle()
+    _project_repo: ProjectRepository = _repository_bundle.project_repo
 
     @staticmethod
     def allowed_file(filename: str) -> bool:

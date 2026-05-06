@@ -75,8 +75,18 @@ class TestThreadTaskExecutorObservability:
         class TracingExecutor:
             def submit(self, fn, *args, trace_id=None, **kwargs):
                 captured["trace_id"] = trace_id
+                captured["task_type"] = kwargs.get("task_type")
+                captured["idempotency_key"] = kwargs.get("idempotency_key")
+                captured["simulation_id"] = kwargs.get("simulation_id")
+                captured["run_id"] = kwargs.get("run_id")
+                # Strip task metadata so fn receives only its own kwargs
+                _kwargs = dict(kwargs)
+                _kwargs.pop("task_type", None)
+                _kwargs.pop("idempotency_key", None)
+                _kwargs.pop("simulation_id", None)
+                _kwargs.pop("run_id", None)
                 # Run synchronously so we can assert without waiting
-                fn(*args, **kwargs)
+                fn(*args, **_kwargs)
                 return trace_id or "trace_fallback"
 
         # Minimal stubs so generate_report reaches the executor.submit call
@@ -99,6 +109,9 @@ class TestThreadTaskExecutorObservability:
         )
         monkeypatch.setattr(
             ReportAppService._report_repo, "get_report_by_simulation", lambda sid: None
+        )
+        monkeypatch.setattr(
+            ReportAppService._report_repo, "save_report", lambda report: None
         )
 
         # Patch task manager to avoid DB
@@ -144,3 +157,7 @@ class TestThreadTaskExecutorObservability:
             assert captured["trace_id"].startswith("report_")
         finally:
             ReportAppService._executor = original_executor
+        assert captured.get("task_type") == "generate_report"
+        assert captured.get("idempotency_key") == "sim_1:report"
+        assert captured.get("simulation_id") == "sim_1"
+        assert captured.get("run_id") == "report"

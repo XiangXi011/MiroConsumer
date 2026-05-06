@@ -1,0 +1,5 @@
+FROM miroconsumer-backend AS worker
+
+WORKDIR /app/backend
+
+CMD ["python", "-m", "app.worker"]

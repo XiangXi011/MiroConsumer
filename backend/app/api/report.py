@@ -17,16 +17,28 @@ from ..services.application.report_app_service import ReportAppService
 from ..services.application.benchmark_app_service import BenchmarkAppService
 from ..services.application.research_asset_app_service import ResearchAssetAppService
 from ..services.application.comparison_app_service import ComparisonAppService
+from ..contracts.errors import ConcurrencyConflictError
 
 logger = get_logger('miroconsumer.api.report')
 
 
 def _status_from_value_error(e: ValueError) -> int:
     """Map ValueError messages to HTTP status codes for backward compatibility."""
+    if isinstance(e, ConcurrencyConflictError):
+        return 409
     msg = str(e).lower()
     if "not found" in msg or "不存在" in msg:
         return 404
     return 400
+
+
+def _value_error_response(e: ValueError):
+    if isinstance(e, ConcurrencyConflictError):
+        return jsonify(e.to_response()), 409
+    return jsonify({
+        "success": False,
+        "error": str(e)
+    }), _status_from_value_error(e)
 
 
 # ============== 报告生成接口 ==============
@@ -74,10 +86,7 @@ def generate_report():
         })
 
     except ValueError as e:
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), _status_from_value_error(e)
+        return _value_error_response(e)
 
     except Exception as e:
         logger.error(f"启动报告生成任务失败: {str(e)}")

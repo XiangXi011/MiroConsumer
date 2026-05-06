@@ -1,0 +1,15 @@
+{
+  "golden_flow_result": "PASS",
+  "evidence_gatekeeping_result": "PASS",
+  "reasoning_backend_coverage": 0.8,
+  "template_fallback_coverage": 0.2,
+  "weak_support_finding_count": 0,
+  "insufficient_support_finding_count": 0,
+  "unknown_recommendation_count": 0,
+  "phase7_entry_decision": "PASS",
+  "details": {
+    "end_to_end_golden_flow": "PASS",
+    "evidence_gatekeeping_hard_rules": "PASS",
+    "explainability_panel_acceptance": "PASS"
+  }
+}

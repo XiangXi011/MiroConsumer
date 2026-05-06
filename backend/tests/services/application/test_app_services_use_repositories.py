@@ -1,9 +1,11 @@
 """Tests verifying application services consume repository abstractions."""
 
+from contextlib import contextmanager
 from typing import Any, Dict, List, Optional
 
 import pytest
 
+from app.contracts.errors import ConcurrencyConflictError
 from app.models.project import Project, ProjectStatus
 from app.repositories import (
     ProjectRepository,
@@ -18,6 +20,11 @@ from app.services.application import (
     BranchAppService,
     BenchmarkAppService,
     GraphAppService,
+)
+from app.services.application.concurrency import (
+    branch_fork_lock,
+    report_generation_lock,
+    simulation_run_lock,
 )
 from app.services.simulation_manager import SimulationState, SimulationStatus
 from app.services.report_agent import Report, ReportStatus
@@ -348,6 +355,47 @@ class StubBenchmarkRepository(BenchmarkRepository):
 
     def list_replay_results(self, benchmark_id: str) -> List[Dict[str, Any]]:
         return [r for r in self.replays.values() if r["benchmark_id"] == benchmark_id]
+
+
+class CaptureLockManager:
+    def __init__(self):
+        self.acquired = []
+
+    @contextmanager
+    def acquire(self, lock_type: str, resource_id: str, timeout_seconds: float = 30):
+        self.acquired.append((lock_type, resource_id, timeout_seconds))
+        yield
+
+
+class RejectingLockManager:
+    @contextmanager
+    def acquire(self, lock_type: str, resource_id: str, timeout_seconds: float = 30):
+        raise ConcurrencyConflictError(
+            resource=lock_type,
+            resource_id=resource_id,
+            reason="lock_timeout",
+        )
+        yield
+
+
+class CaptureExecutor:
+    def __init__(self):
+        self.submitted = []
+
+    def submit(self, fn, *args, trace_id=None, **kwargs):
+        self.submitted.append((fn, args, kwargs, trace_id))
+        return trace_id or "trace_fallback"
+
+    def get_status(self, trace_id):
+        return {"trace_id": trace_id, "status": "PENDING", "backend": "capture"}
+
+    def cancel(self, trace_id):
+        return {
+            "trace_id": trace_id,
+            "status": "CANCELLED",
+            "cancelled": True,
+            "backend": "capture",
+        }
 
 
 # ───────────────────────────────────────────────────────────────
@@ -735,6 +783,21 @@ class TestSimulationAppServicePrepareUsesExecutor:
                 self.submitted.append((fn, args, kwargs, trace_id))
                 return trace_id or "trace_fallback"
 
+            def get_status(self, trace_id):
+                return {
+                    "trace_id": trace_id,
+                    "status": "PENDING",
+                    "backend": "thread",
+                }
+
+            def cancel(self, trace_id):
+                return {
+                    "trace_id": trace_id,
+                    "status": "CANCELLED",
+                    "cancelled": True,
+                    "backend": "thread",
+                }
+
         executor = CaptureExecutor()
         project_repo = StubProjectRepository()
         sim_repo = StubSimulationRepository()
@@ -769,6 +832,11 @@ class TestSimulationAppServicePrepareUsesExecutor:
             )
             assert result["status"] == "preparing"
             assert len(executor.submitted) == 1
+            _fn, _args, _kwargs, _trace_id = executor.submitted[0]
+            assert _kwargs["task_type"] == "prepare_simulation"
+            assert _kwargs["idempotency_key"] == "sim_prep:prepare"
+            assert _kwargs["simulation_id"] == "sim_prep"
+            assert _kwargs["run_id"] == "prepare"
         finally:
             SimulationAppService._project_repo = original_project
             SimulationAppService._simulation_repo = original_sim
@@ -787,6 +855,21 @@ class TestReportAppServiceGenerateUsesExecutor:
             def submit(self, fn, *args, trace_id=None, **kwargs):
                 self.submitted.append((fn, args, kwargs, trace_id))
                 return trace_id or "trace_fallback"
+
+            def get_status(self, trace_id):
+                return {
+                    "trace_id": trace_id,
+                    "status": "PENDING",
+                    "backend": "thread",
+                }
+
+            def cancel(self, trace_id):
+                return {
+                    "trace_id": trace_id,
+                    "status": "CANCELLED",
+                    "cancelled": True,
+                    "backend": "thread",
+                }
 
         executor = CaptureExecutor()
         project_repo = StubProjectRepository()
@@ -823,6 +906,12 @@ class TestReportAppServiceGenerateUsesExecutor:
             result = ReportAppService.generate_report("sim_rep")
             assert result["status"] == "generating"
             assert len(executor.submitted) == 1
+            _fn, _args, _kwargs, _trace_id = executor.submitted[0]
+            assert _kwargs["task_type"] == "generate_report"
+            assert _kwargs["idempotency_key"] == "sim_rep:report"
+            assert _kwargs["simulation_id"] == "sim_rep"
+            assert _kwargs["run_id"] == "report"
+            assert _trace_id == result["report_id"]
         finally:
             ReportAppService._project_repo = original_project
             ReportAppService._simulation_repo = original_sim
@@ -842,6 +931,21 @@ class TestBranchAppServiceResumeUsesExecutor:
             def submit(self, fn, *args, trace_id=None, **kwargs):
                 self.submitted.append((fn, args, kwargs, trace_id))
                 return trace_id or "trace_fallback"
+
+            def get_status(self, trace_id):
+                return {
+                    "trace_id": trace_id,
+                    "status": "PENDING",
+                    "backend": "thread",
+                }
+
+            def cancel(self, trace_id):
+                return {
+                    "trace_id": trace_id,
+                    "status": "CANCELLED",
+                    "cancelled": True,
+                    "backend": "thread",
+                }
 
         executor = CaptureExecutor()
         sim_repo = StubSimulationRepository()
@@ -869,6 +973,11 @@ class TestBranchAppServiceResumeUsesExecutor:
             result = BranchAppService.resume_branch("sim_branch", branch.branch_id)
             assert result["status"] == "running"
             assert len(executor.submitted) == 1
+            _fn, _args, _kwargs, _trace_id = executor.submitted[0]
+            assert _kwargs["task_type"] == "resume_branch"
+            assert _kwargs["idempotency_key"] == f"sim_branch:branch:{branch.branch_id}:resume"
+            assert _kwargs["simulation_id"] == "sim_branch"
+            assert _kwargs["run_id"] == branch.branch_id
         finally:
             BranchAppService._simulation_repo = original_sim
             BranchAppService._branch_repo = original_branch
@@ -885,3 +994,291 @@ class TestStubSimulationRepositoryArtifactMethods:
         repo = StubSimulationRepository()
         repo.save_consumer_config("sim_1", {"mode": "consumer"})
         assert repo.load_consumer_config("sim_1") == {"mode": "consumer"}
+
+
+class CaptureForkSnapshotService:
+    """Stub snapshot service that records calls and returns a fixed payload."""
+
+    def __init__(self):
+        self.calls = []
+
+    def copy_pre_fork_state(self, *, simulation_id: str, branch_id: str, fork_round: int):
+        self.calls.append(
+            {
+                "simulation_id": simulation_id,
+                "branch_id": branch_id,
+                "fork_round": fork_round,
+            }
+        )
+        return {"stubbed": True}
+
+
+class TestPhase7CServiceLocks:
+    def test_start_simulation_acquires_simulation_run_lock(self, monkeypatch):
+        import app.services.application.simulation_app_service as sim_module
+
+        lock_manager = CaptureLockManager()
+        project_repo = StubProjectRepository()
+        sim_repo = StubSimulationRepository()
+        sim_repo.simulations["sim_lock"] = SimulationState(
+            simulation_id="sim_lock",
+            project_id="proj_lock",
+            graph_id="g1",
+            status=SimulationStatus.READY,
+        )
+
+        class FakeRunState:
+            def to_dict(self):
+                return {"simulation_id": "sim_lock", "runner_status": "running"}
+
+        def fake_start_simulation(**kwargs):
+            return FakeRunState()
+
+        original_project = SimulationAppService._project_repo
+        original_sim = SimulationAppService._simulation_repo
+        original_lock = getattr(SimulationAppService, "_lock_manager", None)
+        try:
+            SimulationAppService._project_repo = project_repo
+            SimulationAppService._simulation_repo = sim_repo
+            SimulationAppService._lock_manager = lock_manager
+            monkeypatch.setattr(
+                sim_module.SimulationRunner,
+                "start_simulation",
+                staticmethod(fake_start_simulation),
+            )
+
+            SimulationAppService.start_simulation("sim_lock", {"platform": "parallel"})
+
+            assert lock_manager.acquired == [(simulation_run_lock, "sim_lock", 0)]
+        finally:
+            SimulationAppService._project_repo = original_project
+            SimulationAppService._simulation_repo = original_sim
+            if original_lock is None:
+                delattr(SimulationAppService, "_lock_manager")
+            else:
+                SimulationAppService._lock_manager = original_lock
+
+    def test_start_simulation_lock_conflict_propagates(self):
+        project_repo = StubProjectRepository()
+        sim_repo = StubSimulationRepository()
+        sim_repo.simulations["sim_busy_lock"] = SimulationState(
+            simulation_id="sim_busy_lock",
+            project_id="proj_lock",
+            graph_id="g1",
+            status=SimulationStatus.READY,
+        )
+
+        original_project = SimulationAppService._project_repo
+        original_sim = SimulationAppService._simulation_repo
+        original_lock = getattr(SimulationAppService, "_lock_manager", None)
+        try:
+            SimulationAppService._project_repo = project_repo
+            SimulationAppService._simulation_repo = sim_repo
+            SimulationAppService._lock_manager = RejectingLockManager()
+
+            with pytest.raises(ConcurrencyConflictError) as exc_info:
+                SimulationAppService.start_simulation(
+                    "sim_busy_lock",
+                    {"platform": "parallel"},
+                )
+
+            assert exc_info.value.resource == simulation_run_lock
+            assert exc_info.value.resource_id == "sim_busy_lock"
+        finally:
+            SimulationAppService._project_repo = original_project
+            SimulationAppService._simulation_repo = original_sim
+            if original_lock is None:
+                delattr(SimulationAppService, "_lock_manager")
+            else:
+                SimulationAppService._lock_manager = original_lock
+
+    def test_resume_branch_acquires_branch_lock(self):
+        lock_manager = CaptureLockManager()
+        executor = CaptureExecutor()
+        sim_repo = StubSimulationRepository()
+        branch_repo = StubBranchRepository()
+        sim_repo.simulations["sim_branch_lock"] = SimulationState(
+            simulation_id="sim_branch_lock",
+            project_id="proj_branch",
+            graph_id="g1",
+            consumer_mode=True,
+        )
+        sim_repo.configs["sim_branch_lock"] = {
+            "time_config": {"total_simulation_hours": 24, "minutes_per_round": 30}
+        }
+        branch = branch_repo.create_branch("sim_branch_lock", "Locked", 1)
+
+        original_sim = BranchAppService._simulation_repo
+        original_branch = BranchAppService._branch_repo
+        original_exec = BranchAppService._executor
+        original_lock = getattr(BranchAppService, "_lock_manager", None)
+        try:
+            BranchAppService._simulation_repo = sim_repo
+            BranchAppService._branch_repo = branch_repo
+            BranchAppService._executor = executor
+            BranchAppService._lock_manager = lock_manager
+
+            BranchAppService.resume_branch("sim_branch_lock", branch.branch_id)
+
+            assert lock_manager.acquired == [
+                (branch_fork_lock, f"sim_branch_lock:{branch.branch_id}", 0)
+            ]
+        finally:
+            BranchAppService._simulation_repo = original_sim
+            BranchAppService._branch_repo = original_branch
+            BranchAppService._executor = original_exec
+            if original_lock is None:
+                delattr(BranchAppService, "_lock_manager")
+            else:
+                BranchAppService._lock_manager = original_lock
+
+    def test_generate_report_worker_acquires_report_generation_lock(self, monkeypatch):
+        import app.services.application.report_app_service as report_module
+
+        lock_manager = CaptureLockManager()
+        executor = CaptureExecutor()
+        project_repo = StubProjectRepository()
+        sim_repo = StubSimulationRepository()
+        report_repo = StubReportRepository()
+        project_repo.projects["proj_report_lock"] = Project(
+            project_id="proj_report_lock",
+            name="Report Lock",
+            status=ProjectStatus.CREATED,
+            created_at="2026-01-01T00:00:00",
+            updated_at="2026-01-01T00:00:00",
+            project_type="default",
+            graph_id="g1",
+            simulation_requirement="test req",
+        )
+        sim_repo.simulations["sim_report_lock"] = SimulationState(
+            simulation_id="sim_report_lock",
+            project_id="proj_report_lock",
+            graph_id="g1",
+        )
+
+        class FakeReportAgent:
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+
+            def generate_report(self, progress_callback=None, report_id=None):
+                return Report(
+                    report_id=report_id,
+                    simulation_id="sim_report_lock",
+                    graph_id="g1",
+                    simulation_requirement="test req",
+                    status=ReportStatus.COMPLETED,
+                )
+
+        original_project = ReportAppService._project_repo
+        original_sim = ReportAppService._simulation_repo
+        original_report = ReportAppService._report_repo
+        original_exec = ReportAppService._executor
+        original_lock = getattr(ReportAppService, "_lock_manager", None)
+        try:
+            ReportAppService._project_repo = project_repo
+            ReportAppService._simulation_repo = sim_repo
+            ReportAppService._report_repo = report_repo
+            ReportAppService._executor = executor
+            ReportAppService._lock_manager = lock_manager
+            monkeypatch.setattr(report_module, "ReportAgent", FakeReportAgent)
+
+            ReportAppService.generate_report("sim_report_lock")
+            assert len(executor.submitted) == 1
+
+            lock_manager.acquired.clear()
+            fn, _args, _kwargs, _trace_id = executor.submitted[0]
+            fn()
+            assert lock_manager.acquired == [
+                (report_generation_lock, "sim_report_lock", 0)
+            ]
+            assert len(report_repo.reports) == 1
+        finally:
+            ReportAppService._project_repo = original_project
+            ReportAppService._simulation_repo = original_sim
+            ReportAppService._report_repo = original_report
+            ReportAppService._executor = original_exec
+            if original_lock is None:
+                delattr(ReportAppService, "_lock_manager")
+            else:
+                ReportAppService._lock_manager = original_lock
+
+    def test_create_branch_acquires_branch_fork_lock(self):
+        lock_manager = CaptureLockManager()
+        sim_repo = StubSimulationRepository()
+        branch_repo = StubBranchRepository()
+        sim_repo.simulations["sim_c"] = SimulationState(
+            simulation_id="sim_c",
+            project_id="proj_c",
+            graph_id="g1",
+            consumer_mode=True,
+        )
+
+        original_sim = BranchAppService._simulation_repo
+        original_branch = BranchAppService._branch_repo
+        original_lock = getattr(BranchAppService, "_lock_manager", None)
+        original_snapshot = getattr(BranchAppService, "_fork_snapshot_service", None)
+        try:
+            BranchAppService._simulation_repo = sim_repo
+            BranchAppService._branch_repo = branch_repo
+            BranchAppService._lock_manager = lock_manager
+            if original_snapshot is not None:
+                BranchAppService._fork_snapshot_service = CaptureForkSnapshotService()
+
+            BranchAppService.create_branch("sim_c", "Feature", 2)
+
+            assert lock_manager.acquired == [(branch_fork_lock, "sim_c:fork:base:2", 0)]
+        finally:
+            BranchAppService._simulation_repo = original_sim
+            BranchAppService._branch_repo = original_branch
+            if original_lock is None:
+                delattr(BranchAppService, "_lock_manager")
+            else:
+                BranchAppService._lock_manager = original_lock
+            if original_snapshot is None:
+                if hasattr(BranchAppService, "_fork_snapshot_service"):
+                    delattr(BranchAppService, "_fork_snapshot_service")
+            else:
+                BranchAppService._fork_snapshot_service = original_snapshot
+
+    def test_create_branch_calls_injectable_fork_snapshot_service(self):
+        lock_manager = CaptureLockManager()
+        snapshot_service = CaptureForkSnapshotService()
+        sim_repo = StubSimulationRepository()
+        branch_repo = StubBranchRepository()
+        sim_repo.simulations["sim_c"] = SimulationState(
+            simulation_id="sim_c",
+            project_id="proj_c",
+            graph_id="g1",
+            consumer_mode=True,
+        )
+
+        original_sim = BranchAppService._simulation_repo
+        original_branch = BranchAppService._branch_repo
+        original_lock = getattr(BranchAppService, "_lock_manager", None)
+        original_snapshot = getattr(BranchAppService, "_fork_snapshot_service", None)
+        try:
+            BranchAppService._simulation_repo = sim_repo
+            BranchAppService._branch_repo = branch_repo
+            BranchAppService._lock_manager = lock_manager
+            BranchAppService._fork_snapshot_service = snapshot_service
+
+            result = BranchAppService.create_branch("sim_c", "Feature", 2)
+
+            assert lock_manager.acquired == [(branch_fork_lock, "sim_c:fork:base:2", 0)]
+            assert len(snapshot_service.calls) == 1
+            assert snapshot_service.calls[0]["simulation_id"] == "sim_c"
+            assert snapshot_service.calls[0]["branch_id"] == "branch_Feature"
+            assert snapshot_service.calls[0]["fork_round"] == 2
+            assert result["fork_snapshot"] == {"stubbed": True}
+        finally:
+            BranchAppService._simulation_repo = original_sim
+            BranchAppService._branch_repo = original_branch
+            if original_lock is None:
+                delattr(BranchAppService, "_lock_manager")
+            else:
+                BranchAppService._lock_manager = original_lock
+            if original_snapshot is None:
+                if hasattr(BranchAppService, "_fork_snapshot_service"):
+                    delattr(BranchAppService, "_fork_snapshot_service")
+            else:
+                BranchAppService._fork_snapshot_service = original_snapshot

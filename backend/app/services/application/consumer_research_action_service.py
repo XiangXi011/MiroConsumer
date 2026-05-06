@@ -5,8 +5,8 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any, Dict, Optional
 
-from ...repositories import SimulationRepository
-from ...repositories.filesystem import FilesystemSimulationRepository
+from ...repositories import ConsumerStateRepository, SimulationRepository
+from ...repositories.factory import create_repository_bundle
 from ...services.consumer.api_guard import ConsumerApiGuard
 from ...services.consumer.event_ontology import map_legacy_event_type_to_consumer
 from ...services.consumer.report_context import build_consumer_report_context
@@ -35,7 +35,9 @@ class ConsumerResearchActionService:
     dependency overrides.
     """
 
-    _simulation_repo: SimulationRepository = FilesystemSimulationRepository()
+    _repository_bundle = create_repository_bundle()
+    _simulation_repo: SimulationRepository = _repository_bundle.simulation_repo
+    _consumer_state_repo: ConsumerStateRepository = _repository_bundle.consumer_state_repo
     _zep_tools_class = ZepToolsService
     _branch_app_service_class = BranchAppService
 
@@ -359,9 +361,8 @@ class ConsumerResearchActionService:
         """Load a minimal report context for passing to Zep tools."""
         from ...services.consumer.report_context import ConsumerReportContextBuilder
         from ...services.consumer.society.report_adapter import SocietyReportAdapter
-        from ...repositories.filesystem import FilesystemConsumerStateRepository
 
-        accessor = FilesystemConsumerStateRepository()
+        accessor = cls._consumer_state_repo
         snapshots = accessor.load_consumer_rounds(simulation_id)
         society_adapter = SocietyReportAdapter()
         if not snapshots:

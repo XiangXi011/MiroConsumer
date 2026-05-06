@@ -13,11 +13,7 @@ from ...repositories import (
     ConsumerStateRepository,
     SimulationRepository,
 )
-from ...repositories.filesystem import (
-    FilesystemConsumerProjectResearchProvider,
-    FilesystemConsumerStateRepository,
-    FilesystemSimulationRepository,
-)
+from ...repositories.factory import create_repository_bundle
 from ...services.consumer.api_guard import ConsumerApiGuard
 from ...services.consumer.brief_adapter import ConsumerBriefAdapter
 from ...services.consumer.report_context import ConsumerReportContextBuilder, build_consumer_report_context
@@ -36,10 +32,11 @@ logger = get_logger("miroconsumer.app_service.consumer")
 class ConsumerAppService:
     """Application service for consumer-specific simulation and report flows."""
 
-    _simulation_repo: SimulationRepository = FilesystemSimulationRepository()
-    _consumer_state_repo: ConsumerStateRepository = FilesystemConsumerStateRepository()
+    _repository_bundle = create_repository_bundle()
+    _simulation_repo: SimulationRepository = _repository_bundle.simulation_repo
+    _consumer_state_repo: ConsumerStateRepository = _repository_bundle.consumer_state_repo
     _project_research_provider: ConsumerProjectResearchProvider = (
-        FilesystemConsumerProjectResearchProvider()
+        _repository_bundle.consumer_research_provider
     )
 
     @classmethod

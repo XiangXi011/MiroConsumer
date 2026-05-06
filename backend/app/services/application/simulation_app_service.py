@@ -11,10 +11,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from ...config import Config
 from ...models.task import TaskManager, TaskStatus
 from ...repositories import ProjectRepository, SimulationRepository
-from ...repositories.filesystem import (
-    FilesystemProjectRepository,
-    FilesystemSimulationRepository,
-)
+from ...repositories.factory import create_repository_bundle
 from ...services.consumer.api_guard import ConsumerApiGuard
 from ...services.consumer.persona_pack import load_default_persona_pack
 from ...services.consumer.society.channel_policy import validate_enabled_channels
@@ -25,7 +22,9 @@ from ...services.simulation_runner import SimulationRunner
 from ...services.zep_entity_reader import ZepEntityReader
 from ...utils.locale import t, get_locale, set_locale
 from ...utils.logger import get_logger
-from .task_executor import TaskExecutor, ThreadTaskExecutor
+from .concurrency import create_lock_manager, simulation_run_lock
+from .llm_budget_manager import LLMBudgetManager
+from .task_executor import TaskExecutor, create_task_executor
 
 logger = get_logger("miroconsumer.app_service.simulation")
 
@@ -125,9 +124,12 @@ def _check_simulation_prepared(simulation_id: str) -> Tuple[bool, dict]:
 class SimulationAppService:
     """Application service for simulation lifecycle orchestration."""
 
-    _project_repo: ProjectRepository = FilesystemProjectRepository()
-    _simulation_repo: SimulationRepository = FilesystemSimulationRepository()
-    _executor: TaskExecutor = ThreadTaskExecutor()
+    _repository_bundle = create_repository_bundle()
+    _project_repo: ProjectRepository = _repository_bundle.project_repo
+    _simulation_repo: SimulationRepository = _repository_bundle.simulation_repo
+    _executor: TaskExecutor = create_task_executor()
+    _lock_manager = create_lock_manager()
+    _budget_manager = LLMBudgetManager()
 
     @classmethod
     def create_simulation(cls, data: dict) -> dict:
@@ -345,7 +347,13 @@ class SimulationAppService:
                     state.error = str(e)
                     cls._simulation_repo.save_simulation(state)
 
-        cls._executor.submit(run_prepare)
+        cls._executor.submit(
+            run_prepare,
+            task_type="prepare_simulation",
+            idempotency_key=f"{simulation_id}:prepare",
+            simulation_id=simulation_id,
+            run_id="prepare",
+        )
 
         return {
             "simulation_id": simulation_id,
@@ -359,6 +367,27 @@ class SimulationAppService:
 
     @classmethod
     def start_simulation(
+        cls,
+        simulation_id: str,
+        data: dict,
+    ) -> dict:
+        run_estimate = cls._budget_manager.validate_run(data)
+        with cls._lock_manager.acquire(
+            simulation_run_lock,
+            simulation_id,
+            timeout_seconds=0,
+        ):
+            response = cls._start_simulation_unlocked(simulation_id, data)
+            response["run_estimate"] = run_estimate
+            return response
+
+    @classmethod
+    def estimate_run(cls, data: dict) -> dict:
+        """Return Phase 7D run cost estimate without starting the simulation."""
+        return cls._budget_manager.estimate_run(data)
+
+    @classmethod
+    def _start_simulation_unlocked(
         cls,
         simulation_id: str,
         data: dict,

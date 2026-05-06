@@ -2192,15 +2192,39 @@ class ReportAgent:
             research_findings = consumer_config.get("research_findings", [])
             retrieval_traces = consumer_config.get("retrieval_traces", [])
             research_snapshot = consumer_config.get("research_snapshot", {})
-        else:
-            # Even when loaded from project, try to read consumer_config for task_type
-            # Prefer consumer_config research_findings when present to include fixture evidence
-            if consumer_config.get("research_findings"):
-                research_findings = consumer_config["research_findings"]
-            if consumer_config.get("retrieval_traces"):
-                retrieval_traces = consumer_config["retrieval_traces"]
-            if consumer_config.get("research_snapshot"):
-                research_snapshot = consumer_config["research_snapshot"]
+        # When loaded_from_project is True, project-level artifacts are authoritative
+        # for research_findings/retrieval_traces/research_snapshot. consumer_config is
+        # still read above for consumer_brief/task_type extraction below.
+        # However, if propagation events reference finding_ids not present in project
+        # findings, append matching consumer_config findings/traces as supplemental.
+        supplemental_merged = False
+        if loaded_from_project and consumer_config and all_events:
+            event_finding_ids = set()
+            for event in all_events:
+                for fid in event.get("trigger_finding_ids", []):
+                    if fid:
+                        event_finding_ids.add(fid)
+            project_finding_ids = {
+                f.get("finding_id") for f in research_findings if f.get("finding_id")
+            }
+            missing_ids = event_finding_ids - project_finding_ids
+            if missing_ids:
+                cc_findings = consumer_config.get("research_findings", [])
+                cc_traces = consumer_config.get("retrieval_traces", [])
+                existing_trace_ids = {
+                    t.get("trace_id") for t in retrieval_traces if t.get("trace_id")
+                }
+                for finding in cc_findings:
+                    if finding.get("finding_id") in missing_ids:
+                        research_findings.append(finding)
+                        supplemental_merged = True
+                        trace_id = finding.get("retrieval_trace_id")
+                        if trace_id:
+                            for t in cc_traces:
+                                if t.get("trace_id") == trace_id and trace_id not in existing_trace_ids:
+                                    retrieval_traces.append(t)
+                                    existing_trace_ids.add(trace_id)
+                                    break
 
         # Extract task_type from consumer brief when available
         task_type: Optional[str] = None
@@ -2250,13 +2274,29 @@ class ReportAgent:
             report_snapshot = persisted_snapshot if loaded_from_project else None
             if report_snapshot is not None and not getattr(report_snapshot, "chunks", None) and not getattr(report_snapshot, "sources", None):
                 report_snapshot = None
-            phase2_context = build_consumer_report_context(
-                summary=phase2_summary,
-                findings=research_findings,
-                events=all_events,
-                traces=retrieval_traces,
-                snapshot=report_snapshot,
-            )
+            # If supplemental simulation-level evidence was merged, do not re-run
+            # gatekeeping against an incomplete project snapshot; let phase2_summary
+            # supply the gatekeeping result. Snapshot enrichment is still applied.
+            if supplemental_merged and report_snapshot is not None:
+                phase2_context = build_consumer_report_context(
+                    summary=phase2_summary,
+                    findings=research_findings,
+                    events=all_events,
+                    traces=retrieval_traces,
+                    snapshot=None,
+                )
+                from ..services.consumer.report_context import enrich_report_context_with_snapshot
+                enrich_report_context_with_snapshot(
+                    phase2_context, research_findings, retrieval_traces, report_snapshot
+                )
+            else:
+                phase2_context = build_consumer_report_context(
+                    summary=phase2_summary,
+                    findings=research_findings,
+                    events=all_events,
+                    traces=retrieval_traces,
+                    snapshot=report_snapshot,
+                )
 
             context["event_counts"] = phase2_summary.event_counts
             context["top_risk_findings"] = phase2_summary.top_risk_findings
@@ -2267,8 +2307,12 @@ class ReportAgent:
             context["enriched_findings"] = phase2_context.get("enriched_findings")
             context["enriched_traces"] = phase2_context.get("enriched_traces")
             context["evidence_gatekeeping_summary"] = (
-                phase2_context.get("evidence_gatekeeping_summary")
-                or phase2_summary.evidence_gatekeeping_summary
+                phase2_summary.evidence_gatekeeping_summary
+                if supplemental_merged
+                else (
+                    phase2_context.get("evidence_gatekeeping_summary")
+                    or phase2_summary.evidence_gatekeeping_summary
+                )
             )
 
             # Inject task-aware fields from Phase 2 summary into context

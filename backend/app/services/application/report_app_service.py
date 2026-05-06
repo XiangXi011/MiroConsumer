@@ -16,17 +16,14 @@ from ...models.project import ProjectManager
 from ...models.task import TaskManager, TaskStatus
 from ...contracts.errors import NotFoundError, ValidationError
 from ...repositories import ProjectRepository, ReportRepository, SimulationRepository
-from ...repositories.filesystem import (
-    FilesystemProjectRepository,
-    FilesystemReportRepository,
-    FilesystemSimulationRepository,
-)
+from ...repositories.factory import create_repository_bundle
 from ...services.consumer.api_guard import ConsumerApiGuard
 from ...services.report_agent import ReportAgent, ReportManager, ReportStatus
 from ...services.simulation_manager import SimulationManager
 from ...utils.locale import t, get_locale, set_locale
 from ...utils.logger import get_logger
-from .task_executor import TaskExecutor, ThreadTaskExecutor
+from .concurrency import create_lock_manager, report_generation_lock
+from .task_executor import TaskExecutor, create_task_executor
 
 logger = get_logger("miroconsumer.app_service.report")
 
@@ -34,10 +31,12 @@ logger = get_logger("miroconsumer.app_service.report")
 class ReportAppService:
     """Application service for report generation orchestration."""
 
-    _project_repo: ProjectRepository = FilesystemProjectRepository()
-    _simulation_repo: SimulationRepository = FilesystemSimulationRepository()
-    _report_repo: ReportRepository = FilesystemReportRepository()
-    _executor: TaskExecutor = ThreadTaskExecutor()
+    _repository_bundle = create_repository_bundle()
+    _project_repo: ProjectRepository = _repository_bundle.project_repo
+    _simulation_repo: SimulationRepository = _repository_bundle.simulation_repo
+    _report_repo: ReportRepository = _repository_bundle.report_repo
+    _executor: TaskExecutor = create_task_executor()
+    _lock_manager = create_lock_manager()
 
     @classmethod
     def get_existing_report_for_simulation(cls, simulation_id: str) -> Optional[dict]:
@@ -55,6 +54,13 @@ class ReportAppService:
 
     @classmethod
     def generate_report(cls, simulation_id: str, force_regenerate: bool = False) -> dict:
+        return cls._generate_report_unlocked(
+            simulation_id=simulation_id,
+            force_regenerate=force_regenerate,
+        )
+
+    @classmethod
+    def _generate_report_unlocked(cls, simulation_id: str, force_regenerate: bool = False) -> dict:
         """
         Orchestrate report generation.
 
@@ -104,52 +110,64 @@ class ReportAppService:
         def run_generate():
             set_locale(current_locale)
             try:
-                task_manager.update_task(
-                    task_id,
-                    status=TaskStatus.PROCESSING,
-                    progress=0,
-                    message=t("api.initReportAgent"),
-                )
-
-                agent = ReportAgent(
-                    graph_id=graph_id,
-                    simulation_id=simulation_id,
-                    simulation_requirement=simulation_requirement,
-                    project_type=project.project_type or state.project_type or "default",
-                    project_id=project.project_id,
-                )
-
-                def progress_callback(stage, progress, message):
+                with cls._lock_manager.acquire(
+                    report_generation_lock,
+                    simulation_id,
+                    timeout_seconds=0,
+                ):
                     task_manager.update_task(
                         task_id,
-                        progress=progress,
-                        message=f"[{stage}] {message}",
+                        status=TaskStatus.PROCESSING,
+                        progress=0,
+                        message=t("api.initReportAgent"),
                     )
 
-                report = agent.generate_report(
-                    progress_callback=progress_callback,
-                    report_id=report_id,
-                )
-
-                cls._report_repo.save_report(report)
-
-                if report.status == ReportStatus.COMPLETED:
-                    task_manager.complete_task(
-                        task_id,
-                        result={
-                            "report_id": report.report_id,
-                            "simulation_id": simulation_id,
-                            "status": "completed",
-                        },
+                    agent = ReportAgent(
+                        graph_id=graph_id,
+                        simulation_id=simulation_id,
+                        simulation_requirement=simulation_requirement,
+                        project_type=project.project_type or state.project_type or "default",
+                        project_id=project.project_id,
                     )
-                else:
-                    task_manager.fail_task(task_id, report.error or t("api.reportGenerateFailed"))
+
+                    def progress_callback(stage, progress, message):
+                        task_manager.update_task(
+                            task_id,
+                            progress=progress,
+                            message=f"[{stage}] {message}",
+                        )
+
+                    report = agent.generate_report(
+                        progress_callback=progress_callback,
+                        report_id=report_id,
+                    )
+
+                    cls._report_repo.save_report(report)
+
+                    if report.status == ReportStatus.COMPLETED:
+                        task_manager.complete_task(
+                            task_id,
+                            result={
+                                "report_id": report.report_id,
+                                "simulation_id": simulation_id,
+                                "status": "completed",
+                            },
+                        )
+                    else:
+                        task_manager.fail_task(task_id, report.error or t("api.reportGenerateFailed"))
 
             except Exception as e:
                 logger.error(f"Report generation failed: {str(e)}")
                 task_manager.fail_task(task_id, str(e))
 
-        trace_id = cls._executor.submit(run_generate, trace_id=report_id)
+        trace_id = cls._executor.submit(
+            run_generate,
+            task_type="generate_report",
+            idempotency_key=f"{simulation_id}:report",
+            simulation_id=simulation_id,
+            run_id="report",
+            trace_id=report_id,
+        )
         logger.info(
             "Report generation queued",
             extra={"trace_id": trace_id, "simulation_id": simulation_id, "task_id": task_id},
