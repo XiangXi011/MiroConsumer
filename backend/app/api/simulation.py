@@ -8,6 +8,7 @@ from flask import request, jsonify, send_file
 
 from . import simulation_bp, api_error_payload
 from ..config import Config
+from ..utils.error_codes import ErrorCodes, error_response
 from ..services.zep_entity_reader import ZepEntityReader
 from ..services.oasis_profile_generator import OasisProfileGenerator
 from ..services.simulation_manager import SimulationManager, SimulationStatus
@@ -350,6 +351,27 @@ def get_simulation(simulation_id: str):
     except Exception as e:
         logger.error(f"获取模拟状态失败: {str(e)}")
         return jsonify(api_error_payload(str(e))), 500
+
+
+@simulation_bp.route('/<simulation_id>/export', methods=['GET'])
+def export_simulation(simulation_id):
+    """导出仿真结果"""
+    format_type = request.args.get('format', 'json')  # json/csv
+
+    manager = SimulationManager()
+    state = manager.get_simulation(simulation_id)
+    if not state:
+        return error_response(ErrorCodes.SIMULATION_NOT_FOUND)
+
+    result = state.to_dict()
+
+    if format_type == 'csv':
+        from ..utils.export import export_metrics_to_csv
+        csv_data = export_metrics_to_csv(result.get('metrics', []))
+        return csv_data, 200, {'Content-Type': 'text/csv', 'Content-Disposition': f'attachment; filename=sim_{simulation_id}.csv'}
+    else:
+        from ..utils.export import export_to_json
+        return export_to_json(result), 200, {'Content-Type': 'application/json'}
 
 
 @simulation_bp.route('/list', methods=['GET'])

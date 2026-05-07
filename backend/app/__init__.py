@@ -88,6 +88,13 @@ def create_app(config_class=Config):
     def health():
         return {'status': 'ok'}
 
+    # 版本信息
+    from .utils.version import get_version_info
+
+    @app.route('/api/version')
+    def version():
+        return get_version_info()
+
     if should_log_startup:
         logger.info("MiroConsumer Backend 启动完成")
 
