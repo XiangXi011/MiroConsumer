@@ -17,6 +17,7 @@ from ..services.consumer.society.state_store import SocietyStateStore
 from ..utils.logger import get_logger
 from ..utils.locale import t
 from ..utils.validators import validate_simulation_params
+from ..utils.disclaimer import SIMULATION_DISCLAIMER
 from ..models.project import ProjectManager
 from ..services.application.simulation_app_service import SimulationAppService
 from ..services.application.branch_app_service import BranchAppService
@@ -231,6 +232,7 @@ def create_simulation():
             }), 400
 
         result = SimulationAppService.create_simulation(data)
+        result["disclaimer"] = SIMULATION_DISCLAIMER
         return jsonify({
             "success": True,
             "data": result

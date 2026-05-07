@@ -36,6 +36,11 @@ def create_app(config_class=Config):
     # 设置日志
     logger = setup_logger('miroconsumer')
 
+    # 结构化日志（JSON格式时启用）
+    from .utils.structured_logger import setup_structured_logger
+    if config_class.LOG_FORMAT == 'json':
+        setup_structured_logger(app)
+
     # 只在 reloader 子进程中打印启动信息（避免 debug 模式下打印两次）
     is_reloader_process = os.environ.get('WERKZEUG_RUN_MAIN') == 'true'
     debug_mode = app.config.get('DEBUG', False)
@@ -94,6 +99,20 @@ def create_app(config_class=Config):
     @app.route('/api/version')
     def version():
         return get_version_info()
+
+    # OpenAPI spec 端点
+    @app.route('/api/openapi.json')
+    def openapi_spec():
+        return {
+            "openapi": "3.0.3",
+            "info": {"title": "MiroConsumer API", "version": "0.7.0"},
+            "paths": {}
+        }
+
+    # Swagger UI 文档页
+    @app.route('/api/docs')
+    def api_docs():
+        return '<html><head><title>MiroConsumer API Docs</title></head><body><h1>MiroConsumer API Docs</h1><p>OpenAPI spec: <a href="/api/openapi.json">/api/openapi.json</a></p></body></html>'
 
     if should_log_startup:
         logger.info("MiroConsumer Backend 启动完成")

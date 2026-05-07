@@ -26,7 +26,7 @@ jobs:
 
       - name: Run backend test suite
         working-directory: backend
-        run: uv run --python 3.12 pytest
+        run: uv run --python 3.12 pytest --cov=app --cov-report=term-missing
 
   frontend:
     name: Frontend Build And Tests

@@ -6,6 +6,8 @@ LLM客户端封装
 import json
 import logging
 import re
+import time
+import hashlib
 from typing import Optional, Dict, Any, List
 from openai import OpenAI
 
@@ -71,10 +73,23 @@ class LLMClient:
         if request_timeout is not None:
             kwargs["timeout"] = request_timeout
         
+        start_time = time.time()
+        prompt_hash = hashlib.md5(str(messages).encode()).hexdigest()[:8]
         response = self.client.chat.completions.create(**kwargs)
+        elapsed = time.time() - start_time
         content = response.choices[0].message.content
         # 部分模型（如MiniMax M2.5）会在content中包含<think>思考内容，需要移除
         content = re.sub(r'<think>[\s\S]*?</think>', '', content).strip()
+
+        # 记录LLM调用详情
+        usage = response.usage
+        logger.info(
+            "LLM调用: model=%s, prompt_hash=%s, tokens=%s, elapsed=%.2fs",
+            self.model,
+            prompt_hash,
+            f"prompt={usage.prompt_tokens},completion={usage.completion_tokens}" if usage else "N/A",
+            elapsed,
+        )
 
         # LLM 输出治理校验
         validation = validate_llm_output(content, context="llm_client.chat")

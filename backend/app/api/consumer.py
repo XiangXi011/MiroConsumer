@@ -23,6 +23,7 @@ from ..services.application.audit_chain_service import AuditChainService
 from ..services.application.simulation_app_service import SimulationAppService
 from ..contracts.errors import ConcurrencyConflictError
 from ..utils.logger import get_logger
+from ..utils.disclaimer import SIMULATION_DISCLAIMER
 
 logger = get_logger("miroconsumer.api.consumer")
 
@@ -62,7 +63,7 @@ def get_consumer_summary(simulation_id: str):
     """Build and return the consumer propagation summary for a simulation."""
     try:
         data = ConsumerAppService.get_consumer_summary(simulation_id)
-        return jsonify({"success": True, "data": data})
+        return jsonify({"success": True, "data": data, "disclaimer": SIMULATION_DISCLAIMER})
     except ValueError as e:
         msg = str(e).lower()
         if "not found" in msg or "不存在" in msg:
@@ -80,7 +81,7 @@ def get_channel_summary(simulation_id: str):
     """Return Phase 6H channel metrics and report context fields."""
     try:
         data = ConsumerAppService.get_channel_summary(simulation_id)
-        return jsonify({"success": True, "data": data})
+        return jsonify({"success": True, "data": data, "disclaimer": SIMULATION_DISCLAIMER})
     except ValueError as e:
         return _value_error_response(e)
     except Exception as e:
@@ -93,7 +94,7 @@ def get_channel_events(simulation_id: str):
     """Return Phase 6H channel event stream."""
     try:
         data = ConsumerAppService.get_channel_events(simulation_id)
-        return jsonify({"success": True, "data": data})
+        return jsonify({"success": True, "data": data, "disclaimer": SIMULATION_DISCLAIMER})
     except ValueError as e:
         return _value_error_response(e)
     except Exception as e:
@@ -106,7 +107,7 @@ def get_propagation_paths(simulation_id: str):
     """Return Phase 6H cross-channel propagation paths."""
     try:
         data = ConsumerAppService.get_propagation_paths(simulation_id)
-        return jsonify({"success": True, "data": data})
+        return jsonify({"success": True, "data": data, "disclaimer": SIMULATION_DISCLAIMER})
     except ValueError as e:
         return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
@@ -397,7 +398,7 @@ def run_consumer_interview(simulation_id: str):
     try:
         data = request.get_json() or {}
         result = ConsumerAppService.run_consumer_interview(simulation_id, data)
-        return jsonify({"success": True, "data": result})
+        return jsonify({"success": True, "data": result, "disclaimer": SIMULATION_DISCLAIMER})
     except ValueError as e:
         return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
@@ -411,7 +412,7 @@ def run_focus_group(simulation_id: str):
     try:
         data = request.get_json() or {}
         result = ConsumerAppService.run_focus_group(simulation_id, data)
-        return jsonify({"success": True, "data": result})
+        return jsonify({"success": True, "data": result, "disclaimer": SIMULATION_DISCLAIMER})
     except ValueError as e:
         return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:

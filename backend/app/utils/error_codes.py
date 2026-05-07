@@ -1,5 +1,8 @@
 """统一 API 错误码"""
 
+import uuid
+import datetime
+
 
 class ErrorCodes:
     # 通用
@@ -26,7 +29,13 @@ class ErrorCodes:
 def error_response(code_tuple, details=None):
     """生成统一错误响应"""
     code, message, status = code_tuple
-    resp = {"success": False, "error": code, "message": message}
+    resp = {
+        "success": False,
+        "error": code,
+        "message": message,
+        "request_id": str(uuid.uuid4())[:8],
+        "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+    }
     if details:
         resp["details"] = details
     return resp, status

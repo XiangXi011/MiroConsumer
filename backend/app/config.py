@@ -55,6 +55,7 @@ class Config:
     RATE_LIMIT_PER_MINUTE = int(os.environ.get('RATE_LIMIT_PER_MINUTE', '60'))
     LOG_FORMAT = os.environ.get('LOG_FORMAT', 'json')
     SECURITY_HEADERS_ENABLED = os.environ.get('SECURITY_HEADERS_ENABLED', 'true').lower() == 'true'
+    ENABLE_REASONING_TRACE = os.environ.get('ENABLE_REASONING_TRACE', 'true').lower() == 'true'
     UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), '../uploads')
     ALLOWED_EXTENSIONS = {'pdf', 'md', 'txt', 'markdown'}
 

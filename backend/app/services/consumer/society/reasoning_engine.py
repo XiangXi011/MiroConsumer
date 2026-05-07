@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 from typing import Any, Callable, Dict, Iterable, Mapping
 
 from ....utils.llm_governance import validate_llm_output, get_fallback_response
+from ....config import Config
 from ..event_ontology import ConsumerEventType
 from .population_models import ConsumerSocietyAgent
 
@@ -97,7 +98,8 @@ class LayeredSocietyReasoningEngine:
         event["reasoning_method"] = reasoning_mode
         event["reasoning_backend"] = backend
         event["llm_invoked"] = False
-        event["reasoning_summary"] = f"{role} response to {claim}"
+        if Config.ENABLE_REASONING_TRACE:
+            event["reasoning_summary"] = f"{role} response to {claim}"
         return event
 
     def _llm_reason(
@@ -165,7 +167,8 @@ class LayeredSocietyReasoningEngine:
         event["reasoning_method"] = reasoning_mode
         event["reasoning_backend"] = "llm"
         event["llm_invoked"] = True
-        event["reasoning_summary"] = reasoning_summary
+        if Config.ENABLE_REASONING_TRACE:
+            event["reasoning_summary"] = reasoning_summary
         return event
 
     def _build_llm_client(self) -> Any:
