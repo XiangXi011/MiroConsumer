@@ -19,6 +19,7 @@ class DecisionOutput(BaseModel):
     purchase_intent_score: float = Field(ge=0, le=1, default=0.5)
     credibility_score: float = Field(ge=0, le=1, default=0.5)
     risk_level: str = "medium"
+    evidence_refs: List[str] = Field(default_factory=list)  # 引用的证据ID列表
 
 
 class ExpressionOutput(BaseModel):
@@ -43,3 +44,4 @@ class CognitionResult(BaseModel):
     persona_id: Optional[str] = None
     input_span: Optional[str] = None  # 输入来源标识
     memory_state: Optional[Dict] = None  # 记忆状态快照
+    social_context: Optional[Dict] = None  # 社交上下文

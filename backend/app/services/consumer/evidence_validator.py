@@ -15,6 +15,8 @@ class EvidenceValidationResult(BaseModel):
     aligned_snippet_ids: List[str]
     missing_support_reasons: List[str]
     validator_notes: str
+    contradiction_flags: List[str] = []
+    evidence_gap: List[str] = []
 
 
 class EvidenceGatekeepingResult(BaseModel):
@@ -106,6 +108,28 @@ def _evidence_snippets_from_finding(finding: Any) -> List[str]:
         else finding.get("evidence_snippets", [])
     )
     return [s for s in snippets if isinstance(s, str) and s.strip()]
+def _detect_contradictions(atoms: List[Dict]) -> List[str]:
+    """检测证据矛盾"""
+    contradictions = []
+    positive = [a for a in atoms if a.get("support_level") in ("strong", "moderate")]
+    negative = [a for a in atoms if a.get("support_level") in ("weak", "insufficient")]
+    if positive and negative:
+        contradictions.append("mixed_evidence")
+    return contradictions
+
+
+def _identify_gaps(atoms: List[Dict], claim: str = "") -> List[str]:
+    """识别证据缺口"""
+    gaps = []
+    if not atoms:
+        gaps.append("no_evidence")
+    elif len(atoms) < 2:
+        gaps.append("insufficient_evidence_count")
+    has_source_type = any(a.get("source_type") for a in atoms)
+    if not has_source_type:
+        gaps.append("missing_source_type")
+    return gaps
+
 
 
 def validate_finding(
@@ -195,6 +219,11 @@ def validate_finding(
     notes_parts.append(f"Aligned snippets: {len(aligned_snippet_ids)}")
     if missing_support_reasons:
         notes_parts.append(f"Missing: {', '.join(missing_support_reasons)}")
+    # Compute contradiction_flags and evidence_gap
+    atoms = evidence_snippets if evidence_snippets else []
+    claim = finding.finding_text if hasattr(finding, "finding_text") else finding.get("finding_text", "")
+    contradiction_flags = _detect_contradictions(atoms)
+    evidence_gap = _identify_gaps(atoms, claim)
 
     return EvidenceValidationResult(
         finding_id=finding_id,
@@ -203,6 +232,8 @@ def validate_finding(
         aligned_snippet_ids=aligned_snippet_ids,
         missing_support_reasons=missing_support_reasons,
         validator_notes="; ".join(notes_parts),
+        contradiction_flags=contradiction_flags,
+        evidence_gap=evidence_gap,
     )
 
 

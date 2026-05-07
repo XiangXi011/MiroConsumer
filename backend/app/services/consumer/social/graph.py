@@ -103,6 +103,54 @@ class SocialGraph:
                 graph.add_edge(SocialEdge(source, target, weight, edge_type, weight * 0.8))
         return graph
 
+    def find_path(self, source_id: str, target_id: str, max_depth: int = 5) -> List[List[str]]:
+        """BFS 找到从 source 到 target 的所有路径（限深度）"""
+        paths = []
+        queue = [(source_id, [source_id])]
+        while queue:
+            current, path = queue.pop(0)
+            if len(path) > max_depth:
+                continue
+            if current == target_id:
+                paths.append(path)
+                continue
+            for edge in self.edges.get(current, []):
+                if edge.target_id not in path:  # 避免环
+                    queue.append((edge.target_id, path + [edge.target_id]))
+        return paths
+
+    def get_influence_path(self, source_id: str, max_depth: int = 3) -> List[dict]:
+        """获取影响力传播路径"""
+        visited = set()
+        result = []
+        queue = [(source_id, 0, [])]
+        while queue:
+            node, depth, path = queue.pop(0)
+            if depth > max_depth or node in visited:
+                continue
+            visited.add(node)
+            result.append({"node": node, "depth": depth, "path": path + [node]})
+            for edge in self.edges.get(node, []):
+                queue.append((edge.target_id, depth + 1, path + [node]))
+        return result
+
+    @staticmethod
+    def compare_topologies(graph_a, graph_b) -> dict:
+        """对比两个图拓扑的差异"""
+        nodes_a = graph_a.nodes
+        nodes_b = graph_b.nodes
+        edges_a = graph_a.edge_count
+        edges_b = graph_b.edge_count
+
+        avg_degree_a = edges_a / len(nodes_a) if nodes_a else 0
+        avg_degree_b = edges_b / len(nodes_b) if nodes_b else 0
+
+        return {
+            "graph_a": {"nodes": len(nodes_a), "edges": edges_a, "avg_degree": avg_degree_a},
+            "graph_b": {"nodes": len(nodes_b), "edges": edges_b, "avg_degree": avg_degree_b},
+            "density_diff": abs(avg_degree_a - avg_degree_b),
+        }
+
 
 class SocialGraphGenerator:
     """社交图谱生成器"""
@@ -231,6 +279,76 @@ class SocialGraphGenerator:
                 influence_coefficient=old_edge.weight * 0.5,
             )
             graph.add_edge(new_edge)
+
+        return graph
+
+    def generate_influencer_follower(self, node_ids: List[str], n_influencers: int = None, seed: int = None) -> SocialGraph:
+        """influencer-follower 图：少数关键影响者节点，大量跟随者"""
+        rng = random.Random(seed)
+        n = len(node_ids)
+        if n_influencers is None:
+            n_influencers = max(2, n // 10)  # 10% 是影响者
+
+        graph = SocialGraph()
+        for nid in node_ids:
+            graph.add_node(nid)
+
+        influencers = node_ids[:n_influencers]
+        followers = node_ids[n_influencers:]
+
+        # 每个影响者连接到所有跟随者
+        for inf in influencers:
+            for fol in followers:
+                w = rng.uniform(0.5, 1.0)
+                graph.add_edge(SocialEdge(inf, fol, w, "influencer", w * 0.9))
+                graph.add_edge(SocialEdge(fol, inf, w * 0.5, "follower", w * 0.4))
+
+        # 影响者之间互相连接
+        for i, inf1 in enumerate(influencers):
+            for inf2 in influencers[i+1:]:
+                w = rng.uniform(0.3, 0.7)
+                graph.add_edge(SocialEdge(inf1, inf2, w, "peer", w * 0.6))
+                graph.add_edge(SocialEdge(inf2, inf1, w, "peer", w * 0.6))
+
+        return graph
+
+    def generate_channel_separated(self, node_ids: List[str], channels: List[str] = None, seed: int = None) -> SocialGraph:
+        """渠道分层图：每个渠道内紧密连接，渠道间稀疏"""
+        rng = random.Random(seed)
+        if channels is None:
+            channels = ["weixin", "douyin", "xiaohongshu", "weibo"]
+
+        graph = SocialGraph()
+        n = len(node_ids)
+        chunk_size = n // len(channels)
+
+        for nid in node_ids:
+            graph.add_node(nid)
+
+        for i, channel in enumerate(channels):
+            start = i * chunk_size
+            end = start + chunk_size if i < len(channels) - 1 else n
+            channel_nodes = node_ids[start:end]
+
+            # 渠道内连接
+            for j, n1 in enumerate(channel_nodes):
+                for n2 in channel_nodes[j+1:]:
+                    if rng.random() < 0.6:
+                        w = rng.uniform(0.5, 1.0)
+                        graph.add_edge(SocialEdge(n1, n2, w, channel, w * 0.8, channel=channel))
+                        graph.add_edge(SocialEdge(n2, n1, w, channel, w * 0.8, channel=channel))
+
+        # 渠道间桥接（稀疏）
+        all_channel_nodes = [node_ids[i*chunk_size:(i+1)*chunk_size] if i < len(channels) - 1 else node_ids[i*chunk_size:] for i in range(len(channels))]
+        for i, ch1_nodes in enumerate(all_channel_nodes):
+            for j, ch2_nodes in enumerate(all_channel_nodes):
+                if i >= j:
+                    continue
+                for n1 in ch1_nodes[:3]:  # 只取前3个做桥接
+                    for n2 in ch2_nodes[:3]:
+                        if rng.random() < 0.2:
+                            w = rng.uniform(0.1, 0.3)
+                            graph.add_edge(SocialEdge(n1, n2, w, "bridge", w * 0.3))
 
         return graph
 

@@ -194,6 +194,21 @@ class RunController:
 
             progress_buffer.round_completed(round_index)
 
+            # B3: Save graph snapshot for this round
+            try:
+                graph_snapshot = {
+                    "round_id": round_index,
+                    "node_count": len(population),
+                    "event_count": len(round_events),
+                    "metrics": metrics,
+                }
+                snapshot_dir = self.store.society_dir(simulation_id) / "graph_snapshots"
+                snapshot_dir.mkdir(parents=True, exist_ok=True)
+                snapshot_path = snapshot_dir / f"graph_snapshot_round_{round_index}.json"
+                atomic_write_json(snapshot_path, graph_snapshot)
+            except Exception:
+                pass  # non-critical
+
             if should_stop:
                 import logging
                 logging.getLogger(__name__).info(f"Early stop triggered at round {round_index}: {reason}")

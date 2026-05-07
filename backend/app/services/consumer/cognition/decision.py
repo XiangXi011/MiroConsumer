@@ -12,11 +12,15 @@ logger = logging.getLogger(__name__)
 
 # Default action set when caller does not supply one
 DEFAULT_ACTIONS = [
-    {"id": "accept", "label": "Accept claim", "type": "positive"},
-    {"id": "reject", "label": "Reject claim", "type": "negative"},
-    {"id": "wait", "label": "Reserve judgement", "type": "neutral"},
-    {"id": "share", "label": "Share with peers", "type": "social"},
-    {"id": "seek_evidence", "label": "Seek more evidence", "type": "investigative"},
+    {"id": "accept", "label": "接受", "base_score": 0.5},
+    {"id": "reject", "label": "拒绝", "base_score": 0.3},
+    {"id": "hesitate", "label": "犹豫", "base_score": 0.4},
+    {"id": "share", "label": "分享", "base_score": 0.6},
+    {"id": "challenge", "label": "质疑", "base_score": 0.3},
+    {"id": "ignore", "label": "忽略", "base_score": 0.2},
+    {"id": "distort", "label": "误读", "base_score": 0.3},
+    {"id": "ask_more", "label": "追问", "base_score": 0.5},
+    {"id": "seek_evidence", "label": "求证", "base_score": 0.5},
 ]
 
 
@@ -118,6 +122,12 @@ class DecisionEngine:
             reason_codes.append("social_influenced")
         if not reason_codes:
             reason_codes.append("neutral_assessment")
+        # Generate evidence_refs
+        evidence_refs = []
+        if perception_state.get("trust_signals"):
+            evidence_refs.extend([f"ts_{i}" for i, _ in enumerate(perception_state["trust_signals"][:3])])
+        if perception_state.get("perceived_risks"):
+            evidence_refs.extend([f"pr_{i}" for i, _ in enumerate(perception_state["perceived_risks"][:2])])
 
         result: Dict[str, Any] = {
             "choice": best["action_id"],
@@ -125,6 +135,7 @@ class DecisionEngine:
             "scores": evaluated,
             "confidence": confidence,
             "reason_codes": reason_codes,
+            "evidence_refs": evidence_refs,
         }
 
         # Compute dimension alignment scores when persona is available

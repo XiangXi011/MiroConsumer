@@ -108,6 +108,7 @@ class ConsumerCognitionEngine:
             purchase_intent_score=decision.get("purchase_intent_score", 0.5),
             credibility_score=decision.get("credibility_score", 0.5),
             risk_level=decision.get("risk_level", "medium"),
+            evidence_refs=decision.get("evidence_refs", []),
         )
 
         expression_out = ExpressionOutput(
@@ -139,6 +140,7 @@ class ConsumerCognitionEngine:
             persona_id=persona.persona_id if persona else None,
             input_span=input_span,
             memory_state=memory_state,
+            social_context=social_context or {},
         )
 
         return result.model_dump()

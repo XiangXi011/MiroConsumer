@@ -37,12 +37,15 @@ EXPERIMENT_MODES = {
 }
 
 
-def validate_experiment_config(mode: str, agent_count: int, run_count: int) -> list:
+def validate_experiment_config(mode: str, agent_count: int, run_count: int, hypothesis: str = None) -> list:
     """校验实验配置是否符合模式要求"""
     errors = []
     config = EXPERIMENT_MODES.get(mode)
     if not config:
         return [f"Unknown mode: {mode}"]
+    # 检查 hypothesis
+    if config.get("requires_hypothesis") and not hypothesis:
+        errors.append(f"{mode} mode requires a hypothesis")
 
     min_agents, max_agents = config["agent_range"]
     if agent_count < min_agents:

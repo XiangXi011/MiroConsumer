@@ -154,3 +154,59 @@ class ExperimentDesigner:
                 assignment[agent_id] = variant_ids[i % len(variant_ids)]
 
         return assignment
+
+    def create_pack_variant(self, name: str, packs: List[dict]) -> ExperimentDesign:
+        """包装变体实验"""
+        variants = []
+        for i, pack in enumerate(packs):
+            vid = f"pack_{i}"
+            variants.append(ExperimentVariant(vid, pack.get("name", f"Pack {i}"), pack.get("description", ""), pack))
+        return ExperimentDesign(
+            experiment_id=f"exp_{random.randint(10000, 99999)}",
+            name=name,
+            hypothesis=f"Packaging variant test across {len(packs)} packs",
+            variants=variants,
+            control_variant_id="pack_0",
+            independent_variables=["packaging"],
+            dependent_metrics=["purchase_intent", "credibility", "appeal"]
+        )
+
+    def create_channel_variant(self, name: str, channels: List[str]) -> ExperimentDesign:
+        """渠道变体实验"""
+        variants = []
+        for i, ch in enumerate(channels):
+            vid = f"channel_{i}"
+            variants.append(ExperimentVariant(vid, ch, f"Channel: {ch}", {"channel": ch}))
+        return ExperimentDesign(
+            experiment_id=f"exp_{random.randint(10000, 99999)}",
+            name=name,
+            hypothesis=f"Channel effectiveness test across {len(channels)} channels",
+            variants=variants,
+            control_variant_id="channel_0",
+            independent_variables=["channel"],
+            dependent_metrics=["reach", "engagement", "conversion"]
+        )
+
+    def create_factorial(self, name: str, factors: dict) -> ExperimentDesign:
+        """因素设计实验"""
+        import itertools
+        factor_names = list(factors.keys())
+        factor_values = list(factors.values())
+        combinations = list(itertools.product(*factor_values))
+
+        variants = []
+        for i, combo in enumerate(combinations):
+            vid = f"factorial_{i}"
+            desc = ", ".join(f"{k}={v}" for k, v in zip(factor_names, combo))
+            config = dict(zip(factor_names, combo))
+            variants.append(ExperimentVariant(vid, f"Combo {i}", desc, config))
+
+        return ExperimentDesign(
+            experiment_id=f"exp_{random.randint(10000, 99999)}",
+            name=name,
+            hypothesis=f"Factorial design with factors: {', '.join(factor_names)}",
+            variants=variants,
+            control_variant_id="factorial_0",
+            independent_variables=factor_names,
+            dependent_metrics=["purchase_intent", "credibility"]
+        )
