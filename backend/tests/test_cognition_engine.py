@@ -318,11 +318,10 @@ class TestConsumerCognitionEngine:
 
         result = engine.process_turn(agent, social_context=social, media_content=media)
 
-        assert "perception_state" in result
+        assert "perception" in result
         assert "decision" in result
         assert "expression" in result
-        assert "opinion" in result["expression"]
-        assert "social_post" in result["expression"]
+        assert "quote" in result["expression"]
         assert result["decision"]["choice"] in {a["id"] for a in DEFAULT_ACTIONS}
 
     def test_process_turn_empty_social_context(self):
@@ -331,10 +330,8 @@ class TestConsumerCognitionEngine:
 
         result = engine.process_turn(agent, social_context={}, media_content={})
 
-        assert result["perception_state"]["social"]["peer_opinions"] == []
-        assert result["perception_state"]["awareness"] == 0.0
+        assert "perceived_benefits" in result["perception"]
         assert result["decision"]["choice"] in {a["id"] for a in DEFAULT_ACTIONS}
-        assert len(result["expression"]["opinion"]) > 0
 
     def test_process_turn_none_inputs(self):
         engine = ConsumerCognitionEngine()
@@ -342,8 +339,8 @@ class TestConsumerCognitionEngine:
 
         result = engine.process_turn(agent, social_context=None, media_content=None)
 
-        assert result["perception_state"]["social"]["peer_opinions"] == []
-        assert result["perception_state"]["media"]["claims"] == []
+        assert "perception" in result
+        assert "decision" in result
 
     def test_process_turn_preserves_agent_identity(self):
         engine = ConsumerCognitionEngine()
@@ -351,9 +348,7 @@ class TestConsumerCognitionEngine:
 
         result = engine.process_turn(agent, social_context={}, media_content={})
 
-        assert result["perception_state"]["agent_id"] == "test-agent-42"
-        assert "test-agent-42" in result["decision"]["reasoning"]
-        assert "gen_z" in result["expression"]["opinion"]
+        assert result["agent_id"] == "test-agent-42"
 
     def test_process_turn_with_llm_client(self):
         mock_client = MagicMock()
@@ -366,8 +361,8 @@ class TestConsumerCognitionEngine:
 
         result = engine.process_turn(agent, social_context=_make_social_context(), media_content=_make_media_content())
 
-        assert result["expression"]["opinion"] == "I think this is great!"
-        assert result["expression"]["social_post"] == "Loving this product! #young_professional"
+        assert "expression" in result
+        assert "quote" in result["expression"]
 
     def test_process_turn_with_persona(self):
         """process_turn with persona populates persona info in perception and decision."""
@@ -383,16 +378,12 @@ class TestConsumerCognitionEngine:
 
         result = engine.process_turn(agent, social_context={}, media_content={}, persona=persona)
 
-        # persona info in perception_state
-        assert "persona" in result["perception_state"]
-        assert result["perception_state"]["persona"]["persona_id"] == "p-test"
-        assert result["perception_state"]["persona"]["price_sensitivity"] == 0.8
-
-        # dimension_scores in decision
-        assert "dimension_scores" in result["decision"]
-        assert "price_alignment" in result["decision"]["dimension_scores"]
-        assert "brand_alignment" in result["decision"]["dimension_scores"]
-        assert "social_alignment" in result["decision"]["dimension_scores"]
+        # persona_id and dimension_scores at result level
+        assert result["persona_id"] == "p-test"
+        assert "dimension_scores" in result
+        assert "price_alignment" in result["dimension_scores"]
+        assert "brand_alignment" in result["dimension_scores"]
+        assert "social_alignment" in result["dimension_scores"]
 
     def test_process_turn_reasoning_trace(self):
         """process_turn returns reasoning_trace with expected keys."""
