@@ -12,7 +12,7 @@ from ..config import Config
 from ..services.report_agent import ReportManager
 from ..utils.logger import get_logger
 from ..utils.locale import t
-from ..utils.disclaimer import REPORT_DISCLAIMER
+from ..utils.disclaimer import REPORT_DISCLAIMER, get_methodology_limits
 from ..services.application.report_app_service import ReportAppService
 from ..services.application.benchmark_app_service import BenchmarkAppService
 from ..services.application.research_asset_app_service import ResearchAssetAppService
@@ -20,8 +20,28 @@ from ..services.application.comparison_app_service import ComparisonAppService
 from ..contracts.errors import ConcurrencyConflictError
 from ..utils.pagination import paginate_query
 from ..auth.middleware import require_permission
+from ..repositories import SimulationRepository
+from ..repositories.factory import create_repository_bundle
 
 logger = get_logger('miroconsumer.api.report')
+
+
+_repo_bundle = create_repository_bundle()
+_simulation_repo: SimulationRepository = _repo_bundle.simulation_repo
+
+
+def _build_methodology_limits(simulation_id: str) -> dict:
+    """Load society config and compute methodology limits for a simulation."""
+    try:
+        config = _simulation_repo.get_simulation_config(simulation_id)
+        if not config:
+            return get_methodology_limits(8, 1, "quick")
+        agent_count = config.get("core_persona_count", 8) + config.get("expanded_persona_count", 0)
+        run_count = config.get("max_rounds", 1)
+        mode = config.get("mode", "quick")
+        return get_methodology_limits(agent_count, run_count, mode)
+    except Exception:
+        return get_methodology_limits(8, 1, "quick")
 
 
 def _status_from_value_error(e: ValueError) -> int:
@@ -184,10 +204,13 @@ def get_report(report_id: str):
                 "error": t('api.reportNotFound', id=report_id)
             }), 404
 
+        methodology_limits = _build_methodology_limits(report.simulation_id)
+
         return jsonify({
             "success": True,
             "data": report.to_dict(),
-            "disclaimer": REPORT_DISCLAIMER
+            "disclaimer": REPORT_DISCLAIMER,
+            "methodology_limits": methodology_limits,
         })
 
     except Exception as e:

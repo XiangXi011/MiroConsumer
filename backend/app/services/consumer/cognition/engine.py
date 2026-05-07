@@ -10,6 +10,12 @@ from ..society.population_models import ConsumerSocietyAgent
 from .decision import DecisionEngine
 from .expression import ExpressionEngine
 from .perception import PerceptionEngine
+from .schemas import (
+    CognitionResult,
+    DecisionOutput,
+    ExpressionOutput,
+    PerceptionOutput,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -81,15 +87,44 @@ class ConsumerCognitionEngine:
             "persona_id": persona.persona_id if persona else None,
         }
 
-        return {
-            "perception_state": perception_state,
-            "decision": decision,
-            "expression": {
-                "opinion": formatted_opinion,
-                "social_post": formatted_post,
-            },
-            "reasoning_trace": reasoning_trace,
-        }
+        # --- Pydantic validation ---
+        perception_out = PerceptionOutput(
+            perceived_benefits=perception_state.get("perceived_benefits", []),
+            perceived_risks=perception_state.get("perceived_risks", []),
+            confusion_points=perception_state.get("confusion_points", []),
+            trust_signals=perception_state.get("trust_signals", []),
+            relevance_score=perception_state.get("relevance_score", 0.5),
+            emotional_reaction=perception_state.get("emotional_reaction", "neutral"),
+        )
+
+        decision_out = DecisionOutput(
+            choice=decision.get("choice", "hesitate"),
+            reason_codes=decision.get("reason_codes", []),
+            confidence=decision.get("confidence", 0.5),
+            purchase_intent_score=decision.get("purchase_intent_score", 0.5),
+            credibility_score=decision.get("credibility_score", 0.5),
+            risk_level=decision.get("risk_level", "medium"),
+        )
+
+        expression_out = ExpressionOutput(
+            quote=formatted_opinion,
+            paraphrase=formatted_post,
+            sentiment=decision.get("sentiment", "neutral"),
+            channel=decision.get("channel", "general"),
+        )
+
+        result = CognitionResult(
+            agent_id=str(agent.agent_id),
+            round_id=decision.get("round_id", 0),
+            perception=perception_out,
+            decision=decision_out,
+            expression=expression_out,
+            reasoning_trace=reasoning_trace,
+            dimension_scores=decision.get("dimension_scores", {}),
+            persona_id=persona.persona_id if persona else None,
+        )
+
+        return result.model_dump()
 
 
 __all__ = ["ConsumerCognitionEngine"]
