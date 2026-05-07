@@ -19,6 +19,8 @@ class ValidationResult:
     significant: bool  # p < 0.05
     confidence_interval: tuple
     n_simulations: int
+    sample_n: int = 0  # 样本量
+    run_n: int = 0  # 重复运行次数
 
 
 class MonteCarloValidator:
@@ -56,7 +58,9 @@ class MonteCarloValidator:
             p_value=p_value,
             significant=p_value < alpha,
             confidence_interval=ci,
-            n_simulations=n
+            n_simulations=n,
+            sample_n=n,
+            run_n=1,
         )
 
     def generate_null_distribution(self,
@@ -89,6 +93,8 @@ class MonteCarloValidator:
 
             result = self.validate_metric(observed, null_dist, alpha)
             result.metric_name = metric_name
+            result.sample_n = n_simulations
+            result.run_n = 1
             results[metric_name] = result
 
         return results
@@ -127,17 +133,27 @@ class SimulationHistory:
 class ComparisonEngine:
     """A/B 对比引擎"""
 
-    def compare(self, run_a_metrics: Dict[str, float], run_b_metrics: Dict[str, float]) -> Dict[str, Dict]:
+    def compare(self, run_a_metrics: Dict[str, float], run_b_metrics: Dict[str, float],
+                run_a_std: Optional[Dict[str, float]] = None,
+                run_b_std: Optional[Dict[str, float]] = None) -> Dict[str, Dict]:
         results = {}
         for metric in set(run_a_metrics) & set(run_b_metrics):
             a_val = run_a_metrics[metric]
             b_val = run_b_metrics[metric]
             diff = b_val - a_val
             pct = (diff / a_val * 100) if a_val != 0 else 0.0
+            # Cohen's d
+            pooled_std = 1.0
+            if run_a_std and run_b_std and metric in run_a_std and metric in run_b_std:
+                pooled_std = ((run_a_std[metric] ** 2 + run_b_std[metric] ** 2) / 2) ** 0.5
+            effect_size = diff / pooled_std if pooled_std > 0 else 0
             results[metric] = {
                 "a": a_val,
                 "b": b_val,
                 "diff": diff,
                 "pct_change": pct,
+                "effect_size": round(effect_size, 3),
+                "effect_magnitude": "small" if abs(effect_size) < 0.2 else
+                                   "medium" if abs(effect_size) < 0.8 else "large",
             }
         return results

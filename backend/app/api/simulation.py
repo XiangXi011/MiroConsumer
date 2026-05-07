@@ -388,6 +388,11 @@ def export_simulation(simulation_id):
         from ..utils.export import export_metrics_to_csv
         csv_data = export_metrics_to_csv(result.get('metrics', []))
         return csv_data, 200, {'Content-Type': 'text/csv', 'Content-Disposition': f'attachment; filename=sim_{simulation_id}.csv'}
+    elif format_type == 'manifest':
+        from ..utils.export import export_simulation_manifest
+        methodology = result.get('methodology', {})
+        manifest_data = export_simulation_manifest(result, methodology)
+        return manifest_data, 200, {'Content-Type': 'application/json', 'Content-Disposition': f'attachment; filename=manifest_{simulation_id}.json'}
     else:
         from ..utils.export import export_to_json
         return export_to_json(result), 200, {'Content-Type': 'application/json'}

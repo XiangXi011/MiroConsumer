@@ -46,3 +46,20 @@ def export_rounds_to_csv(rounds: List[Dict[str, Any]]) -> str:
     writer.writeheader()
     writer.writerows(flat_rows)
     return output.getvalue()
+
+
+def export_simulation_manifest(simulation_data: dict, methodology: dict) -> str:
+    """导出 simulation_manifest.json"""
+    manifest = {
+        "simulation_id": simulation_data.get("id"),
+        "created_at": simulation_data.get("created_at"),
+        "agent_count": methodology.get("agent_count"),
+        "run_count": methodology.get("run_count"),
+        "simulation_mode": methodology.get("simulation_mode"),
+        "random_seed": methodology.get("random_seed"),
+        "methodology_limits": methodology,
+        "graph_config": simulation_data.get("graph_config", {}),
+        "persona_config": simulation_data.get("persona_config", {}),
+        "event_sequence": simulation_data.get("event_sequence", []),
+    }
+    return json.dumps(manifest, ensure_ascii=False, indent=2)

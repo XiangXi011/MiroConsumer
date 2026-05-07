@@ -13,6 +13,9 @@ class SocialEdge:
     weight: float  # 关系强度 0-1
     edge_type: str  # family/colleague/friend/acquaintance
     influence_coefficient: float  # 影响系数
+    channel: str = "general"  # 传播渠道
+    visibility_level: str = "public"  # public/friends/private
+    interaction_frequency: float = 0.5  # 互动频率
 
 
 class SocialGraph:
@@ -88,12 +91,80 @@ class SocialGraph:
     def edge_count(self) -> int:
         return sum(len(v) for v in self.edges.values())
 
+    @staticmethod
+    def from_adjacency_list(adj_list: dict, edge_type: str = "custom") -> "SocialGraph":
+        """从邻接表导入"""
+        graph = SocialGraph()
+        for source, targets in adj_list.items():
+            graph.add_node(source)
+            for target_info in (targets if isinstance(targets, list) else []):
+                target = target_info if isinstance(target_info, str) else target_info.get("id")
+                weight = target_info.get("weight", 0.5) if isinstance(target_info, dict) else 0.5
+                graph.add_edge(SocialEdge(source, target, weight, edge_type, weight * 0.8))
+        return graph
+
 
 class SocialGraphGenerator:
     """社交图谱生成器"""
 
     def __init__(self, seed=None):
         self.rng = random.Random(seed)
+
+    def generate_random(self, node_ids: List[str], edge_probability: float = 0.1, seed: int = None) -> SocialGraph:
+        """Erdős-Rényi 随机图"""
+        rng = random.Random(seed) if seed is not None else self.rng
+        graph = SocialGraph()
+        for nid in node_ids:
+            graph.add_node(nid)
+        for i, n1 in enumerate(node_ids):
+            for n2 in node_ids[i + 1:]:
+                if rng.random() < edge_probability:
+                    w = rng.uniform(0.1, 1.0)
+                    graph.add_edge(SocialEdge(n1, n2, w, "random", w * 0.5))
+                    graph.add_edge(SocialEdge(n2, n1, w, "random", w * 0.5))
+        return graph
+
+    def generate_scale_free(self, node_ids: List[str], m_edges: int = 3, seed: int = None) -> SocialGraph:
+        """Barabási-Albert 无标度网络"""
+        rng = random.Random(seed) if seed is not None else self.rng
+        graph = SocialGraph()
+        n = len(node_ids)
+        if n == 0:
+            return graph
+
+        # 初始完全图
+        initial = min(m_edges + 1, n)
+        for i in range(initial):
+            graph.add_node(node_ids[i])
+        for i in range(initial):
+            for j in range(i + 1, initial):
+                w = rng.uniform(0.3, 1.0)
+                graph.add_edge(SocialEdge(node_ids[i], node_ids[j], w, "friend", w * 0.8))
+                graph.add_edge(SocialEdge(node_ids[j], node_ids[i], w, "friend", w * 0.8))
+
+        # 优先连接
+        degrees: Dict[str, int] = {}
+        for nid in node_ids[:initial]:
+            degrees[nid] = len(graph.edges.get(nid, [])) + len(graph.in_edges.get(nid, []))
+        for i in range(initial, n):
+            graph.add_node(node_ids[i])
+            total_degree = sum(degrees.values()) or 1
+            probs = [degrees.get(nid, 0) / total_degree for nid in node_ids[:i]]
+            targets: Set[str] = set()
+            attempts = 0
+            while len(targets) < min(m_edges, i) and attempts < m_edges * 3:
+                idx = rng.choices(range(i), weights=probs[:i], k=1)[0]
+                targets.add(node_ids[idx])
+                attempts += 1
+
+            for t in targets:
+                w = rng.uniform(0.3, 1.0)
+                graph.add_edge(SocialEdge(node_ids[i], t, w, "influenced", w * 0.7))
+                graph.add_edge(SocialEdge(t, node_ids[i], w, "influencer", w * 0.7))
+                degrees[t] = degrees.get(t, 0) + 1
+            degrees[node_ids[i]] = len(targets)
+
+        return graph
 
     def generate_small_world(
         self,
