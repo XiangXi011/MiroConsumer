@@ -290,3 +290,122 @@ class TestReportAppServiceGetReportDownloadInfo:
 
         assert info["is_temp"] is True
         assert info["content"] == "# Test"
+
+
+class TestReportAppServicePhase6JHardGate:
+    def test_blocks_report_when_phase6j_artifact_blocks_entry(self, monkeypatch, tmp_path):
+        fake_state = MagicMock()
+        fake_state.project_id = "proj_123"
+        fake_state.simulation_id = "sim_123"
+
+        monkeypatch.setattr(
+            "app.services.application.report_app_service.ReportAppService._simulation_repo.get_simulation",
+            lambda sim_id: fake_state,
+        )
+        monkeypatch.setattr(
+            "app.services.application.report_app_service.Config.OASIS_SIMULATION_DATA_DIR",
+            str(tmp_path),
+        )
+
+        # Write a blocking Phase 6J calibration artifact
+        sim_dir = tmp_path / "sim_123"
+        sim_dir.mkdir(parents=True, exist_ok=True)
+        artifact = {
+            "phase7_entry_decision": "BLOCKED",
+            "golden_flow_result": "BLOCKED",
+            "evidence_gatekeeping_result": "PASS",
+            "reasoning_backend_coverage": 0.6,
+            "template_fallback_coverage": 0.2,
+        }
+        import json
+        (sim_dir / "phase6j_calibration_artifact.json").write_text(
+            json.dumps(artifact, indent=2), encoding="utf-8"
+        )
+
+        with pytest.raises(ValidationError) as exc_info:
+            ReportAppService.generate_report("sim_123", force_regenerate=False)
+
+        assert "Phase 6J calibration blocks entry" in str(exc_info.value)
+        assert exc_info.value.details["phase7_entry_decision"] == "BLOCKED"
+
+    def test_allows_report_when_phase6j_artifact_passes(self, monkeypatch, tmp_path):
+        fake_state = MagicMock()
+        fake_state.project_id = "proj_123"
+        fake_state.simulation_id = "sim_123"
+
+        monkeypatch.setattr(
+            "app.services.application.report_app_service.ReportAppService._simulation_repo.get_simulation",
+            lambda sim_id: fake_state,
+        )
+        monkeypatch.setattr(
+            "app.services.application.report_app_service.Config.OASIS_SIMULATION_DATA_DIR",
+            str(tmp_path),
+        )
+        monkeypatch.setattr(
+            "app.services.application.report_app_service.ReportAppService.get_existing_report_for_simulation",
+            lambda sim_id: None,
+        )
+        monkeypatch.setattr(
+            "app.services.application.report_app_service.ReportAppService._project_repo.get_project",
+            lambda pid: MagicMock(graph_id="g1", simulation_requirement="test", project_type="default", project_id=pid),
+        )
+        monkeypatch.setattr(
+            "app.services.application.report_app_service.create_task_executor",
+            lambda: MagicMock(submit=lambda *a, **k: "trace_123"),
+        )
+        monkeypatch.setattr(
+            "app.services.application.report_app_service.TaskManager.create_task",
+            lambda *a, **k: "task_123",
+        )
+
+        # Write a passing Phase 6J calibration artifact
+        sim_dir = tmp_path / "sim_123"
+        sim_dir.mkdir(parents=True, exist_ok=True)
+        artifact = {
+            "phase7_entry_decision": "PASS",
+            "golden_flow_result": "PASS",
+            "evidence_gatekeeping_result": "PASS",
+            "reasoning_backend_coverage": 0.8,
+            "template_fallback_coverage": 0.1,
+        }
+        import json
+        (sim_dir / "phase6j_calibration_artifact.json").write_text(
+            json.dumps(artifact, indent=2), encoding="utf-8"
+        )
+
+        result = ReportAppService.generate_report("sim_123", force_regenerate=False)
+        assert result["status"] == "generating"
+
+    def test_allows_report_when_no_phase6j_artifact(self, monkeypatch, tmp_path):
+        fake_state = MagicMock()
+        fake_state.project_id = "proj_123"
+        fake_state.simulation_id = "sim_123"
+
+        monkeypatch.setattr(
+            "app.services.application.report_app_service.ReportAppService._simulation_repo.get_simulation",
+            lambda sim_id: fake_state,
+        )
+        monkeypatch.setattr(
+            "app.services.application.report_app_service.Config.OASIS_SIMULATION_DATA_DIR",
+            str(tmp_path),
+        )
+        monkeypatch.setattr(
+            "app.services.application.report_app_service.ReportAppService.get_existing_report_for_simulation",
+            lambda sim_id: None,
+        )
+        monkeypatch.setattr(
+            "app.services.application.report_app_service.ReportAppService._project_repo.get_project",
+            lambda pid: MagicMock(graph_id="g1", simulation_requirement="test", project_type="default", project_id=pid),
+        )
+        monkeypatch.setattr(
+            "app.services.application.report_app_service.create_task_executor",
+            lambda: MagicMock(submit=lambda *a, **k: "trace_123"),
+        )
+        monkeypatch.setattr(
+            "app.services.application.report_app_service.TaskManager.create_task",
+            lambda *a, **k: "task_123",
+        )
+
+        # No Phase 6J artifact at all
+        result = ReportAppService.generate_report("sim_123", force_regenerate=False)
+        assert result["status"] == "generating"

@@ -29,7 +29,8 @@ class NotFoundError(CanonicalError):
 class ValidationError(CanonicalError):
     """Input failed business-rule or shape validation."""
 
-    def __init__(self, message: str):
+    def __init__(self, message: str, details: dict | None = None):
+        self.details = details or {}
         super().__init__("validation_error", message)
 
 

@@ -34,10 +34,13 @@ def _status_from_value_error(e: ValueError) -> int:
 def _value_error_response(e: ValueError):
     if isinstance(e, ConcurrencyConflictError):
         return jsonify(e.to_response()), 409
-    return jsonify({
+    payload = {
         "success": False,
-        "error": str(e)
-    }), _status_from_value_error(e)
+        "error": str(e),
+    }
+    if hasattr(e, "details") and e.details:
+        payload["details"] = e.details
+    return jsonify(payload), _status_from_value_error(e)
 
 
 # ============== 报告生成接口 ==============

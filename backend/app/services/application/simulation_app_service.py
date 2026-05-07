@@ -9,6 +9,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ...config import Config
 from ...models.task import TaskManager, TaskStatus
+from ...contracts.errors import ValidationError
 from ...repositories import ProjectRepository, SimulationRepository
 from ...repositories.factory import create_repository_bundle
 from ...services.consumer.api_guard import ConsumerApiGuard
@@ -94,6 +95,21 @@ def _check_simulation_prepared(simulation_id: str) -> Tuple[bool, dict]:
                 profiles_count = len(profiles_data) if isinstance(profiles_data, list) else 0
 
             if status == "preparing":
+                # Consumer mode: only auto-update when manifest is completed and artifact checks pass
+                if consumer_mode and consumer_manifest:
+                    manifest_status = consumer_manifest.get("status", "")
+                    artifact_checks = consumer_manifest.get("artifact_checks", {})
+                    all_artifacts_ok = (
+                        all(value in {True, "ok"} for value in artifact_checks.values())
+                        if artifact_checks
+                        else False
+                    )
+                    if manifest_status != "completed" or not all_artifacts_ok:
+                        return False, {
+                            "reason": "consumer manifest not ready",
+                            "manifest_status": manifest_status,
+                            "artifact_checks": artifact_checks,
+                        }
                 try:
                     from datetime import datetime
                     state_data["status"] = "ready"
@@ -386,12 +402,15 @@ class SimulationAppService:
         simulation_id: str,
         data: dict,
     ) -> dict:
-        run_estimate = cls._budget_manager.validate_run(data)
         with cls._lock_manager.acquire(
             simulation_run_lock,
             simulation_id,
             timeout_seconds=0,
         ):
+            state = cls._simulation_repo.get_simulation(simulation_id)
+            if state:
+                cls._enforce_phase6j_start_gate(data, state)
+            run_estimate = cls._budget_manager.validate_run(data)
             response = cls._start_simulation_unlocked(simulation_id, data)
             response["run_estimate"] = run_estimate
             return response
@@ -529,6 +548,8 @@ class SimulationAppService:
         if mode in {"standard", "standard_plus", "large_society"} and not enabled:
             raise ValueError("ENABLE_SOCIETY_MODE must be true for standard, standard_plus or large_society")
 
+        cls._enforce_phase6j_start_gate({"society_mode": mode}, state)
+
         max_allowed = int(os.environ.get("MAX_SOCIETY_AGENTS", "1000"))
         max_agents = int(data.get("society_max_agents") or cls._default_society_agents(mode))
         advanced_society_mode = bool(data.get("advanced_society_mode", False))
@@ -557,6 +578,24 @@ class SimulationAppService:
         payload = run_config.to_dict()
         payload["max_agents"] = max_agents
         return payload
+
+    @staticmethod
+    def _enforce_phase6j_start_gate(data: dict, state: Any) -> None:
+        """Block Phase 7 large society modes when Phase 6J calibration blocks entry."""
+        mode = str(data.get("society_mode") or "quick").strip() or "quick"
+        if mode not in {"large_society", "standard_plus"}:
+            return
+        simulation_id = getattr(state, "simulation_id", "")
+        if not simulation_id:
+            return
+        simulation_dir = os.path.join(Config.OASIS_SIMULATION_DATA_DIR, simulation_id)
+        from ...services.consumer.phase6j_calibration import check_phase6j_gate
+
+        gate = check_phase6j_gate(simulation_dir)
+        if gate["blocked"]:
+            details = dict(gate.get("details") or {})
+            details["blocked_mode"] = mode
+            raise ValidationError(gate["reason"], details=details)
 
     @staticmethod
     def _default_society_agents(mode: str) -> int:

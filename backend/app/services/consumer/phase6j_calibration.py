@@ -6,8 +6,11 @@ metrics into a single readiness gate for Phase 7 entry.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional
+
+from ...utils.atomic_json import atomic_write_json, safe_read_json
 
 
 @dataclass
@@ -172,7 +175,71 @@ class Phase6JCalibrationService:
         )
 
 
+CALIBRATION_ARTIFACT_FILE_NAME = "phase6j_calibration_artifact.json"
+
+
+def write_phase6j_calibration_artifact(
+    simulation_dir: str,
+    report: Phase6JCalibrationReport,
+) -> str:
+    """Persist a Phase 6J calibration artifact to the simulation workspace."""
+    path = os.path.join(simulation_dir, CALIBRATION_ARTIFACT_FILE_NAME)
+    atomic_write_json(path, report.to_dict())
+    return path
+
+
+def read_phase6j_calibration_artifact(simulation_dir: str) -> dict | None:
+    """Read a Phase 6J calibration artifact if present."""
+    path = os.path.join(simulation_dir, CALIBRATION_ARTIFACT_FILE_NAME)
+    if not os.path.exists(path):
+        return None
+    payload = safe_read_json(path, default={})
+    return payload if isinstance(payload, dict) else None
+
+
+def check_phase6j_gate(simulation_dir: str) -> dict:
+    """Check whether a Phase 6J calibration hard gate blocks entry.
+
+    Returns a dict with:
+        - blocked: bool — True when an artifact exists and phase7_entry_decision != PASS
+        - reason: str — human-readable reason when blocked
+        - details: dict — artifact summary when present
+    """
+    artifact = read_phase6j_calibration_artifact(simulation_dir)
+    if artifact is None:
+        return {
+            "blocked": False,
+            "reason": "",
+            "details": {"artifact_present": False},
+        }
+    decision = artifact.get("phase7_entry_decision", "BLOCKED")
+    if decision == "PASS":
+        return {
+            "blocked": False,
+            "reason": "",
+            "details": {
+                "artifact_present": True,
+                "phase7_entry_decision": decision,
+            },
+        }
+    return {
+        "blocked": True,
+        "reason": f"Phase 6J calibration blocks entry: phase7_entry_decision={decision}",
+        "details": {
+            "artifact_present": True,
+            "phase7_entry_decision": decision,
+            "golden_flow_result": artifact.get("golden_flow_result", "BLOCKED"),
+            "evidence_gatekeeping_result": artifact.get("evidence_gatekeeping_result", "BLOCKED"),
+            "reasoning_backend_coverage": artifact.get("reasoning_backend_coverage", 0.0),
+            "template_fallback_coverage": artifact.get("template_fallback_coverage", 0.0),
+        },
+    }
+
+
 __all__ = [
     "Phase6JCalibrationReport",
     "Phase6JCalibrationService",
+    "write_phase6j_calibration_artifact",
+    "read_phase6j_calibration_artifact",
+    "check_phase6j_gate",
 ]

@@ -72,6 +72,16 @@ class ReportAppService:
         if not state:
             raise NotFoundError(t("api.simulationNotFound", id=simulation_id))
 
+        # Phase 6J hard gate: block report generation when calibration artifact blocks entry
+        simulation_dir = os.path.join(Config.OASIS_SIMULATION_DATA_DIR, simulation_id)
+        from ...services.consumer.phase6j_calibration import check_phase6j_gate
+        gate = check_phase6j_gate(simulation_dir)
+        if gate["blocked"]:
+            raise ValidationError(
+                gate["reason"],
+                details=gate["details"],
+            )
+
         if not force_regenerate:
             existing = cls.get_existing_report_for_simulation(simulation_id)
             if existing:

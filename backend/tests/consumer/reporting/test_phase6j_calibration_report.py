@@ -415,3 +415,81 @@ def test_phase7_blocks_with_one_unknown_in_ten():
     )
     assert report.unknown_recommendation_count == 1
     assert report.phase7_entry_decision == "BLOCKED"
+
+
+def test_write_and_read_phase6j_calibration_artifact(tmp_path):
+    from app.services.consumer.phase6j_calibration import (
+        Phase6JCalibrationService,
+        write_phase6j_calibration_artifact,
+        read_phase6j_calibration_artifact,
+    )
+
+    service = Phase6JCalibrationService()
+    report = service.build_report(
+        gatekeeping_results=[
+            EvidenceGatekeepingResult(finding_id="f1", gatekeeping_status="allowed", policy_violations=[], gatekeeping_notes="ok"),
+        ],
+        reasoning_events=[{"reasoning_backend": "llm", "reasoning_summary": "reasoning"}],
+        golden_flow_checks=[{"status": "passed", "check": "flow"}],
+    )
+
+    sim_dir = str(tmp_path / "sim")
+    path = write_phase6j_calibration_artifact(sim_dir, report)
+    assert path.endswith("phase6j_calibration_artifact.json")
+
+    loaded = read_phase6j_calibration_artifact(sim_dir)
+    assert loaded is not None
+    assert loaded["phase7_entry_decision"] == "PASS"
+
+
+def test_check_phase6j_gate_no_artifact():
+    from app.services.consumer.phase6j_calibration import check_phase6j_gate
+
+    result = check_phase6j_gate("/nonexistent/sim")
+    assert result["blocked"] is False
+    assert result["reason"] == ""
+    assert result["details"]["artifact_present"] is False
+
+
+def test_check_phase6j_gate_blocked(tmp_path):
+    from app.services.consumer.phase6j_calibration import check_phase6j_gate
+    import json
+
+    sim_dir = tmp_path / "test_sim_gate"
+    sim_dir.mkdir(parents=True, exist_ok=True)
+    artifact = {
+        "phase7_entry_decision": "BLOCKED",
+        "golden_flow_result": "BLOCKED",
+        "evidence_gatekeeping_result": "PASS",
+        "reasoning_backend_coverage": 0.6,
+        "template_fallback_coverage": 0.2,
+    }
+    (sim_dir / "phase6j_calibration_artifact.json").write_text(json.dumps(artifact), encoding="utf-8")
+
+    result = check_phase6j_gate(str(sim_dir))
+    assert result["blocked"] is True
+    assert "Phase 6J calibration blocks entry" in result["reason"]
+    assert result["details"]["artifact_present"] is True
+    assert result["details"]["phase7_entry_decision"] == "BLOCKED"
+
+
+def test_check_phase6j_gate_passes(tmp_path):
+    from app.services.consumer.phase6j_calibration import check_phase6j_gate
+    import json
+
+    sim_dir = tmp_path / "test_sim_pass"
+    sim_dir.mkdir(parents=True, exist_ok=True)
+    artifact = {
+        "phase7_entry_decision": "PASS",
+        "golden_flow_result": "PASS",
+        "evidence_gatekeeping_result": "PASS",
+        "reasoning_backend_coverage": 0.8,
+        "template_fallback_coverage": 0.1,
+    }
+    (sim_dir / "phase6j_calibration_artifact.json").write_text(json.dumps(artifact), encoding="utf-8")
+
+    result = check_phase6j_gate(str(sim_dir))
+    assert result["blocked"] is False
+    assert result["reason"] == ""
+    assert result["details"]["artifact_present"] is True
+    assert result["details"]["phase7_entry_decision"] == "PASS"

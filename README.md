@@ -196,6 +196,8 @@ LLM_MODEL_NAME=qwen-plus
 ZEP_API_KEY=your_zep_api_key
 ```
 
+`.env.example` includes `SECRET_KEY=dev-only-change-me` so local development can start after copying the file. Production deployments must replace it with a unique secret before startup.
+
 ### 2. Install Dependencies
 
 ```bash

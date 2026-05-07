@@ -197,6 +197,12 @@ def test_consumer_prepare_writes_manifest(tmp_path, monkeypatch):
     consumer_manifest = read_consumer_prepare_manifest(str(sim_dir))
     assert consumer_manifest is not None
     assert consumer_manifest["consumer_mode"] is True
+    assert consumer_manifest["status"] == "completed"
+    assert consumer_manifest["artifact_checks"] == {
+        "profile_snapshot": "ok",
+        "society_config": "ok",
+        "population_preview": "ok",
+    }
     assert consumer_manifest["ready_files"] == {
         "profile_snapshot": "society/profile_snapshot.json",
         "society_config": "society/society_config.json",
@@ -348,3 +354,218 @@ def test_get_prepare_manifest_returns_none_for_legacy_workspace(tmp_path, monkey
     is_prepared, info = _check_simulation_prepared(state.simulation_id)
     assert is_prepared is True
     assert "prepare_manifest" not in info
+
+
+def test_consumer_ready_check_blocks_when_manifest_status_not_completed(tmp_path, monkeypatch):
+    """Auto-update preparing->ready must be blocked when consumer manifest status != completed."""
+    simulations_dir = _configure_simulation_storage(tmp_path, monkeypatch)
+    from app.config import Config
+    monkeypatch.setattr(Config, "OASIS_SIMULATION_DATA_DIR", str(simulations_dir))
+
+    sim_dir = simulations_dir / "sim_test"
+    sim_dir.mkdir(parents=True, exist_ok=True)
+    state_file = sim_dir / "state.json"
+    state_file.write_text(
+        json.dumps(
+            {
+                "simulation_id": "sim_test",
+                "project_id": "proj_test",
+                "graph_id": "graph_test",
+                "status": "preparing",
+                "config_generated": True,
+                "consumer_mode": True,
+                "project_type": "consumer_test",
+                "entities_count": 5,
+                "profiles_count": 5,
+                "entity_types": ["AudienceSegment"],
+                "created_at": "2026-04-20T00:00:00",
+                "updated_at": "2026-04-20T00:00:00",
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (sim_dir / "simulation_config.json").write_text("{}", encoding="utf-8")
+    (sim_dir / "consumer_prepare_manifest.json").write_text(
+        json.dumps(
+            {
+                "manifest_version": "1.0",
+                "simulation_id": "sim_test",
+                "project_id": "proj_test",
+                "project_type": "consumer_test",
+                "consumer_mode": True,
+                "status": "in_progress",
+                "prepared_at": "2026-04-20T00:00:00",
+                "profiles_count": 5,
+                "artifact_checks": {
+                    "profile_snapshot": "ok",
+                    "society_config": "ok",
+                    "population_preview": "ok",
+                },
+                "ready_files": {
+                    "profile_snapshot": "society/profile_snapshot.json",
+                    "society_config": "society/society_config.json",
+                    "population_preview": "society/population_preview.json",
+                },
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    # Create the required society files
+    (sim_dir / "society").mkdir(parents=True, exist_ok=True)
+    (sim_dir / "society" / "profile_snapshot.json").write_text("{}", encoding="utf-8")
+    (sim_dir / "society" / "society_config.json").write_text("{}", encoding="utf-8")
+    (sim_dir / "society" / "population_preview.json").write_text("[]", encoding="utf-8")
+
+    from app.api.simulation import _check_simulation_prepared
+
+    is_prepared, info = _check_simulation_prepared("sim_test")
+    assert is_prepared is False
+    assert info["reason"] == "consumer manifest not ready"
+    assert info["manifest_status"] == "in_progress"
+
+
+def test_consumer_ready_check_blocks_when_artifact_checks_fail(tmp_path, monkeypatch):
+    """Auto-update preparing->ready must be blocked when any artifact check fails."""
+    simulations_dir = _configure_simulation_storage(tmp_path, monkeypatch)
+    from app.config import Config
+    monkeypatch.setattr(Config, "OASIS_SIMULATION_DATA_DIR", str(simulations_dir))
+
+    sim_dir = simulations_dir / "sim_test"
+    sim_dir.mkdir(parents=True, exist_ok=True)
+    state_file = sim_dir / "state.json"
+    state_file.write_text(
+        json.dumps(
+            {
+                "simulation_id": "sim_test",
+                "project_id": "proj_test",
+                "graph_id": "graph_test",
+                "status": "preparing",
+                "config_generated": True,
+                "consumer_mode": True,
+                "project_type": "consumer_test",
+                "entities_count": 5,
+                "profiles_count": 5,
+                "entity_types": ["AudienceSegment"],
+                "created_at": "2026-04-20T00:00:00",
+                "updated_at": "2026-04-20T00:00:00",
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (sim_dir / "simulation_config.json").write_text("{}", encoding="utf-8")
+    (sim_dir / "consumer_prepare_manifest.json").write_text(
+        json.dumps(
+            {
+                "manifest_version": "1.0",
+                "simulation_id": "sim_test",
+                "project_id": "proj_test",
+                "project_type": "consumer_test",
+                "consumer_mode": True,
+                "status": "completed",
+                "prepared_at": "2026-04-20T00:00:00",
+                "profiles_count": 5,
+                "artifact_checks": {
+                    "profile_snapshot": "ok",
+                    "society_config": "missing",
+                    "population_preview": "ok",
+                },
+                "ready_files": {
+                    "profile_snapshot": "society/profile_snapshot.json",
+                    "society_config": "society/society_config.json",
+                    "population_preview": "society/population_preview.json",
+                },
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    # Create all files so this test exercises manifest artifact checks, not missing-file readiness.
+    (sim_dir / "society").mkdir(parents=True, exist_ok=True)
+    (sim_dir / "society" / "profile_snapshot.json").write_text("{}", encoding="utf-8")
+    (sim_dir / "society" / "society_config.json").write_text("{}", encoding="utf-8")
+    (sim_dir / "society" / "population_preview.json").write_text("[]", encoding="utf-8")
+
+    from app.api.simulation import _check_simulation_prepared
+
+    is_prepared, info = _check_simulation_prepared("sim_test")
+    assert is_prepared is False
+    assert info["reason"] == "consumer manifest not ready"
+    assert info["artifact_checks"]["society_config"] == "missing"
+
+
+def test_consumer_ready_check_allows_when_manifest_completed_and_artifacts_ok(tmp_path, monkeypatch):
+    """Auto-update preparing->ready is allowed when status is completed and all artifact checks pass."""
+    simulations_dir = _configure_simulation_storage(tmp_path, monkeypatch)
+    from app.config import Config
+    monkeypatch.setattr(Config, "OASIS_SIMULATION_DATA_DIR", str(simulations_dir))
+
+    sim_dir = simulations_dir / "sim_test"
+    sim_dir.mkdir(parents=True, exist_ok=True)
+    state_file = sim_dir / "state.json"
+    state_file.write_text(
+        json.dumps(
+            {
+                "simulation_id": "sim_test",
+                "project_id": "proj_test",
+                "graph_id": "graph_test",
+                "status": "preparing",
+                "config_generated": True,
+                "consumer_mode": True,
+                "project_type": "consumer_test",
+                "entities_count": 5,
+                "profiles_count": 5,
+                "entity_types": ["AudienceSegment"],
+                "created_at": "2026-04-20T00:00:00",
+                "updated_at": "2026-04-20T00:00:00",
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (sim_dir / "simulation_config.json").write_text("{}", encoding="utf-8")
+    (sim_dir / "consumer_prepare_manifest.json").write_text(
+        json.dumps(
+            {
+                "manifest_version": "1.0",
+                "simulation_id": "sim_test",
+                "project_id": "proj_test",
+                "project_type": "consumer_test",
+                "consumer_mode": True,
+                "status": "completed",
+                "prepared_at": "2026-04-20T00:00:00",
+                "profiles_count": 5,
+                "artifact_checks": {
+                    "profile_snapshot": "ok",
+                    "society_config": "ok",
+                    "population_preview": "ok",
+                },
+                "ready_files": {
+                    "profile_snapshot": "society/profile_snapshot.json",
+                    "society_config": "society/society_config.json",
+                    "population_preview": "society/population_preview.json",
+                },
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    # Create all required society files
+    (sim_dir / "society").mkdir(parents=True, exist_ok=True)
+    (sim_dir / "society" / "profile_snapshot.json").write_text("{}", encoding="utf-8")
+    (sim_dir / "society" / "society_config.json").write_text("{}", encoding="utf-8")
+    (sim_dir / "society" / "population_preview.json").write_text("[]", encoding="utf-8")
+
+    from app.api.simulation import _check_simulation_prepared
+
+    is_prepared, info = _check_simulation_prepared("sim_test")
+    assert is_prepared is True
+    assert info["status"] == "ready"

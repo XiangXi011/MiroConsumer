@@ -166,12 +166,18 @@ def write_consumer_prepare_manifest(
     product_category: str = "",
 ) -> str:
     """Write consumer_test readiness manifest independent of legacy profile files."""
+    artifact_checks = {
+        "profile_snapshot": "ok" if os.path.exists(os.path.join(simulation_dir, profile_snapshot_path)) else "missing",
+        "society_config": "ok" if os.path.exists(os.path.join(simulation_dir, society_config_path)) else "missing",
+        "population_preview": "ok" if os.path.exists(os.path.join(simulation_dir, population_preview_path)) else "missing",
+    }
     payload = {
         "manifest_version": MANIFEST_VERSION,
         "simulation_id": simulation_id,
         "project_id": project_id,
         "project_type": "consumer_test",
         "consumer_mode": True,
+        "status": "completed",
         "prepared_at": _now_iso(),
         "persona_pack_id": persona_pack_id,
         "profiles_count": int(profiles_count or 0),
@@ -182,6 +188,7 @@ def write_consumer_prepare_manifest(
             "society_config": society_config_path,
             "population_preview": population_preview_path,
         },
+        "artifact_checks": artifact_checks,
     }
     path = os.path.join(simulation_dir, CONSUMER_MANIFEST_FILE_NAME)
     atomic_write_json(path, payload)

@@ -7,7 +7,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[3]
 
 
-def test_env_example_contains_all_28_production_variables():
+def test_env_example_contains_all_29_production_variables():
     env_text = (ROOT / ".env.example").read_text(encoding="utf-8")
     required = [
         "LLM_API_KEY",
@@ -36,6 +36,7 @@ def test_env_example_contains_all_28_production_variables():
         "ENABLE_SOCIETY_MODE",
         "ENABLE_GRAPH_MEMORY_WRITEBACK",
         "FLASK_DEBUG",
+        "SECRET_KEY",
         "CORS_ALLOWED_ORIGINS",
         "MIROCONSUMER_IMAGE",
     ]
