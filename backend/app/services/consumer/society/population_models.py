@@ -9,7 +9,7 @@ from .consumer_roles import ConsumerRole
 
 
 VALID_LAYERS = {"core", "expanded", "shadow", "audit_sample"}
-VALID_MODES = {"quick", "standard", "large_society"}
+VALID_MODES = {"quick", "standard", "standard_plus", "large_society"}
 
 
 @dataclass

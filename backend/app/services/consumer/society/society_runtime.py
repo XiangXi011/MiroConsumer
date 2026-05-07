@@ -10,6 +10,7 @@ from .budget_manager import SocietyBudgetManager
 from .channel_runtime import ConsumerChannelRuntime
 from .event_mapper import ConsumerSocietyEventMapper
 from .metrics_aggregator import SocietyMetricsAggregator
+from .network_topology import build_consumer_network_topology
 from .persona_quality_checker import PersonaQualityChecker
 from .population_factory import PopulationFactory
 from .population_models import ConsumerSocietyAgent, ConsumerSocietyRunConfig, ConsumerSocietySnapshot
@@ -230,6 +231,11 @@ class ConsumerSocietyRuntime:
             enabled_channels=config.enabled_channels,
             seed=config.channel_seed or config.random_seed,
         )
+        network_topology = build_consumer_network_topology(
+            population,
+            channel_assignments=channel_result["assignments"],
+            seed=config.random_seed,
+        )
         config_to_write = ConsumerSocietyRunConfig(**config.to_dict())
         config_payload = config_to_write.to_dict()
         backend_counts: Dict[str, int] = {}
@@ -239,6 +245,7 @@ class ConsumerSocietyRuntime:
         config_payload["llm_budget_used"] = budget.used_llm_calls
         config_payload["reasoning_backend_counts"] = backend_counts
         config_payload["llm_invoked_count"] = llm_invoked_count
+        config_payload["network_topology_version"] = network_topology.get("topology_version", "")
         config_payload["reasoning_calibration_status"] = os.environ.get(
             "SOCIETY_GOLDEN_CASE_CALIBRATION_STATUS",
             "golden_case_not_run",
@@ -253,6 +260,7 @@ class ConsumerSocietyRuntime:
         self.store.write_channel_events(simulation_id, channel_result["events"])
         self.store.write_channel_metrics(simulation_id, channel_result["channel_metrics"])
         self.store.write_propagation_paths(simulation_id, channel_result["propagation_paths"])
+        self.store.write_network_topology(simulation_id, network_topology)
         progress.update(
             {
                 "status": "completed_with_errors" if failed_count else "completed",

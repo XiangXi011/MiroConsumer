@@ -18,7 +18,7 @@ def test_run_estimate_has_fixed_shape_and_cost_level(monkeypatch):
     estimate = LLMBudgetManager(Config).estimate_run(
         {
             "society_mode": "standard",
-            "society_max_agents": 200,
+            "society_max_agents": 32,
             "max_rounds": 4,
         }
     )
@@ -30,9 +30,9 @@ def test_run_estimate_has_fixed_shape_and_cost_level(monkeypatch):
         "cost_level",
         "estimated_duration_seconds",
     }
-    assert estimate["agents_count"] == 200
+    assert estimate["agents_count"] == 32
     assert estimate["rounds_count"] == 4
-    assert estimate["estimated_llm_calls"] == 80
+    assert estimate["estimated_llm_calls"] == 13
     assert estimate["cost_level"] in {"low", "medium", "high", "blocked"}
     assert estimate["estimated_duration_seconds"] > 0
 
@@ -59,6 +59,44 @@ def test_budget_manager_exposes_all_control_dimensions(monkeypatch):
     assert controls["sampling_strategy"] in {"all", "stratified_sample"}
     assert isinstance(controls["early_stop"], bool)
     assert controls["deterministic_fallback"] is True
+
+
+def test_budget_manager_standard_defaults_to_32_agents(monkeypatch):
+    from app.services.application.llm_budget_manager import LLMBudgetManager
+
+    monkeypatch.setattr(Config, "_llm_budget_limit_cache", 500, raising=False)
+    monkeypatch.setattr(Config, "_llm_deep_reasoning_ratio_cache", 0.1, raising=False)
+    monkeypatch.setattr(Config, "_max_agents_cache", 1000, raising=False)
+    monkeypatch.setattr(Config, "_max_rounds_cache", 10, raising=False)
+
+    estimate = LLMBudgetManager(Config).estimate_run(
+        {
+            "society_mode": "standard",
+            "max_rounds": 1,
+        }
+    )
+
+    assert estimate["agents_count"] == 32
+    assert estimate["estimated_llm_calls"] == 4
+
+
+def test_budget_manager_standard_plus_defaults_to_100_agents(monkeypatch):
+    from app.services.application.llm_budget_manager import LLMBudgetManager
+
+    monkeypatch.setattr(Config, "_llm_budget_limit_cache", 500, raising=False)
+    monkeypatch.setattr(Config, "_llm_deep_reasoning_ratio_cache", 0.1, raising=False)
+    monkeypatch.setattr(Config, "_max_agents_cache", 1000, raising=False)
+    monkeypatch.setattr(Config, "_max_rounds_cache", 10, raising=False)
+
+    estimate = LLMBudgetManager(Config).estimate_run(
+        {
+            "society_mode": "standard_plus",
+            "max_rounds": 1,
+        }
+    )
+
+    assert estimate["agents_count"] == 100
+    assert estimate["estimated_llm_calls"] == 10
 
 
 def test_budget_manager_blocks_when_estimate_exceeds_limit(monkeypatch):

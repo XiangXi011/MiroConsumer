@@ -13,11 +13,13 @@ DEFAULT_CHANNEL_IDS = ("xiaohongshu", "wechat_group", "ecommerce_review")
 MODE_CHANNEL_LIMITS = {
     "quick": 3,
     "standard": 5,
+    "standard_plus": 6,
     "large_society": 8,
 }
 MODE_CHANNEL_MINIMUMS = {
     "quick": 1,
     "standard": 3,
+    "standard_plus": 4,
     "large_society": 6,
 }
 

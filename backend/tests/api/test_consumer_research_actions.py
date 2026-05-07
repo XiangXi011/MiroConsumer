@@ -148,4 +148,4 @@ class TestConsumerResearchActionsAPI:
             assert resp.status_code == 500
             data = resp.get_json()
             assert data["success"] is False
-            assert "traceback" in data
+            assert "traceback" not in data

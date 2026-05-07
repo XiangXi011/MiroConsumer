@@ -25,6 +25,7 @@ EMPTY_SOCIETY_CONTEXT = {
         "calibration_status": "golden_case_not_run",
         "production_readiness": "requires_golden_case_calibration",
     },
+    "society_network_summary": {},
 }
 
 
@@ -39,6 +40,7 @@ class SocietyReportAdapter:
         metrics = self.store.read_metrics(simulation_id)
         population = self.store.read_population(simulation_id)
         rounds = self.store.read_rounds(simulation_id)
+        network_topology = self.store.read_network_topology(simulation_id)
         channel_context = ChannelReportAdapter(base_dir=self.store.base_dir).build_report_context(simulation_id)
         if not config and not metrics and not population:
             return {**dict(EMPTY_SOCIETY_CONTEXT), **channel_context}
@@ -88,6 +90,15 @@ class SocietyReportAdapter:
                 "llm_invoked_count": llm_invoked_count,
                 "calibration_status": calibration_status,
                 "production_readiness": production_readiness,
+            },
+            "society_network_summary": {
+                "topology_version": network_topology.get("topology_version", ""),
+                "node_count": network_topology.get("node_count", 0),
+                "edge_count": network_topology.get("edge_count", 0),
+                "graphs": {
+                    key: len(value)
+                    for key, value in dict(network_topology.get("graphs", {}) or {}).items()
+                },
             },
         }
         context.update(channel_context)

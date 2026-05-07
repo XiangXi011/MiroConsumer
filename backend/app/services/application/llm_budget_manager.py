@@ -66,8 +66,10 @@ class LLMBudgetManager:
         mode = str(payload.get("society_mode") or "quick")
         if mode == "large_society":
             return 1000
+        if mode == "standard_plus":
+            return 100
         if mode == "standard":
-            return 200
+            return 32
         return 8
 
     def _rounds_count(self, payload: Dict[str, Any]) -> int:

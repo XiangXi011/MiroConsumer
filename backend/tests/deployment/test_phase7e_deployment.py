@@ -7,7 +7,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[3]
 
 
-def test_env_example_contains_all_26_production_variables():
+def test_env_example_contains_all_28_production_variables():
     env_text = (ROOT / ".env.example").read_text(encoding="utf-8")
     required = [
         "LLM_API_KEY",
@@ -35,11 +35,22 @@ def test_env_example_contains_all_26_production_variables():
         "ENABLE_DETERMINISTIC_FALLBACK",
         "ENABLE_SOCIETY_MODE",
         "ENABLE_GRAPH_MEMORY_WRITEBACK",
+        "FLASK_DEBUG",
+        "CORS_ALLOWED_ORIGINS",
         "MIROCONSUMER_IMAGE",
     ]
 
     for name in required:
         assert f"{name}=" in env_text
+
+
+def test_env_example_production_safe_defaults():
+    env_text = (ROOT / ".env.example").read_text(encoding="utf-8")
+
+    assert "ENABLE_SOCIETY_MODE=true" in env_text
+    assert "ENABLE_GRAPH_MEMORY_WRITEBACK=false" in env_text
+    assert "FLASK_DEBUG=false" in env_text
+    assert "CORS_ALLOWED_ORIGINS=http://localhost:3000" in env_text
 
 
 def test_compose_image_uses_miroconsumer_image_env_var():

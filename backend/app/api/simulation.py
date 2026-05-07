@@ -4,10 +4,9 @@ Step2: Zep实体读取与过滤、OASIS模拟准备与运行（全程自动化�
 """
 
 import os
-import traceback
 from flask import request, jsonify, send_file
 
-from . import simulation_bp
+from . import simulation_bp, api_error_payload
 from ..config import Config
 from ..services.zep_entity_reader import ZepEntityReader
 from ..services.oasis_profile_generator import OasisProfileGenerator
@@ -116,11 +115,7 @@ def get_graph_entities(graph_id: str):
         
     except Exception as e:
         logger.error(f"获取图谱实体失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @simulation_bp.route('/entities/<graph_id>/<entity_uuid>', methods=['GET'])
@@ -149,11 +144,7 @@ def get_entity_detail(graph_id: str, entity_uuid: str):
         
     except Exception as e:
         logger.error(f"获取实体详情失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @simulation_bp.route('/entities/<graph_id>/by-type/<entity_type>', methods=['GET'])
@@ -186,11 +177,7 @@ def get_entities_by_type(graph_id: str, entity_type: str):
         
     except Exception as e:
         logger.error(f"获取实体失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 # ============== 模拟管理接口 ==============
@@ -235,11 +222,7 @@ def create_simulation():
         return _value_error_response(e)
     except Exception as e:
         logger.error(f"创建模拟失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @simulation_bp.route('/prepare', methods=['POST'])
@@ -304,11 +287,7 @@ def prepare_simulation():
 
     except Exception as e:
         logger.error(f"启动准备任务失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @simulation_bp.route('/prepare/status', methods=['POST'])
@@ -354,11 +333,7 @@ def get_simulation(simulation_id: str):
         
     except Exception as e:
         logger.error(f"获取模拟状态失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @simulation_bp.route('/list', methods=['GET'])
@@ -383,11 +358,7 @@ def list_simulations():
         
     except Exception as e:
         logger.error(f"列出模拟失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 def _get_report_id_for_simulation(simulation_id: str) -> str:
@@ -556,11 +527,7 @@ def get_simulation_history():
         
     except Exception as e:
         logger.error(f"获取历史模拟失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @simulation_bp.route('/<simulation_id>/profiles', methods=['GET'])
@@ -594,11 +561,7 @@ def get_simulation_profiles(simulation_id: str):
         
     except Exception as e:
         logger.error(f"获取Profile失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @simulation_bp.route('/<simulation_id>/profiles/realtime', methods=['GET'])
@@ -704,11 +667,7 @@ def get_simulation_profiles_realtime(simulation_id: str):
         
     except Exception as e:
         logger.error(f"实时获取Profile失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @simulation_bp.route('/<simulation_id>/consumer-summary', methods=['GET'])
@@ -730,11 +689,7 @@ def get_consumer_summary(simulation_id: str):
         return jsonify({"success": False, "error": str(e)}), 400
     except Exception as e:
         logger.error(f"获取消费者传播摘要失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @simulation_bp.route('/<simulation_id>/branches', methods=['POST'])
@@ -754,7 +709,7 @@ def create_branch(simulation_id: str):
         return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"创建分支失败: {str(e)}")
-        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @simulation_bp.route('/<simulation_id>/branches', methods=['GET'])
@@ -770,7 +725,7 @@ def list_branches(simulation_id: str):
         return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"列出分支失败: {str(e)}")
-        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @simulation_bp.route('/<simulation_id>/interventions', methods=['GET'])
@@ -787,7 +742,7 @@ def list_interventions_for_simulation(simulation_id: str):
         return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"列出干预失败: {str(e)}")
-        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @simulation_bp.route('/<simulation_id>/branches/<branch_id>/interventions', methods=['POST'])
@@ -807,7 +762,7 @@ def add_intervention(simulation_id: str, branch_id: str):
         return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"添加干预失败: {str(e)}")
-        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @simulation_bp.route('/<simulation_id>/branches/<branch_id>/interventions', methods=['GET'])
@@ -823,7 +778,7 @@ def list_interventions_for_branch(simulation_id: str, branch_id: str):
         return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"列出分支干预失败: {str(e)}")
-        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @simulation_bp.route('/<simulation_id>/branches/<branch_id>/comparison', methods=['GET'])
@@ -836,7 +791,7 @@ def get_branch_comparison(simulation_id: str, branch_id: str):
         return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"获取分支对比失败: {str(e)}")
-        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @simulation_bp.route('/<simulation_id>/branches/<branch_id>/resume', methods=['POST'])
@@ -854,7 +809,7 @@ def resume_branch(simulation_id: str, branch_id: str):
         return _value_error_response(e)
     except Exception as e:
         logger.error(f"启动分支模拟失败: {str(e)}")
-        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @simulation_bp.route('/<simulation_id>/branches/<branch_id>/status', methods=['GET'])
@@ -867,7 +822,7 @@ def get_branch_run_status_route(simulation_id: str, branch_id: str):
         return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"获取分支状态失败: {str(e)}")
-        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @simulation_bp.route('/<simulation_id>/config/realtime', methods=['GET'])
@@ -983,11 +938,7 @@ def get_simulation_config_realtime(simulation_id: str):
         
     except Exception as e:
         logger.error(f"实时获取Config失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @simulation_bp.route('/<simulation_id>/config', methods=['GET'])
@@ -1019,11 +970,7 @@ def get_simulation_config(simulation_id: str):
         
     except Exception as e:
         logger.error(f"获取配置失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @simulation_bp.route('/<simulation_id>/config/download', methods=['GET'])
@@ -1048,11 +995,7 @@ def download_simulation_config(simulation_id: str):
         
     except Exception as e:
         logger.error(f"下载配置失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @simulation_bp.route('/script/<script_name>/download', methods=['GET'])
@@ -1100,11 +1043,7 @@ def download_simulation_script(script_name: str):
         
     except Exception as e:
         logger.error(f"下载脚本失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 # ============== Profile生成接口（独立使用） ==============
@@ -1174,11 +1113,7 @@ def generate_profiles():
         
     except Exception as e:
         logger.error(f"生成Profile失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 # ============== 模拟运行控制接口 ==============
@@ -1245,11 +1180,7 @@ def start_simulation():
 
     except Exception as e:
         logger.error(f"启动模拟失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @simulation_bp.route('/stop', methods=['POST'])
@@ -1308,11 +1239,7 @@ def stop_simulation():
         
     except Exception as e:
         logger.error(f"停止模拟失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 # ============== 实时状态监控接口 ==============
@@ -1368,11 +1295,7 @@ def get_run_status(simulation_id: str):
         
     except Exception as e:
         logger.error(f"获取运行状态失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @simulation_bp.route('/<simulation_id>/run-status/detail', methods=['GET'])
@@ -1469,11 +1392,7 @@ def get_run_status_detail(simulation_id: str):
         
     except Exception as e:
         logger.error(f"获取详细状态失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @simulation_bp.route('/<simulation_id>/actions', methods=['GET'])
@@ -1523,11 +1442,7 @@ def get_simulation_actions(simulation_id: str):
         
     except Exception as e:
         logger.error(f"获取动作历史失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @simulation_bp.route('/<simulation_id>/timeline', methods=['GET'])
@@ -1563,11 +1478,7 @@ def get_simulation_timeline(simulation_id: str):
         
     except Exception as e:
         logger.error(f"获取时间线失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @simulation_bp.route('/<simulation_id>/agent-stats', methods=['GET'])
@@ -1590,11 +1501,7 @@ def get_agent_stats(simulation_id: str):
         
     except Exception as e:
         logger.error(f"获取Agent统计失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 # ============== 数据库查询接口 ==============
@@ -1670,11 +1577,7 @@ def get_simulation_posts(simulation_id: str):
         
     except Exception as e:
         logger.error(f"获取帖子失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @simulation_bp.route('/<simulation_id>/comments', methods=['GET'])
@@ -1745,11 +1648,7 @@ def get_simulation_comments(simulation_id: str):
         
     except Exception as e:
         logger.error(f"获取评论失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 # ============== Interview 采访接口 ==============
@@ -1876,11 +1775,7 @@ def interview_agent():
         
     except Exception as e:
         logger.error(f"Interview失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @simulation_bp.route('/interview/batch', methods=['POST'])
@@ -2014,11 +1909,7 @@ def interview_agents_batch():
 
     except Exception as e:
         logger.error(f"批量Interview失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @simulation_bp.route('/interview/all', methods=['POST'])
@@ -2117,11 +2008,7 @@ def interview_all_agents():
 
     except Exception as e:
         logger.error(f"全局Interview失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @simulation_bp.route('/interview/history', methods=['POST'])
@@ -2189,11 +2076,7 @@ def get_interview_history():
 
     except Exception as e:
         logger.error(f"获取Interview历史失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @simulation_bp.route('/env-status', methods=['POST'])
@@ -2254,11 +2137,7 @@ def get_env_status():
 
     except Exception as e:
         logger.error(f"获取环境状态失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @simulation_bp.route('/close-env', methods=['POST'])
@@ -2324,8 +2203,4 @@ def close_simulation_env():
         
     except Exception as e:
         logger.error(f"关闭环境失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500

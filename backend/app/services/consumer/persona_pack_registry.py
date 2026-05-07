@@ -34,6 +34,7 @@ class PersonaPackMetadata:
     persona_count: int = 0
     tags: List[str] = field(default_factory=list)
     source: str = "builtin"
+    pack_origin: str = "default_rule_pack"
     path: Optional[str] = None
 
     def to_summary(self) -> Dict[str, Any]:
@@ -45,6 +46,7 @@ class PersonaPackMetadata:
             "persona_count": self.persona_count,
             "tags": self.tags,
             "source": self.source,
+            "pack_origin": self.pack_origin,
         }
 
 
@@ -92,6 +94,7 @@ class PersonaPackRegistry:
                 persona_count=len(personas),
                 tags=["general", "balanced"],
                 source="builtin",
+                pack_origin="default_rule_pack",
                 path=str(default_path),
             )
         # tech_early_adopters -> industry
@@ -106,6 +109,7 @@ class PersonaPackRegistry:
                 persona_count=len(personas),
                 tags=["tech", "early_adopter", "innovation"],
                 source="builtin",
+                pack_origin="industry_pack",
                 path=str(tech_path),
             )
 
@@ -158,6 +162,7 @@ class PersonaPackRegistry:
         label: Optional[str] = None,
         description: str = "",
         pack_class: PersonaPackClass = PersonaPackClass.Custom,
+        pack_origin: str = "uploaded_persona_pack",
     ) -> PersonaPackMetadata:
         if self._project_dir is None:
             raise ValueError("Project persona directory is required for custom packs")
@@ -178,6 +183,7 @@ class PersonaPackRegistry:
             persona_count=len(personas),
             tags=["custom"],
             source="custom",
+            pack_origin=pack_origin,
             path=str(pack_path),
         )
         self._custom_cache[assigned_id] = meta
@@ -200,6 +206,7 @@ class PersonaPackRegistry:
                     persona_count=len(personas),
                     tags=["custom"],
                     source="custom",
+                    pack_origin="uploaded_persona_pack",
                     path=str(path),
                 )
             except ValueError:

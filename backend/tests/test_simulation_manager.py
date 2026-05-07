@@ -8,7 +8,12 @@ if str(BACKEND_ROOT) not in sys.path:
 
 import pytest
 from app.services.simulation_manager import SimulationManager, SimulationStatus
-from app.services.prepare_manifest import MANIFEST_FILE_NAME, read_manifest
+from app.services.prepare_manifest import (
+    CONSUMER_MANIFEST_FILE_NAME,
+    MANIFEST_FILE_NAME,
+    read_consumer_prepare_manifest,
+    read_manifest,
+)
 
 
 def _configure_simulation_storage(tmp_path, monkeypatch):
@@ -186,6 +191,77 @@ def test_consumer_prepare_writes_manifest(tmp_path, monkeypatch):
     assert manifest.prepared_at != ""
     assert manifest.reuse_count == 0
     assert manifest.persona_pack_id == "default_persona_pack"
+
+    consumer_manifest_path = sim_dir / CONSUMER_MANIFEST_FILE_NAME
+    assert consumer_manifest_path.exists()
+    consumer_manifest = read_consumer_prepare_manifest(str(sim_dir))
+    assert consumer_manifest is not None
+    assert consumer_manifest["consumer_mode"] is True
+    assert consumer_manifest["ready_files"] == {
+        "profile_snapshot": "society/profile_snapshot.json",
+        "society_config": "society/society_config.json",
+        "population_preview": "society/population_preview.json",
+    }
+    profile_snapshot = json.loads((sim_dir / "society" / "profile_snapshot.json").read_text(encoding="utf-8"))
+    society_config = json.loads((sim_dir / "society" / "society_config.json").read_text(encoding="utf-8"))
+    population_preview = json.loads((sim_dir / "society" / "population_preview.json").read_text(encoding="utf-8"))
+    assert profile_snapshot["profiles"]
+    assert society_config["mode"] == "quick"
+    assert len(population_preview) == society_config["core_persona_count"]
+
+
+def test_consumer_prepare_readiness_does_not_require_legacy_profile_files(tmp_path, monkeypatch):
+    simulations_dir = _configure_simulation_storage(tmp_path, monkeypatch)
+
+    from app.config import Config
+    from app.models.project import ProjectManager
+
+    monkeypatch.setattr(Config, "OASIS_SIMULATION_DATA_DIR", str(simulations_dir))
+    projects_dir = tmp_path / "uploads" / "projects"
+    monkeypatch.setattr(ProjectManager, "PROJECTS_DIR", str(projects_dir))
+
+    project = ProjectManager.create_project(name="Consumer Ready")
+    project.project_type = "consumer_test"
+    project.graph_id = f"consumer_{project.project_id}"
+    project.consumer_brief = {
+        "task_type": "concept_test",
+        "product_concept_assets": ["316 stainless bowl"],
+        "copy_material": ["Safer family meals"],
+        "claims": ["316 stainless steel"],
+        "target_audience": ["young families"],
+        "usage_scene": ["family dinner"],
+        "research_goal": "Understand consumer trust barriers",
+    }
+    ProjectManager.save_project(project)
+    ProjectManager.save_extracted_text(project.project_id, "Some extracted text.")
+    monkeypatch.setattr(
+        "app.services.simulation_manager.ConsumerBriefAdapter", FakeConsumerBriefAdapter
+    )
+
+    mgr = SimulationManager()
+    state = mgr.create_simulation(
+        project_id=project.project_id,
+        graph_id=project.graph_id,
+        project_type="consumer_test",
+    )
+    prepared = mgr.prepare_simulation(
+        simulation_id=state.simulation_id,
+        simulation_requirement="",
+        document_text="",
+    )
+    assert prepared.status == SimulationStatus.READY
+
+    sim_dir = simulations_dir / state.simulation_id
+    (sim_dir / "reddit_profiles.json").unlink()
+    (sim_dir / "twitter_profiles.csv").unlink()
+
+    from app.api.simulation import _check_simulation_prepared
+
+    is_prepared, info = _check_simulation_prepared(state.simulation_id)
+    assert is_prepared is True
+    assert info["consumer_ready_model"] == "consumer_test"
+    assert info["consumer_prepare_manifest"]["project_type"] == "consumer_test"
+    assert info["profiles_count"] == prepared.profiles_count
 
 
 def test_record_manifest_reuse_increments_counter(tmp_path, monkeypatch):

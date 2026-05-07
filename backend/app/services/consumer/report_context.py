@@ -392,6 +392,132 @@ def _build_provenance_summary(
     }
 
 
+def _build_finding_evidence_atoms(
+    findings: List[Any],
+    events: List[Any],
+    gatekeeping_results: List[Any],
+    report_confidence: Optional[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Build claim-level evidence atom records for report traceability."""
+    gatekeeping_by_id = {
+        str(_read_field(result, "finding_id")): result
+        for result in gatekeeping_results
+        if _read_field(result, "finding_id")
+    }
+    confidence_by_id: Dict[str, Dict[str, Any]] = {}
+    if isinstance(report_confidence, dict):
+        confidence_rows = (
+            report_confidence.get("finding_confidence_summary")
+            or report_confidence.get("finding_confidences")
+            or []
+        )
+        for row in confidence_rows:
+            if isinstance(row, dict) and row.get("finding_id"):
+                confidence_by_id[str(row["finding_id"])] = row
+
+    records: List[Dict[str, Any]] = []
+    for finding in findings:
+        finding_id = str(getattr(finding, "finding_id", ""))
+        summary = str(getattr(finding, "summary", ""))
+        finding_type = str(getattr(finding, "finding_type", ""))
+        confidence_row = confidence_by_id.get(finding_id, {})
+        confidence = str(
+            confidence_row.get("confidence_label")
+            or getattr(finding, "confidence_label", "")
+            or _confidence_from_numeric(getattr(finding, "confidence", 0.0))
+        )
+        gatekeeping = gatekeeping_by_id.get(finding_id)
+        support_level = _support_level_for(confidence, gatekeeping)
+        atoms: List[Dict[str, Any]] = []
+
+        for index, snippet in enumerate(getattr(finding, "evidence_snippets", []) or []):
+            text = str(snippet).strip()
+            if not text:
+                continue
+            source_id = (
+                str(getattr(finding, "source_id", ""))
+                or str(getattr(finding, "snippet_id", ""))
+                or f"{finding_id}:snippet:{index}"
+            )
+            atoms.append(
+                {
+                    "type": "finding",
+                    "source_id": source_id,
+                    "quote": text[:500],
+                    "support_level": support_level,
+                }
+            )
+
+        related_events = [
+            event for event in events if finding_id in getattr(event, "trigger_finding_ids", [])
+        ]
+        for event in related_events[:5]:
+            quote = str(getattr(event, "supporting_quote", "")).strip()
+            if not quote:
+                continue
+            atoms.append(
+                {
+                    "type": "voc",
+                    "source_id": str(getattr(event, "event_id", "")),
+                    "quote": quote[:500],
+                    "support_level": "medium" if support_level != "weak" else "weak",
+                }
+            )
+        if related_events:
+            atoms.append(
+                {
+                    "type": "metric",
+                    "source_id": f"metric:{finding_id}:event_count",
+                    "quote": f"linked_event_count={len(related_events)}",
+                    "support_level": "medium" if support_level != "weak" else "weak",
+                }
+            )
+
+        records.append(
+            {
+                "finding_id": finding_id,
+                "claim": summary,
+                "evidence_atoms": atoms,
+                "confidence": confidence,
+                "risk": finding_type if finding_type == "risk_signal" else "",
+            }
+        )
+    return records
+
+
+def _read_field(item: Any, field_name: str, default: Any = "") -> Any:
+    if hasattr(item, field_name):
+        return getattr(item, field_name)
+    if isinstance(item, dict):
+        return item.get(field_name, default)
+    return default
+
+
+def _confidence_from_numeric(value: Any) -> str:
+    try:
+        score = float(value)
+    except (TypeError, ValueError):
+        score = 0.0
+    if score >= 0.75:
+        return "high"
+    if score >= 0.5:
+        return "medium"
+    if score >= 0.25:
+        return "low"
+    return "unknown"
+
+
+def _support_level_for(confidence: str, gatekeeping_result: Any) -> str:
+    status = ""
+    if gatekeeping_result is not None:
+        status = str(getattr(gatekeeping_result, "gatekeeping_status", ""))
+    if status in {"blocked", "downgraded"} or confidence in {"low", "unknown"}:
+        return "weak"
+    if confidence == "high" and status in {"", "allowed"}:
+        return "strong"
+    return "medium"
+
+
 def build_consumer_report_context(
     summary: Any,
     findings: Iterable[Any],
@@ -475,6 +601,16 @@ def build_consumer_report_context(
         cet = event.consumer_event_type
         consumer_event_counts[cet] = consumer_event_counts.get(cet, 0) + 1
 
+    finding_evidence_atoms = _build_finding_evidence_atoms(
+        typed_findings,
+        typed_events,
+        gatekeeping_results,
+        report_confidence,
+    )
+    evidence_atoms_by_id = {
+        item["finding_id"]: item for item in finding_evidence_atoms
+    }
+
     causal_chains: List[Dict[str, Any]] = []
     for finding in typed_findings:
         if finding.finding_id in finding_events:
@@ -488,6 +624,9 @@ def build_consumer_report_context(
                 "event_ids": finding_events[finding.finding_id],
                 "event_types": list({e.event_type for e in related_events}),
                 "consumer_event_types": list({e.consumer_event_type for e in related_events}),
+                "evidence_atoms": evidence_atoms_by_id.get(finding.finding_id, {}).get("evidence_atoms", []),
+                "confidence": evidence_atoms_by_id.get(finding.finding_id, {}).get("confidence", "unknown"),
+                "risk": evidence_atoms_by_id.get(finding.finding_id, {}).get("risk", ""),
             })
 
     # Event-led attitude reversals
@@ -527,6 +666,8 @@ def build_consumer_report_context(
         "trigger_finding_count": len(causal_chains),
         "event_count": len(typed_events),
         "consumer_event_counts": consumer_event_counts,
+        "finding_evidence_atoms": finding_evidence_atoms,
+        "evidence_atom_count": sum(len(item["evidence_atoms"]) for item in finding_evidence_atoms),
         "cascade_metrics": summary_dict.get("cascade_metrics", {}),
         "top_packaging_hooks": summary_dict.get("top_packaging_hooks", []),
         "top_trust_objections": summary_dict.get("top_trust_objections", []),

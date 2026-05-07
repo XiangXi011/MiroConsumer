@@ -590,7 +590,7 @@ class SimulationRunner:
                     task_type = consumer_brief.get("task_type")
 
             society_config = dict(config.get("society_config") or {"mode": "quick"})
-            if society_config.get("mode") in {"standard", "large_society"}:
+            if society_config.get("mode") in {"standard", "standard_plus", "large_society"}:
                 society_context = cls._run_society_runtime(
                     simulation_id=simulation_id,
                     run_id=f"{simulation_id}:base",
@@ -817,7 +817,7 @@ class SimulationRunner:
                     task_type = consumer_brief.get("task_type")
 
             society_config = dict(config.get("society_config") or {"mode": "quick"})
-            if society_config.get("mode") in {"standard", "large_society"}:
+            if society_config.get("mode") in {"standard", "standard_plus", "large_society"}:
                 society_context = cls._run_society_runtime(
                     simulation_id=simulation_id,
                     run_id=f"{simulation_id}:{branch_id}",

@@ -21,6 +21,10 @@ from .consumer.brief_adapter import ConsumerBriefAdapter
 from .consumer.models import ConsumerBusinessBrief, ConsumerTaskType
 from .consumer.persona_pack import map_persona_to_agent_traits
 from .consumer.persona_pack_registry import get_registry
+from .consumer.society.channel_policy import DEFAULT_CHANNEL_IDS
+from .consumer.society.population_factory import PopulationFactory
+from .consumer.society.population_models import ConsumerSocietyRunConfig
+from .consumer.society.profile_generator import ConsumerProfileGenerator
 from .consumer.lane_b_provider import build_lane_b_provider
 from .consumer.project_research_persistence import persist_findings, persist_snapshot
 from .consumer.research_ingest import (
@@ -30,7 +34,12 @@ from .consumer.research_ingest import (
     resolve_research_findings,
 )
 from .consumer.url_ingest import ingest_background_url_sources
-from .prepare_manifest import read_manifest, touch_reuse, write_manifest
+from .prepare_manifest import (
+    read_manifest,
+    touch_reuse,
+    write_consumer_prepare_manifest,
+    write_manifest,
+)
 from .oasis_profile_generator import OasisProfileGenerator
 from .simulation_config_generator import (
     AgentActivityConfig,
@@ -41,6 +50,7 @@ from .simulation_config_generator import (
     TimeSimulationConfig,
 )
 from .zep_entity_reader import ZepEntityReader
+from ..utils.atomic_json import atomic_write_json
 
 if TYPE_CHECKING:
     from ..repositories import SimulationRepository
@@ -625,6 +635,13 @@ class SimulationManager:
         self._save_simulation_state(state)
 
         sim_dir = self._get_simulation_dir(state.simulation_id)
+        self._write_consumer_prepare_artifacts(
+            sim_dir=sim_dir,
+            state=state,
+            brief=brief,
+            persona_pack=persona_pack,
+            research_findings=research_findings,
+        )
         write_manifest(
             simulation_dir=sim_dir,
             simulation_id=state.simulation_id,
@@ -652,6 +669,68 @@ class SimulationManager:
             f"profiles={state.profiles_count}"
         )
         return state
+
+    def _write_consumer_prepare_artifacts(
+        self,
+        *,
+        sim_dir: str,
+        state: SimulationState,
+        brief: ConsumerBusinessBrief,
+        persona_pack: List[Dict[str, Any]],
+        research_findings: List[Any],
+    ) -> None:
+        """Persist consumer_test readiness artifacts without legacy profile coupling."""
+        society_dir = Path(sim_dir) / "society"
+        society_dir.mkdir(parents=True, exist_ok=True)
+        enabled_channels = list(DEFAULT_CHANNEL_IDS)
+        brief_payload = brief.to_summary()
+        generator = ConsumerProfileGenerator(seed=0, enable_llm_enrichment=False)
+        profile_snapshot = generator.build_snapshot(
+            brief=brief_payload,
+            enabled_channels=enabled_channels,
+            count=max(1, len(persona_pack)),
+            research_findings=research_findings,
+            graph_id=state.graph_id,
+        )
+        core_count = min(8, max(1, len(profile_snapshot.get("profiles", []))))
+        society_config = ConsumerSocietyRunConfig(
+            mode="quick",
+            core_persona_count=core_count,
+            expanded_persona_count=0,
+            shadow_agent_count=0,
+            max_rounds=1,
+            random_seed=0,
+            llm_budget_limit=core_count,
+            audit_sample_size=0,
+            enabled_channels=enabled_channels,
+            channel_seed=0,
+        )
+        population_preview = PopulationFactory().build_population(
+            profile_snapshot.get("profiles", []),
+            society_config,
+        )
+
+        profile_snapshot_path = society_dir / "profile_snapshot.json"
+        society_config_path = society_dir / "society_config.json"
+        population_preview_path = society_dir / "population_preview.json"
+        atomic_write_json(profile_snapshot_path, profile_snapshot)
+        atomic_write_json(society_config_path, society_config.to_dict())
+        atomic_write_json(
+            population_preview_path,
+            [agent.to_dict() for agent in population_preview],
+        )
+        write_consumer_prepare_manifest(
+            simulation_dir=sim_dir,
+            simulation_id=state.simulation_id,
+            project_id=state.project_id,
+            persona_pack_id=state.persona_pack_id,
+            profiles_count=state.profiles_count,
+            profile_snapshot_path="society/profile_snapshot.json",
+            society_config_path="society/society_config.json",
+            population_preview_path="society/population_preview.json",
+            task_type=brief.task_type.value,
+            product_category=str(profile_snapshot.get("product_category", "")),
+        )
 
     def _build_consumer_config_payload(
         self,
@@ -778,8 +857,7 @@ class SimulationManager:
         return f"{cleaned[:12]}_{user_id}"
 
     def _write_json(self, file_path: str, payload: Any) -> None:
-        with open(file_path, "w", encoding="utf-8") as f:
-            json.dump(payload, f, ensure_ascii=False, indent=2)
+        atomic_write_json(file_path, payload)
 
     def _write_twitter_profiles_csv(self, file_path: str, rows: List[Dict[str, Any]]) -> None:
         with open(file_path, "w", encoding="utf-8", newline="") as f:

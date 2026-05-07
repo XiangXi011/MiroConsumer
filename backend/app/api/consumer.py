@@ -8,10 +8,9 @@ thin compatibility shims that delegate to the same consumer app service.
 New canonical consumer URLs are prefixed with /api/consumer/.
 """
 
-import traceback
 from flask import jsonify, request
 
-from . import consumer_bp
+from . import consumer_bp, api_error_payload
 from ..services.application.consumer_app_service import ConsumerAppService
 from ..services.application.branch_app_service import BranchAppService
 from ..services.application.comparison_app_service import ComparisonAppService
@@ -67,9 +66,7 @@ def get_consumer_summary(simulation_id: str):
         return jsonify({"success": False, "error": str(e)}), 400
     except Exception as e:
         logger.error(f"获取消费者传播摘要失败: {str(e)}")
-        return jsonify(
-            {"success": False, "error": str(e), "traceback": traceback.format_exc()}
-        ), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @consumer_bp.route("/simulations/<simulation_id>/channel-summary", methods=["GET"])
@@ -82,7 +79,7 @@ def get_channel_summary(simulation_id: str):
         return _value_error_response(e)
     except Exception as e:
         logger.error(f"鑾峰彇娓犻亾鎽樿澶辫触: {str(e)}")
-        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @consumer_bp.route("/simulations/<simulation_id>/channel-events", methods=["GET"])
@@ -95,7 +92,7 @@ def get_channel_events(simulation_id: str):
         return _value_error_response(e)
     except Exception as e:
         logger.error(f"鑾峰彇娓犻亾浜嬩欢澶辫触: {str(e)}")
-        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @consumer_bp.route("/simulations/<simulation_id>/propagation-paths", methods=["GET"])
@@ -108,7 +105,7 @@ def get_propagation_paths(simulation_id: str):
         return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"鑾峰彇浼犳挱璺緞澶辫触: {str(e)}")
-        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 # ============== Branches ==============
@@ -130,7 +127,7 @@ def create_branch(simulation_id: str):
         return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"创建分支失败: {str(e)}")
-        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @consumer_bp.route("/simulations/<simulation_id>/branches", methods=["GET"])
@@ -143,7 +140,7 @@ def list_branches(simulation_id: str):
         return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"列出分支失败: {str(e)}")
-        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 # ============== Interventions ==============
@@ -159,7 +156,7 @@ def list_interventions_for_simulation(simulation_id: str):
         return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"列出干预失败: {str(e)}")
-        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @consumer_bp.route("/simulations/<simulation_id>/branches/<branch_id>/interventions", methods=["POST"])
@@ -179,7 +176,7 @@ def add_intervention(simulation_id: str, branch_id: str):
         return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"添加干预失败: {str(e)}")
-        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @consumer_bp.route("/simulations/<simulation_id>/branches/<branch_id>/interventions", methods=["GET"])
@@ -192,7 +189,7 @@ def list_interventions_for_branch(simulation_id: str, branch_id: str):
         return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"列出分支干预失败: {str(e)}")
-        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 # ============== Branch Comparison ==============
@@ -207,7 +204,7 @@ def get_branch_comparison(simulation_id: str, branch_id: str):
         return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"获取分支对比失败: {str(e)}")
-        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 # ============== Branch Resume / Status ==============
@@ -227,7 +224,7 @@ def resume_branch(simulation_id: str, branch_id: str):
         return _value_error_response(e)
     except Exception as e:
         logger.error(f"启动分支模拟失败: {str(e)}")
-        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @consumer_bp.route("/simulations/<simulation_id>/branches/<branch_id>/status", methods=["GET"])
@@ -240,7 +237,7 @@ def get_branch_run_status_route(simulation_id: str, branch_id: str):
         return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"获取分支状态失败: {str(e)}")
-        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 # ============== Comparison Snapshots ==============
@@ -256,7 +253,7 @@ def create_comparison_snapshot():
         return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"创建对比快照失败: {str(e)}")
-        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @consumer_bp.route("/comparisons", methods=["GET"])
@@ -272,7 +269,7 @@ def list_comparison_snapshots():
         return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"列出对比快照失败: {str(e)}")
-        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @consumer_bp.route("/comparisons/<comparison_id>", methods=["GET"])
@@ -285,7 +282,7 @@ def get_comparison_snapshot(comparison_id: str):
         return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"获取对比快照失败: {str(e)}")
-        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 # ============== Research Assets ==============
@@ -316,7 +313,7 @@ def export_research_asset():
         return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"导出研究资产失败: {str(e)}")
-        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @consumer_bp.route("/research-assets", methods=["GET"])
@@ -333,7 +330,7 @@ def list_research_assets():
         return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"列出研究资产失败: {str(e)}")
-        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @consumer_bp.route("/research-assets/<asset_id>", methods=["GET"])
@@ -346,7 +343,7 @@ def get_research_asset(asset_id: str):
         return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"获取研究资产失败: {str(e)}")
-        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 # ============== Research Actions ==============
@@ -370,7 +367,7 @@ def run_consumer_research_action(simulation_id: str):
         return jsonify({"success": False, "error": str(e)}), 400
     except Exception as e:
         logger.error(f"执行消费者研究动作失败: {str(e)}")
-        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 # ============== Phase 6I: Interview & Focus Group ==============
@@ -385,7 +382,7 @@ def list_representative_agents(simulation_id: str):
         return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"获取代表性消费者失败: {str(e)}")
-        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @consumer_bp.route("/simulations/<simulation_id>/interviews", methods=["POST"])
@@ -399,7 +396,7 @@ def run_consumer_interview(simulation_id: str):
         return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"运行消费者访谈失败: {str(e)}")
-        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @consumer_bp.route("/simulations/<simulation_id>/focus-groups", methods=["POST"])
@@ -413,7 +410,7 @@ def run_focus_group(simulation_id: str):
         return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"运行焦点小组失败: {str(e)}")
-        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @consumer_bp.route("/simulations/<simulation_id>/interviews/history", methods=["GET"])
@@ -426,7 +423,7 @@ def list_interview_history(simulation_id: str):
         return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"获取访谈历史失败: {str(e)}")
-        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @consumer_bp.route("/simulations/<simulation_id>/focus-groups/history", methods=["GET"])
@@ -439,7 +436,7 @@ def list_focus_group_history(simulation_id: str):
         return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"获取焦点小组历史失败: {str(e)}")
-        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 # ============== Task Queue Dead Letters ==============
@@ -456,7 +453,7 @@ def get_run_estimate(simulation_id: str):
         return _value_error_response(e)
     except Exception as e:
         logger.error(f"获取运行成本估算失败: {str(e)}")
-        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @consumer_bp.route("/reports/<report_id>/audit-chain", methods=["GET"])
@@ -469,7 +466,7 @@ def get_report_audit_chain(report_id: str):
         return _value_error_response(e)
     except Exception as e:
         logger.error(f"获取报告审计链失败: {str(e)}")
-        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 @consumer_bp.route("/task-queue/dead-letters", methods=["GET"])
 def get_task_queue_dead_letters():
@@ -481,4 +478,4 @@ def get_task_queue_dead_letters():
         return jsonify({"success": False, "error": str(e)}), 400
     except Exception as e:
         logger.error(f"获取死信列表失败: {str(e)}")
-        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify(api_error_payload(str(e))), 500

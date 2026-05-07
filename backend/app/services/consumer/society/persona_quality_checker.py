@@ -54,8 +54,8 @@ class PersonaQualityChecker:
 
         if len(segments) <= 1 and len(agents) > 1:
             raise ValueError("segment distribution cannot be concentrated in one segment")
-        if config.mode in {"standard", "large_society"} and not has_shadow:
-            raise ValueError("standard and large_society populations require shadow agents")
+        if config.mode in {"standard", "standard_plus", "large_society"} and not has_shadow:
+            raise ValueError("standard, standard_plus and large_society populations require shadow agents")
         if len(agents) != config.target_population_size:
             raise ValueError("population total does not match config target")
 

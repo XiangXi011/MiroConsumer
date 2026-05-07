@@ -5,11 +5,10 @@
 
 import json
 import os
-import traceback
 from pathlib import Path
 from flask import request, jsonify
 
-from . import graph_bp
+from . import graph_bp, api_error_payload
 from ..config import Config
 from ..services.consumer import ConsumerBriefAdapter
 from ..services.consumer.document_ingest import DocumentIngestService
@@ -90,7 +89,12 @@ def list_persona_packs():
     列出可用的内置 persona packs
     """
     try:
-        packs = list_builtin_persona_packs()
+        project_id = request.args.get("project_id", "").strip()
+        if project_id:
+            project_persona_dir = Path(Config.UPLOAD_FOLDER) / "projects" / project_id / "persona_packs"
+            packs = get_registry(project_persona_dir=project_persona_dir).list_packs()
+        else:
+            packs = list_builtin_persona_packs()
         return jsonify({
             "success": True,
             "data": [p.to_summary() for p in packs]
@@ -103,6 +107,59 @@ def list_persona_packs():
 
 
 # ============== 项目管理接口 ==============
+
+@graph_bp.route('/project/<project_id>/persona-packs', methods=['POST'])
+def upload_project_persona_pack(project_id: str):
+    """Upload a custom persona pack for an existing project."""
+    project = ProjectManager.get_project(project_id)
+    if not project:
+        return jsonify({
+            "success": False,
+            "error": t('api.projectNotFound', id=project_id)
+        }), 404
+
+    persona_pack_file = request.files.get('persona_pack_file')
+    if not persona_pack_file or not persona_pack_file.filename:
+        return jsonify({
+            "success": False,
+            "error": "persona_pack_file is required"
+        }), 400
+    if not persona_pack_file.filename.lower().endswith('.json'):
+        return jsonify({
+            "success": False,
+            "error": "Persona pack file must be a JSON file (.json)"
+        }), 400
+
+    try:
+        raw_json = persona_pack_file.read().decode('utf-8')
+        project_persona_dir = Path(Config.UPLOAD_FOLDER) / "projects" / project.project_id / "persona_packs"
+        registry = get_registry(project_persona_dir=project_persona_dir)
+        pack_class_value = request.form.get("pack_class", PersonaPackClass.Custom.value)
+        try:
+            pack_class = PersonaPackClass(str(pack_class_value).strip().lower())
+        except ValueError:
+            pack_class = PersonaPackClass.Custom
+        pack_origin = request.form.get("pack_origin", "uploaded_persona_pack").strip() or "uploaded_persona_pack"
+        pack_meta = registry.register_custom_pack(
+            raw_json=raw_json,
+            label=request.form.get("label") or persona_pack_file.filename,
+            description=request.form.get("description", ""),
+            pack_class=pack_class,
+            pack_origin=pack_origin,
+        )
+        return jsonify({
+            "success": True,
+            "data": pack_meta.to_summary(),
+        })
+    except (ValueError, UnicodeDecodeError) as e:
+        return jsonify({
+            "success": False,
+            "error": f"Invalid persona pack file: {e}"
+        }), 400
+    except Exception as e:
+        logger.error(f"Upload persona pack failed: {e}")
+        return jsonify(api_error_payload(str(e))), 500
+
 
 @graph_bp.route('/project/<project_id>', methods=['GET'])
 def get_project(project_id: str):
@@ -368,11 +425,7 @@ def generate_ontology():
         })
         
     except Exception as e:
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 # ============== 接口2：构建图谱 ==============
@@ -533,11 +586,7 @@ def build_graph():
         })
         
     except Exception as e:
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 # ============== 任务查询接口 ==============
@@ -612,11 +661,7 @@ def get_graph_data(graph_id: str):
         })
         
     except Exception as e:
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @graph_bp.route('/delete/<graph_id>', methods=['DELETE'])
@@ -665,8 +710,4 @@ def delete_graph(graph_id: str):
         })
         
     except Exception as e:
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500

@@ -62,6 +62,7 @@ def test_runtime_writes_checkpoint_progress_events_errors_and_round_files(tmp_pa
     assert (society_dir / "runtime_events.jsonl").exists()
     assert (society_dir / "errors.jsonl").exists()
     assert (society_dir / "rounds" / "round_0.json").exists()
+    assert (society_dir / "network_topology.json").exists()
 
     progress = json.loads((society_dir / "progress.json").read_text(encoding="utf-8"))
     assert progress["status"] == "completed_with_errors"
@@ -79,3 +80,5 @@ def test_runtime_writes_checkpoint_progress_events_errors_and_round_files(tmp_pa
     assert "template_fallback" in runtime_events
     assert "llm timed out" in errors
     assert result["society_agents_count"] == 4
+    assert result["society_network_summary"]["node_count"] == 4
+    assert result["society_network_summary"]["edge_count"] > 0

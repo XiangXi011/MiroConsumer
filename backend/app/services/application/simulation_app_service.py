@@ -4,7 +4,6 @@ Simulation application service
 Encapsulates route-level orchestration for simulation lifecycle operations.
 """
 
-import json
 import os
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -16,12 +15,13 @@ from ...services.consumer.api_guard import ConsumerApiGuard
 from ...services.consumer.persona_pack import load_default_persona_pack
 from ...services.consumer.society.channel_policy import validate_enabled_channels
 from ...services.consumer.society.population_models import ConsumerSocietyRunConfig
-from ...services.prepare_manifest import read_manifest
+from ...services.prepare_manifest import read_consumer_prepare_manifest, read_manifest
 from ...services.simulation_manager import SimulationStatus
 from ...services.simulation_runner import SimulationRunner
 from ...services.zep_entity_reader import ZepEntityReader
 from ...utils.locale import t, get_locale, set_locale
 from ...utils.logger import get_logger
+from ...utils.atomic_json import atomic_write_json, safe_read_json
 from .concurrency import create_lock_manager, simulation_run_lock
 from .llm_budget_manager import LLMBudgetManager
 from .task_executor import TaskExecutor, create_task_executor
@@ -40,12 +40,22 @@ def _check_simulation_prepared(simulation_id: str) -> Tuple[bool, dict]:
     if not os.path.exists(simulation_dir):
         return False, {"reason": "模拟目录不存在"}
 
-    required_files = [
-        "state.json",
-        "simulation_config.json",
-        "reddit_profiles.json",
-        "twitter_profiles.csv",
-    ]
+    state_file = os.path.join(simulation_dir, "state.json")
+    state_preview = safe_read_json(state_file, default={}) if os.path.exists(state_file) else {}
+    consumer_mode_preview = (
+        isinstance(state_preview, dict)
+        and (bool(state_preview.get("consumer_mode")) or state_preview.get("project_type") == "consumer_test")
+    )
+    required_files = ["state.json", "simulation_config.json"]
+    if consumer_mode_preview:
+        required_files.extend([
+            "consumer_prepare_manifest.json",
+            os.path.join("society", "profile_snapshot.json"),
+            os.path.join("society", "society_config.json"),
+            os.path.join("society", "population_preview.json"),
+        ])
+    else:
+        required_files.extend(["reddit_profiles.json", "twitter_profiles.csv"])
 
     existing_files = []
     missing_files = []
@@ -63,30 +73,32 @@ def _check_simulation_prepared(simulation_id: str) -> Tuple[bool, dict]:
             "existing_files": existing_files,
         }
 
-    state_file = os.path.join(simulation_dir, "state.json")
     try:
-        with open(state_file, "r", encoding="utf-8") as f:
-            state_data = json.load(f)
+        state_data = safe_read_json(state_file, default={})
+        if not isinstance(state_data, dict):
+            return False, {"reason": "state.json is not a valid object"}
+        consumer_mode = bool(state_data.get("consumer_mode")) or state_data.get("project_type") == "consumer_test"
 
         status = state_data.get("status", "")
         config_generated = state_data.get("config_generated", False)
 
         prepared_statuses = ["ready", "preparing", "running", "completed", "stopped", "failed"]
         if status in prepared_statuses and config_generated:
-            profiles_file = os.path.join(simulation_dir, "reddit_profiles.json")
             profiles_count = 0
-            if os.path.exists(profiles_file):
-                with open(profiles_file, "r", encoding="utf-8") as f:
-                    profiles_data = json.load(f)
-                    profiles_count = len(profiles_data) if isinstance(profiles_data, list) else 0
+            consumer_manifest = read_consumer_prepare_manifest(simulation_dir) if consumer_mode else None
+            if consumer_manifest:
+                profiles_count = int(consumer_manifest.get("profiles_count", 0) or 0)
+            else:
+                profiles_file = os.path.join(simulation_dir, "reddit_profiles.json")
+                profiles_data = safe_read_json(profiles_file, default=[]) if os.path.exists(profiles_file) else []
+                profiles_count = len(profiles_data) if isinstance(profiles_data, list) else 0
 
             if status == "preparing":
                 try:
                     from datetime import datetime
                     state_data["status"] = "ready"
                     state_data["updated_at"] = datetime.now().isoformat()
-                    with open(state_file, "w", encoding="utf-8") as f:
-                        json.dump(state_data, f, ensure_ascii=False, indent=2)
+                    atomic_write_json(state_file, state_data)
                     logger.info(f"Auto-updated simulation status: {simulation_id} preparing -> ready")
                     status = "ready"
                 except Exception as e:
@@ -107,9 +119,12 @@ def _check_simulation_prepared(simulation_id: str) -> Tuple[bool, dict]:
                 "created_at": state_data.get("created_at"),
                 "updated_at": state_data.get("updated_at"),
                 "existing_files": existing_files,
+                "consumer_ready_model": "consumer_test" if consumer_mode else "legacy",
             }
             if manifest:
                 prepare_info["prepare_manifest"] = manifest.to_dict()
+            if consumer_manifest:
+                prepare_info["consumer_prepare_manifest"] = consumer_manifest
             return True, prepare_info
         else:
             return False, {
@@ -491,7 +506,7 @@ class SimulationAppService:
     def _build_society_config(cls, data: dict, state: Any) -> dict:
         """Normalize Phase 6G society runtime config from start payload."""
         mode = str(data.get("society_mode") or "quick").strip() or "quick"
-        if mode not in {"quick", "standard", "large_society"}:
+        if mode not in {"quick", "standard", "standard_plus", "large_society"}:
             raise ValueError(f"Unsupported society_mode: {mode}")
 
         project_type = getattr(state, "project_type", "") or ""
@@ -511,8 +526,8 @@ class SimulationAppService:
             raise ValueError("society runtime requires a consumer_test simulation")
 
         enabled = os.environ.get("ENABLE_SOCIETY_MODE", "true").strip().lower() in {"1", "true", "yes"}
-        if mode in {"standard", "large_society"} and not enabled:
-            raise ValueError("ENABLE_SOCIETY_MODE must be true for standard or large_society")
+        if mode in {"standard", "standard_plus", "large_society"} and not enabled:
+            raise ValueError("ENABLE_SOCIETY_MODE must be true for standard, standard_plus or large_society")
 
         max_allowed = int(os.environ.get("MAX_SOCIETY_AGENTS", "1000"))
         max_agents = int(data.get("society_max_agents") or cls._default_society_agents(mode))
@@ -547,6 +562,8 @@ class SimulationAppService:
     def _default_society_agents(mode: str) -> int:
         if mode == "large_society":
             return 1000
+        if mode == "standard_plus":
+            return 100
         if mode == "standard":
             return 32
         return 8
@@ -555,6 +572,8 @@ class SimulationAppService:
     def _default_audit_sample_size(mode: str) -> int:
         if mode == "large_society":
             return 24
+        if mode == "standard_plus":
+            return 8
         if mode == "standard":
             return 4
         return 0
@@ -563,9 +582,9 @@ class SimulationAppService:
     def _default_llm_budget(mode: str, max_agents: int) -> int:
         if mode == "large_society":
             return max(1, int(max_agents * 0.08))
+        if mode == "standard_plus":
+            return 16
         if mode == "standard":
-            if max_agents == 100:
-                return 16
             return 12
         return max_agents
 
@@ -578,10 +597,10 @@ class SimulationAppService:
             expanded = min(250, max(100, int(max_agents * 0.2)))
             shadow = max(0, max_agents - core - expanded)
             return core, expanded, shadow
+        if mode == "standard_plus" or max_agents == 100:
+            return 8, 72, 20
         if max_agents == 32:
             return 8, 16, 8
-        if max_agents == 100:
-            return 8, 72, 20
         core = min(20, max(12, int(max_agents * 0.08)))
         shadow = min(200, max(0, int(max_agents * 0.8)))
         expanded = max(0, max_agents - core - shadow)

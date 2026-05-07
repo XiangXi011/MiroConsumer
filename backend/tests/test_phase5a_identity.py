@@ -40,12 +40,54 @@ def test_graph_builder_uses_miroconsumer_prefix():
 # 2. Config default SECRET_KEY
 # ---------------------------------------------------------------------------
 
-def test_config_default_secret_key_uses_miroconsumer():
+def test_config_secret_key_empty_by_default():
     from app.config import Config
 
     source = inspect.getsource(Config)
-    assert "miroconsumer-secret-key" in source
+    assert "os.environ.get('SECRET_KEY', '')" in source
     assert "mirofish-secret-key" not in source
+
+
+def test_config_requires_secret_key_in_production(monkeypatch):
+    from app.config import Config
+
+    monkeypatch.setattr(Config, "DEBUG", False)
+    monkeypatch.setattr(Config, "SECRET_KEY", "")
+    monkeypatch.setattr(Config, "LLM_API_KEY", "test-key")
+    monkeypatch.setattr(Config, "ZEP_API_KEY", "test-zep")
+    monkeypatch.setattr(Config, "_db_url_cache", "", raising=False)
+    monkeypatch.setattr(Config, "_queue_backend_cache", "thread", raising=False)
+    monkeypatch.setattr(Config, "_storage_backend_cache", "local", raising=False)
+
+    assert "SECRET_KEY is required in production" in Config.validate()
+
+
+def test_api_error_payload_hides_traceback_outside_debug(monkeypatch):
+    from app.config import Config
+    from app.api import api_error_payload
+
+    monkeypatch.setattr(Config, "DEBUG", False)
+    try:
+        raise RuntimeError("hidden")
+    except RuntimeError:
+        payload = api_error_payload("hidden")
+
+    assert payload == {"success": False, "error": "hidden"}
+
+
+def test_api_error_payload_includes_traceback_in_debug(monkeypatch):
+    from app.config import Config
+    from app.api import api_error_payload
+
+    monkeypatch.setattr(Config, "DEBUG", True)
+    try:
+        raise RuntimeError("visible")
+    except RuntimeError:
+        payload = api_error_payload("visible")
+
+    assert payload["success"] is False
+    assert payload["error"] == "visible"
+    assert "RuntimeError: visible" in payload["traceback"]
 
 
 # ---------------------------------------------------------------------------

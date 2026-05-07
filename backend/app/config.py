@@ -33,8 +33,9 @@ class Config:
     """Flask配置类"""
 
     # Flask配置
-    SECRET_KEY = os.environ.get('SECRET_KEY', 'miroconsumer-secret-key')
-    DEBUG = os.environ.get('FLASK_DEBUG', 'True').lower() == 'true'
+    SECRET_KEY = os.environ.get('SECRET_KEY', '')
+    DEBUG = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
+    CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:3000')
 
     # JSON配置 - 禁用ASCII转义，让中文直接显示（而不是 \uXXXX 格式）
     JSON_AS_ASCII = False
@@ -240,6 +241,9 @@ class Config:
 
         if queue_backend == 'rq' and not cls.REDIS_URL:
             errors.append("REDIS_URL is required when QUEUE_BACKEND=rq")
+
+        if not cls.DEBUG and not cls.SECRET_KEY:
+            errors.append("SECRET_KEY is required in production")
 
         storage_backend = cls.STORAGE_BACKEND
         valid_storage_backends = ('local', 's3')

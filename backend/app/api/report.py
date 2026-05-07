@@ -5,10 +5,9 @@ Report API路由
 
 import os
 import tempfile
-import traceback
 from flask import request, jsonify, send_file
 
-from . import report_bp
+from . import report_bp, api_error_payload
 from ..config import Config
 from ..services.report_agent import ReportManager
 from ..utils.logger import get_logger
@@ -90,11 +89,7 @@ def generate_report():
 
     except Exception as e:
         logger.error(f"启动报告生成任务失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @report_bp.route('/generate/status', methods=['POST'])
@@ -185,11 +180,7 @@ def get_report(report_id: str):
 
     except Exception as e:
         logger.error(f"获取报告失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @report_bp.route('/by-simulation/<simulation_id>', methods=['GET'])
@@ -224,11 +215,7 @@ def get_report_by_simulation(simulation_id: str):
 
     except Exception as e:
         logger.error(f"获取报告失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @report_bp.route('/list', methods=['GET'])
@@ -264,11 +251,7 @@ def list_reports():
 
     except Exception as e:
         logger.error(f"列出报告失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @report_bp.route('/<report_id>/download', methods=['GET'])
@@ -306,11 +289,7 @@ def download_report(report_id: str):
 
     except Exception as e:
         logger.error(f"下载报告失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @report_bp.route('/<report_id>', methods=['DELETE'])
@@ -332,11 +311,7 @@ def delete_report(report_id: str):
 
     except Exception as e:
         logger.error(f"删除报告失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 # ============== Report Agent对话接口 ==============
@@ -406,11 +381,7 @@ def chat_with_report_agent():
 
     except Exception as e:
         logger.error(f"对话失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 # ============== 报告进度与分章节接口 ==============
@@ -449,11 +420,7 @@ def get_report_progress(report_id: str):
 
     except Exception as e:
         logger.error(f"获取报告进度失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @report_bp.route('/<report_id>/sections', methods=['GET'])
@@ -491,11 +458,7 @@ def get_report_sections(report_id: str):
 
     except Exception as e:
         logger.error(f"获取章节列表失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @report_bp.route('/<report_id>/section/<int:section_index>', methods=['GET'])
@@ -535,11 +498,7 @@ def get_single_section(report_id: str, section_index: int):
 
     except Exception as e:
         logger.error(f"获取章节内容失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 # ============== 报告状态检查接口 ==============
@@ -573,11 +532,7 @@ def check_report_status(simulation_id: str):
 
     except Exception as e:
         logger.error(f"检查报告状态失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 # ============== Agent 日志接口 ==============
@@ -634,11 +589,7 @@ def get_agent_log(report_id: str):
 
     except Exception as e:
         logger.error(f"获取Agent日志失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @report_bp.route('/<report_id>/agent-log/stream', methods=['GET'])
@@ -668,11 +619,7 @@ def stream_agent_log(report_id: str):
 
     except Exception as e:
         logger.error(f"获取Agent日志失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 # ============== 控制台日志接口 ==============
@@ -716,11 +663,7 @@ def get_console_log(report_id: str):
 
     except Exception as e:
         logger.error(f"获取控制台日志失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @report_bp.route('/<report_id>/console-log/stream', methods=['GET'])
@@ -750,11 +693,7 @@ def stream_console_log(report_id: str):
 
     except Exception as e:
         logger.error(f"获取控制台日志失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 # ============== 工具调用接口（供调试使用）==============
@@ -800,11 +739,7 @@ def search_graph_tool():
 
     except Exception as e:
         logger.error(f"图谱搜索失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @report_bp.route('/tools/statistics', methods=['POST'])
@@ -840,11 +775,7 @@ def get_graph_statistics_tool():
 
     except Exception as e:
         logger.error(f"获取图谱统计失败: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 # ============== 研究资产接口 ==============
@@ -889,7 +820,7 @@ def export_research_asset():
         return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"导出研究资产失败: {str(e)}")
-        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @report_bp.route('/research-assets', methods=['GET'])
@@ -915,7 +846,7 @@ def list_research_assets():
         return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"列出研究资产失败: {str(e)}")
-        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @report_bp.route('/research-assets/<asset_id>', methods=['GET'])
@@ -934,7 +865,7 @@ def get_research_asset(asset_id: str):
         return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"获取研究资产失败: {str(e)}")
-        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 # ============== 对比快照接口 ==============
@@ -961,7 +892,7 @@ def create_comparison_snapshot():
         return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"创建对比快照失败: {str(e)}")
-        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @report_bp.route('/comparisons', methods=['GET'])
@@ -987,7 +918,7 @@ def list_comparison_snapshots():
         return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"列出对比快照失败: {str(e)}")
-        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @report_bp.route('/comparisons/<comparison_id>', methods=['GET'])
@@ -1006,7 +937,7 @@ def get_comparison_snapshot(comparison_id: str):
         return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"获取对比快照失败: {str(e)}")
-        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 # ============== 基准测试接口 ==============
@@ -1040,7 +971,7 @@ def register_benchmark_route():
         return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"注册基准测试失败: {str(e)}")
-        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @report_bp.route('/benchmarks', methods=['GET'])
@@ -1056,7 +987,7 @@ def list_benchmarks_route():
         return jsonify({"success": True, "data": {"items": items}})
     except Exception as e:
         logger.error(f"列出基准测试失败: {str(e)}")
-        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @report_bp.route('/benchmarks/<benchmark_id>', methods=['GET'])
@@ -1074,7 +1005,7 @@ def get_benchmark_route(benchmark_id: str):
         return jsonify({"success": True, "data": benchmark})
     except Exception as e:
         logger.error(f"获取基准测试失败: {str(e)}")
-        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @report_bp.route('/benchmarks/<benchmark_id>/replay', methods=['POST'])
@@ -1109,7 +1040,7 @@ def replay_benchmark_route(benchmark_id: str):
         return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"回放基准测试失败: {str(e)}")
-        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify(api_error_payload(str(e))), 500
 
 
 @report_bp.route('/benchmark-replays/<replay_id>', methods=['GET'])
@@ -1127,4 +1058,4 @@ def get_replay_result_route(replay_id: str):
         return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
         logger.error(f"获取回放结果失败: {str(e)}")
-        return jsonify({"success": False, "error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify(api_error_payload(str(e))), 500

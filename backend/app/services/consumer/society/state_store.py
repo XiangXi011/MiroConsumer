@@ -122,6 +122,9 @@ class SocietyStateStore:
             [dict(path) for path in paths],
         )
 
+    def write_network_topology(self, simulation_id: str, topology: Mapping[str, Any]) -> None:
+        self._write_json(self.society_dir(simulation_id) / "network_topology.json", dict(topology))
+
     def read_metrics(self, simulation_id: str) -> Dict[str, Any]:
         path = self.society_dir(simulation_id) / "society_metrics.json"
         if not path.exists():
@@ -150,6 +153,13 @@ class SocietyStateStore:
             return []
         payload = safe_read_json(path, default=[])
         return payload if isinstance(payload, list) else []
+
+    def read_network_topology(self, simulation_id: str) -> Dict[str, Any]:
+        path = self.society_dir(simulation_id) / "network_topology.json"
+        if not path.exists():
+            return {}
+        payload = safe_read_json(path, default={})
+        return payload if isinstance(payload, dict) else {}
 
     def read_config(self, simulation_id: str) -> Dict[str, Any]:
         path = self.society_dir(simulation_id) / "society_config.json"

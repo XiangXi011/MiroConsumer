@@ -1,6 +1,7 @@
 from app.services.consumer.models import (
     DocumentChunk,
     IngestedDocument,
+    PropagationEvent,
     ResearchFinding,
     ResearchSnapshot,
     ResearchSource,
@@ -43,6 +44,65 @@ def test_build_consumer_report_context_without_traces():
     context = build_consumer_report_context(summary, findings, events)
     assert "retrieval_provenance" not in context
     assert "retrieval_traces" not in context
+
+
+def test_build_consumer_report_context_emits_evidence_atoms():
+    summary = ConsumerScoringService().summarize(
+        initial_labels=["neutral"],
+        final_labels=["negative"],
+    )
+    findings = [
+        ResearchFinding(
+            finding_id="f-risk",
+            finding_type="risk_signal",
+            summary="Low sugar claim may be misread as zero sugar",
+            evidence_snippets=["Customer review asks whether low sugar means zero sugar."],
+            source_label="ingested_document",
+            source_id="src-review",
+            snippet_id="chunk-1",
+            confidence=0.82,
+        )
+    ]
+    events = [
+        PropagationEvent(
+            event_id="evt-1",
+            event_type="misread_amplification",
+            actor_id="M01",
+            trigger_finding_ids=["f-risk"],
+            supporting_quote="I thought low sugar meant no sugar at all.",
+            round_index=1,
+        )
+    ]
+    context = build_consumer_report_context(
+        summary,
+        findings,
+        events,
+        report_confidence={
+            "finding_confidence_summary": [
+                {
+                    "finding_id": "f-risk",
+                    "confidence_label": "high",
+                    "confidence_score": 0.82,
+                }
+            ]
+        },
+        evidence_gatekeeping_results=[
+            EvidenceGatekeepingResult(
+                finding_id="f-risk",
+                gatekeeping_status="allowed",
+                policy_violations=[],
+                gatekeeping_notes="supported",
+            )
+        ],
+    )
+
+    atom_record = context["finding_evidence_atoms"][0]
+    assert atom_record["claim"] == "Low sugar claim may be misread as zero sugar"
+    assert atom_record["confidence"] == "high"
+    assert atom_record["risk"] == "risk_signal"
+    assert {atom["type"] for atom in atom_record["evidence_atoms"]} >= {"finding", "voc", "metric"}
+    assert atom_record["evidence_atoms"][0]["source_id"] == "src-review"
+    assert context["causal_chains"][0]["evidence_atoms"]
 
 
 def test_build_consumer_report_context_with_traces():

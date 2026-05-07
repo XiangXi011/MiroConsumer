@@ -7,14 +7,16 @@ relying on a global cache.
 
 from __future__ import annotations
 
-import json
 import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from ..utils.atomic_json import atomic_write_json, safe_read_json
+
 
 MANIFEST_FILE_NAME = "prepare_manifest.json"
+CONSUMER_MANIFEST_FILE_NAME = "consumer_prepare_manifest.json"
 MANIFEST_VERSION = "1.0"
 
 
@@ -116,8 +118,7 @@ def write_manifest(
         reuse_count=reuse_count,
     )
 
-    with open(manifest_path, "w", encoding="utf-8") as f:
-        json.dump(manifest.to_dict(), f, ensure_ascii=False, indent=2)
+    atomic_write_json(manifest_path, manifest.to_dict())
 
     return manifest_path
 
@@ -128,8 +129,7 @@ def read_manifest(simulation_dir: str) -> Optional[PrepareManifest]:
     if not os.path.exists(manifest_path):
         return None
 
-    with open(manifest_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
+    data = safe_read_json(manifest_path, default={})
 
     return PrepareManifest.from_dict(data)
 
@@ -147,7 +147,51 @@ def touch_reuse(simulation_dir: str) -> Optional[PrepareManifest]:
     manifest.last_reused_at = _now_iso()
 
     manifest_path = os.path.join(simulation_dir, MANIFEST_FILE_NAME)
-    with open(manifest_path, "w", encoding="utf-8") as f:
-        json.dump(manifest.to_dict(), f, ensure_ascii=False, indent=2)
+    atomic_write_json(manifest_path, manifest.to_dict())
 
     return manifest
+
+
+def write_consumer_prepare_manifest(
+    simulation_dir: str,
+    *,
+    simulation_id: str,
+    project_id: str,
+    persona_pack_id: str,
+    profiles_count: int,
+    profile_snapshot_path: str,
+    society_config_path: str,
+    population_preview_path: str,
+    task_type: str = "",
+    product_category: str = "",
+) -> str:
+    """Write consumer_test readiness manifest independent of legacy profile files."""
+    payload = {
+        "manifest_version": MANIFEST_VERSION,
+        "simulation_id": simulation_id,
+        "project_id": project_id,
+        "project_type": "consumer_test",
+        "consumer_mode": True,
+        "prepared_at": _now_iso(),
+        "persona_pack_id": persona_pack_id,
+        "profiles_count": int(profiles_count or 0),
+        "task_type": task_type,
+        "product_category": product_category,
+        "ready_files": {
+            "profile_snapshot": profile_snapshot_path,
+            "society_config": society_config_path,
+            "population_preview": population_preview_path,
+        },
+    }
+    path = os.path.join(simulation_dir, CONSUMER_MANIFEST_FILE_NAME)
+    atomic_write_json(path, payload)
+    return path
+
+
+def read_consumer_prepare_manifest(simulation_dir: str) -> Optional[Dict[str, Any]]:
+    """Read consumer_test readiness manifest if present."""
+    path = os.path.join(simulation_dir, CONSUMER_MANIFEST_FILE_NAME)
+    if not os.path.exists(path):
+        return None
+    payload = safe_read_json(path, default={})
+    return payload if isinstance(payload, dict) else None

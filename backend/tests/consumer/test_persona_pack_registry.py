@@ -37,6 +37,7 @@ def test_list_builtin_includes_tech_early_adopters():
     assert tech.pack_class == PersonaPackClass.Industry
     assert tech.persona_count > 0
     assert tech.source == "builtin"
+    assert tech.pack_origin == "industry_pack"
 
 
 def test_registry_get_pack_builtin():
@@ -113,6 +114,7 @@ def test_register_custom_pack_validates_json():
     assert meta.pack_class == PersonaPackClass.Custom
     assert meta.persona_count == 1
     assert meta.source == "custom"
+    assert meta.pack_origin == "uploaded_persona_pack"
 
 
 def test_register_custom_pack_rejects_invalid_json():
@@ -248,6 +250,29 @@ def test_persona_pack_metadata_to_summary():
     assert summary["pack_id"] == "test"
     assert summary["pack_class"] == "industry"
     assert summary["persona_count"] == 5
+    assert summary["pack_origin"] == "default_rule_pack"
+
+
+def test_register_custom_pack_accepts_business_pack_origin(tmp_path):
+    registry = PersonaPackRegistry(project_persona_dir=tmp_path / "persona_packs")
+    raw = json.dumps([
+        {
+            "persona_id": "R01",
+            "label": "Research Derived",
+            "attention_drivers": ["proof"],
+            "risk_sensitivities": ["safety"],
+            "expression_style": "careful",
+            "search_propensity": "high",
+            "cognition_level": "high",
+            "herd_tendency": "low",
+            "influence_weight": 0.6,
+        }
+    ])
+
+    meta = registry.register_custom_pack(raw, pack_origin="research_derived_pack")
+
+    assert meta.pack_origin == "research_derived_pack"
+    assert meta.to_summary()["pack_origin"] == "research_derived_pack"
 
 
 def test_persona_pack_selection_to_summary():
