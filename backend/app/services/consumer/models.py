@@ -355,7 +355,9 @@ def _normalize_persona_pack_selection(value: Any) -> PersonaPackSelection:
 
 @dataclass
 class ConsumerBusinessBrief:
-    task_type: ConsumerTaskType
+    schema_version: str = "1.0.0"
+    brief_id: str = ""
+    task_type: ConsumerTaskType = ConsumerTaskType.ConceptTest
     product_concept_assets: List[str] = field(default_factory=list)
     copy_material: List[str] = field(default_factory=list)
     claims: List[str] = field(default_factory=list)
@@ -372,6 +374,8 @@ class ConsumerBusinessBrief:
     test_variants: List[TestVariant] = field(default_factory=list)
     price_context: Optional[str] = None
     persona_pack_selection: PersonaPackSelection = field(default_factory=PersonaPackSelection)
+    source_evidence_spans: List[str] = field(default_factory=list)
+    risk_flags: List[str] = field(default_factory=list)
     supported_task_types: ClassVar[set[ConsumerTaskType]] = {
         ConsumerTaskType.ConceptTest,
         ConsumerTaskType.CopyFeedback,
@@ -430,6 +434,8 @@ class ConsumerBusinessBrief:
 
     def to_summary(self) -> Dict[str, Any]:
         return {
+            "schema_version": self.schema_version,
+            "brief_id": self.brief_id,
             "task_type": self.task_type.value,
             "product_concept_assets": self.product_concept_assets,
             "copy_material": self.copy_material,
@@ -447,4 +453,6 @@ class ConsumerBusinessBrief:
             "test_variants": [v.to_summary() for v in self.test_variants],
             "price_context": self.price_context,
             "persona_pack_selection": self.persona_pack_selection.to_summary(),
+            "source_evidence_spans": self.source_evidence_spans,
+            "risk_flags": self.risk_flags,
         }

@@ -265,3 +265,33 @@ The current product direction specializes that backbone for **consumer concept a
 The simulation layer builds on **[OASIS (Open Agent Social Interaction Simulations)](https://github.com/camel-ai/oasis)**.
 
 We also thank the original simulation architecture for providing the graph, simulation, report, and interaction backbone that powers this product direction.
+
+## Production Deployment Key Generation
+
+```bash
+# Generate a secure SECRET_KEY
+python -c "import secrets; print(secrets.token_hex(32))"
+```
+
+Set the generated key in your `.env` file:
+
+```
+SECRET_KEY=<your-generated-key>
+```
+
+## License
+
+本项目采用 AGPL-3.0 许可证。
+
+**AGPL 合规说明：**
+- 如果您通过网络提供本软件的服务（SaaS），必须向使用者提供完整源代码
+- 修改后的代码必须同样以 AGPL-3.0 发布
+- 完整许可证条款见 [LICENSE](LICENSE) 文件
+
+## Research Boundary Statement
+
+本平台为 AI 消费者仿真研究工具。所有仿真结果由大语言模型推演生成，**不代表真实消费者行为**。
+
+- 小样本模式 (< 30 agents): 仅用于灵感探索，禁止统计推断
+- 研究模式 (30-100 agents): 可输出趋势和稳定性
+- 企业验证模式 (100+ agents): 需配合真实基准校准

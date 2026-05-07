@@ -8,6 +8,13 @@ from .consumer_contracts import (
     SourceQualitySummary,
 )
 from .errors import CanonicalError, ConflictError, NotFoundError, ValidationError
+from .simulation_contracts import (
+    CreateSimulationRequest,
+    ExportRequest,
+    PrepareSimulationRequest,
+    StartSimulationRequest,
+    StopSimulationRequest,
+)
 
 __all__ = [
     "SourceQualitySummary",
@@ -19,4 +26,9 @@ __all__ = [
     "NotFoundError",
     "ValidationError",
     "ConflictError",
+    "CreateSimulationRequest",
+    "ExportRequest",
+    "PrepareSimulationRequest",
+    "StartSimulationRequest",
+    "StopSimulationRequest",
 ]

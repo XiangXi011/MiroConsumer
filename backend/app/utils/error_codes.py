@@ -39,3 +39,17 @@ def error_response(code_tuple, details=None):
     if details:
         resp["details"] = details
     return resp, status
+
+
+def success_response(data, **extra):
+    """生成统一成功响应"""
+    resp = {"success": True, "data": data}
+    resp.update(extra)
+    return resp
+
+
+def paginated_response(items, pagination, **extra):
+    """生成统一分页响应"""
+    resp = {"success": True, "data": items, "pagination": pagination}
+    resp.update(extra)
+    return resp

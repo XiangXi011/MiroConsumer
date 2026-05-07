@@ -34,6 +34,7 @@ class RunController:
         reasoning_engine: Any,
         quality_checker: Any,
         channel_runtime: ConsumerChannelRuntime,
+        dry_run: bool = False,
     ):
         self.store = store
         self.population_factory = population_factory
@@ -42,6 +43,7 @@ class RunController:
         self.reasoning_engine = reasoning_engine
         self.quality_checker = quality_checker
         self.channel_runtime = channel_runtime
+        self.dry_run = dry_run
         self.runtime_control = RuntimeControlLayer(EarlyStopConfig(
             enabled=True, patience=3, min_rounds=3,
             event_threshold=5, attitude_change_threshold=0.01,
@@ -56,6 +58,9 @@ class RunController:
         brief_context: Mapping[str, Any],
         research_findings: Iterable[Any],
     ) -> Dict[str, Any]:
+        if self.dry_run:
+            return self._dry_run_preview(simulation_id, config, persona_pack, brief_context)
+
         started_at = datetime.now().isoformat()
         self.store.ensure_started(simulation_id)
         research_findings_list = list(research_findings or [])
@@ -260,6 +265,36 @@ class RunController:
         )
 
         return SocietyReportAdapter(base_dir=self.store.base_dir).build_report_context(simulation_id)
+
+    def _dry_run_preview(
+        self,
+        simulation_id: str,
+        config: ConsumerSocietyRunConfig,
+        persona_pack: Iterable[Mapping[str, Any]],
+        brief_context: Mapping[str, Any],
+    ) -> Dict[str, Any]:
+        """快速预览：只执行2轮，不调用LLM"""
+        personas = list(persona_pack) if persona_pack else []
+        population = self.population_factory.build_population(personas[:5], config)
+        graph_preview = {
+            "nodes": len(population),
+            "edges": max(0, len(population) * (len(population) - 1) // 4),
+        }
+        return {
+            "dry_run": True,
+            "simulation_id": simulation_id,
+            "preview_rounds": 2,
+            "estimated_duration": "2 minutes",
+            "mode": config.mode,
+            "persona_preview": [
+                getattr(p, "to_prompt_description", lambda: str(p))()
+                for p in population[:5]
+            ],
+            "graph_preview": graph_preview,
+            "target_population_size": config.target_population_size,
+            "max_rounds": config.max_rounds,
+            "enabled_channels": list(config.enabled_channels),
+        }
 
     def resume_from_checkpoint(self, round_id: int = -1):
         """Resume simulation from a saved checkpoint."""

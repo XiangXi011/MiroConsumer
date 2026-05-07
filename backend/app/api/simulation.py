@@ -23,6 +23,14 @@ from ..services.application.simulation_app_service import SimulationAppService
 from ..services.application.branch_app_service import BranchAppService
 from ..services.application.consumer_app_service import ConsumerAppService
 from ..contracts.errors import ConcurrencyConflictError
+from ..contracts.simulation_contracts import (
+    CreateSimulationRequest,
+    ExportRequest,
+    PrepareSimulationRequest,
+    StartSimulationRequest,
+    StopSimulationRequest,
+)
+from pydantic import ValidationError as PydanticValidationError
 from ..auth.middleware import require_permission
 from ..middleware.rate_limiter import export_rate_limit
 
@@ -224,7 +232,13 @@ def create_simulation():
         }
     """
     try:
-        data = request.get_json() or {}
+        raw_data = request.get_json() or {}
+
+        try:
+            validated = CreateSimulationRequest(**raw_data)
+            data = validated.model_dump()
+        except PydanticValidationError as e:
+            return jsonify({"success": False, "error": "VALIDATION_ERROR", "details": e.errors()}), 400
 
         errors = validate_simulation_params(data)
         if errors:
@@ -301,7 +315,13 @@ def prepare_simulation():
         }
     """
     try:
-        data = request.get_json() or {}
+        raw_data = request.get_json() or {}
+
+        try:
+            validated = PrepareSimulationRequest(**raw_data)
+            data = validated.model_dump()
+        except PydanticValidationError as e:
+            return jsonify({"success": False, "error": "VALIDATION_ERROR", "details": e.errors()}), 400
 
         simulation_id = data.get('simulation_id')
         if not simulation_id:
@@ -375,7 +395,11 @@ def get_simulation(simulation_id: str):
 @export_rate_limit
 def export_simulation(simulation_id):
     """导出仿真结果"""
-    format_type = request.args.get('format', 'json')  # json/csv
+    try:
+        validated = ExportRequest(format=request.args.get('format', 'json'))
+    except PydanticValidationError as e:
+        return jsonify({"success": False, "error": "VALIDATION_ERROR", "details": e.errors()}), 400
+    format_type = validated.format
 
     manager = SimulationManager()
     state = manager.get_simulation(simulation_id)
@@ -1225,7 +1249,13 @@ def start_simulation():
         }
     """
     try:
-        data = request.get_json() or {}
+        raw_data = request.get_json() or {}
+
+        try:
+            validated = StartSimulationRequest(**raw_data)
+            data = validated.model_dump()
+        except PydanticValidationError as e:
+            return jsonify({"success": False, "error": "VALIDATION_ERROR", "details": e.errors()}), 400
 
         simulation_id = data.get('simulation_id')
         if not simulation_id:
@@ -1269,15 +1299,21 @@ def stop_simulation():
         }
     """
     try:
-        data = request.get_json() or {}
-        
+        raw_data = request.get_json() or {}
+
+        try:
+            validated = StopSimulationRequest(**raw_data)
+            data = validated.model_dump()
+        except PydanticValidationError as e:
+            return jsonify({"success": False, "error": "VALIDATION_ERROR", "details": e.errors()}), 400
+
         simulation_id = data.get('simulation_id')
         if not simulation_id:
             return jsonify({
                 "success": False,
                 "error": t('api.requireSimulationId')
             }), 400
-        
+
         run_state = SimulationRunner.stop_simulation(simulation_id)
         
         # 更新模拟状态
