@@ -1,5 +1,6 @@
 """认证 API 路由"""
 from flask import Blueprint, request, jsonify, g
+from ..utils.request_validator import safe_get_json
 from .models import User, APIKey, generate_api_key, ROLE_PERMISSIONS
 from .middleware import register_user, register_api_key, create_jwt_token, require_permission
 import secrets
@@ -13,7 +14,8 @@ _api_keys_db = {}
 
 @auth_bp.route('/register', methods=['POST'])
 def register():
-    data = request.get_json() or {}
+    data = safe_get_json()
+    if isinstance(data, tuple): return data
     username = data.get('username')
     email = data.get('email')
     role = data.get('role', 'researcher')
@@ -39,7 +41,8 @@ def register():
 
 @auth_bp.route('/login', methods=['POST'])
 def login():
-    data = request.get_json() or {}
+    data = safe_get_json()
+    if isinstance(data, tuple): return data
     user_id = data.get('user_id')
     user = _users_db.get(user_id)
 
@@ -53,7 +56,8 @@ def login():
 @auth_bp.route('/api-keys', methods=['POST'])
 @require_permission('admin.manage_users')
 def create_api_key():
-    data = request.get_json() or {}
+    data = safe_get_json()
+    if isinstance(data, tuple): return data
     user_id = data.get('user_id', g.current_user.user_id)
     scopes = set(data.get('scopes', []))
 

@@ -11,6 +11,7 @@ from . import report_bp, api_error_payload
 from ..config import Config
 from ..services.report_agent import ReportManager
 from ..utils.logger import get_logger
+from ..utils.request_validator import safe_get_json
 from ..utils.locale import t
 from ..utils.disclaimer import REPORT_DISCLAIMER, get_methodology_limits
 from ..services.application.report_app_service import ReportAppService
@@ -103,7 +104,8 @@ def generate_report():
         }
     """
     try:
-        data = request.get_json() or {}
+        data = safe_get_json()
+        if isinstance(data, tuple): return data
 
         simulation_id = data.get('simulation_id')
         if not simulation_id:
@@ -152,7 +154,8 @@ def get_generate_status():
         }
     """
     try:
-        data = request.get_json() or {}
+        data = safe_get_json()
+        if isinstance(data, tuple): return data
 
         task_id = data.get('task_id')
         simulation_id = data.get('simulation_id')
@@ -423,7 +426,8 @@ def chat_with_report_agent():
         }
     """
     try:
-        data = request.get_json() or {}
+        data = safe_get_json()
+        if isinstance(data, tuple): return data
 
         simulation_id = data.get('simulation_id')
         message = data.get('message')
@@ -790,7 +794,8 @@ def search_graph_tool():
         }
     """
     try:
-        data = request.get_json() or {}
+        data = safe_get_json()
+        if isinstance(data, tuple): return data
 
         graph_id = data.get('graph_id')
         query = data.get('query')
@@ -832,7 +837,8 @@ def get_graph_statistics_tool():
         }
     """
     try:
-        data = request.get_json() or {}
+        data = safe_get_json()
+        if isinstance(data, tuple): return data
 
         graph_id = data.get('graph_id')
 
@@ -878,7 +884,8 @@ def export_research_asset():
         { "success": true, "data": assetPack }
     """
     try:
-        data = request.get_json() or {}
+        data = safe_get_json()
+        if isinstance(data, tuple): return data
         project_id = data.get('project_id')
         simulation_id = data.get('simulation_id')
         branch_id = data.get('branch_id')
@@ -965,7 +972,8 @@ def create_comparison_snapshot():
         { "success": true, "data": comparisonSnapshot }
     """
     try:
-        data = request.get_json() or {}
+        data = safe_get_json()
+        if isinstance(data, tuple): return data
         snapshot = ComparisonAppService.create_comparison(data)
         return jsonify({"success": True, "data": snapshot})
 
@@ -1040,7 +1048,8 @@ def register_benchmark_route():
         { "success": true, "data": benchmark }
     """
     try:
-        data = request.get_json() or {}
+        data = safe_get_json()
+        if isinstance(data, tuple): return data
         result = BenchmarkAppService.register_benchmark(
             name=data.get("name"),
             source_pack_lineage=data.get("source_pack_lineage"),
@@ -1105,7 +1114,8 @@ def replay_benchmark_route(benchmark_id: str):
         { "success": true, "data": replayResult }
     """
     try:
-        data = request.get_json() or {}
+        data = safe_get_json()
+        if isinstance(data, tuple): return data
         report_context = data.get("report_context")
         if not report_context:
             return jsonify({"success": False, "error": "report_context is required"}), 400

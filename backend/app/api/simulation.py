@@ -15,6 +15,7 @@ from ..services.simulation_manager import SimulationManager, SimulationStatus
 from ..services.simulation_runner import SimulationRunner
 from ..services.consumer.society.state_store import SocietyStateStore
 from ..utils.logger import get_logger
+from ..utils.request_validator import safe_get_json
 from ..utils.locale import t
 from ..utils.validators import validate_simulation_params
 from ..utils.disclaimer import SIMULATION_DISCLAIMER
@@ -351,7 +352,8 @@ def prepare_simulation():
 def get_prepare_status():
     """查询准备任务进度"""
     try:
-        data = request.get_json() or {}
+        data = safe_get_json()
+        if isinstance(data, tuple): return data
         result = SimulationAppService.get_prepare_status(
             task_id=data.get('task_id'),
             simulation_id=data.get('simulation_id'),
@@ -801,7 +803,8 @@ def get_consumer_summary(simulation_id: str):
 def create_branch(simulation_id: str):
     """Create a new branch for a consumer simulation."""
     try:
-        data = request.get_json() or {}
+        data = safe_get_json()
+        if isinstance(data, tuple): return data
         result = BranchAppService.create_branch(
             simulation_id=simulation_id,
             name=data.get('name', ''),
@@ -854,7 +857,8 @@ def list_interventions_for_simulation(simulation_id: str):
 def add_intervention(simulation_id: str, branch_id: str):
     """Add an intervention to a branch."""
     try:
-        data = request.get_json() or {}
+        data = safe_get_json()
+        if isinstance(data, tuple): return data
         result = BranchAppService.add_intervention(
             simulation_id=simulation_id,
             branch_id=branch_id,
@@ -903,7 +907,7 @@ def get_branch_comparison(simulation_id: str, branch_id: str):
 def resume_branch(simulation_id: str, branch_id: str):
     """Run or resume a branch simulation (consumer_test only)."""
     try:
-        data = request.get_json(silent=True) or {}
+        data = safe_get_json(required=False)
         result = BranchAppService.resume_branch(
             simulation_id=simulation_id,
             branch_id=branch_id,
@@ -1169,7 +1173,8 @@ def generate_profiles():
         }
     """
     try:
-        data = request.get_json() or {}
+        data = safe_get_json()
+        if isinstance(data, tuple): return data
         
         graph_id = data.get('graph_id')
         if not graph_id:
@@ -1825,7 +1830,8 @@ def interview_agent():
         }
     """
     try:
-        data = request.get_json() or {}
+        data = safe_get_json()
+        if isinstance(data, tuple): return data
         
         simulation_id = data.get('simulation_id')
         agent_id = data.get('agent_id')
@@ -1943,7 +1949,8 @@ def interview_agents_batch():
         }
     """
     try:
-        data = request.get_json() or {}
+        data = safe_get_json()
+        if isinstance(data, tuple): return data
 
         simulation_id = data.get('simulation_id')
         interviews = data.get('interviews')
@@ -2066,7 +2073,8 @@ def interview_all_agents():
         }
     """
     try:
-        data = request.get_json() or {}
+        data = safe_get_json()
+        if isinstance(data, tuple): return data
 
         simulation_id = data.get('simulation_id')
         prompt = data.get('prompt')
@@ -2166,7 +2174,8 @@ def get_interview_history():
         }
     """
     try:
-        data = request.get_json() or {}
+        data = safe_get_json()
+        if isinstance(data, tuple): return data
         
         simulation_id = data.get('simulation_id')
         platform = data.get('platform')  # 不指定则返回两个平台的历史
@@ -2224,7 +2233,8 @@ def get_env_status():
         }
     """
     try:
-        data = request.get_json() or {}
+        data = safe_get_json()
+        if isinstance(data, tuple): return data
         
         simulation_id = data.get('simulation_id')
         
@@ -2287,7 +2297,8 @@ def close_simulation_env():
         }
     """
     try:
-        data = request.get_json() or {}
+        data = safe_get_json()
+        if isinstance(data, tuple): return data
         
         simulation_id = data.get('simulation_id')
         timeout = data.get('timeout', 30)

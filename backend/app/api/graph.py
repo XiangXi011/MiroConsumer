@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 from flask import request, jsonify
+from ..utils.request_validator import safe_get_json
 
 from . import graph_bp, api_error_payload
 from ..config import Config
@@ -457,7 +458,8 @@ def build_graph():
         logger.info("=== 开始构建图谱 ===")
 
         # 解析请求
-        data = request.get_json() or {}
+        data = safe_get_json()
+        if isinstance(data, tuple): return data
         project_id = data.get('project_id')
         logger.debug(f"请求参数: project_id={project_id}")
         

@@ -1,5 +1,8 @@
 """API输入校验函数"""
 
+from flask import jsonify
+from pydantic import BaseModel, ValidationError
+
 
 def validate_simulation_params(data: dict) -> list[str]:
     """校验仿真请求参数。
@@ -61,3 +64,20 @@ def validate_graph_data(data: dict) -> list[str]:
         errors.append("edges 必须是列表")
 
     return errors
+
+
+def validate_request(schema_class: type[BaseModel], raw_data: dict | None):
+    """Validate raw JSON data against a Pydantic schema.
+
+    Returns (validated_data_dict, None) on success.
+    Returns (None, flask_response_tuple) on validation failure.
+    """
+    raw = raw_data or {}
+    try:
+        validated = schema_class(**raw)
+        return validated.model_dump(), None
+    except ValidationError as e:
+        return None, (
+            jsonify({"success": False, "error": "VALIDATION_ERROR", "details": e.errors()}),
+            400,
+        )

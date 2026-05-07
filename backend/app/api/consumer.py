@@ -151,7 +151,8 @@ def create_branch(simulation_id: str):
         err = _check_simulation_tenant(simulation_id)
         if err:
             return err
-        data = request.get_json() or {}
+        data = safe_get_json()
+        if isinstance(data, tuple): return data
         result = BranchAppService.create_branch(
             simulation_id=simulation_id,
             name=data.get("name", ""),
@@ -211,7 +212,8 @@ def add_intervention(simulation_id: str, branch_id: str):
         err = _check_simulation_tenant(simulation_id)
         if err:
             return err
-        data = request.get_json() or {}
+        data = safe_get_json()
+        if isinstance(data, tuple): return data
         result = BranchAppService.add_intervention(
             simulation_id=simulation_id,
             branch_id=branch_id,
@@ -271,7 +273,7 @@ def resume_branch(simulation_id: str, branch_id: str):
         err = _check_simulation_tenant(simulation_id)
         if err:
             return err
-        data = request.get_json(silent=True) or {}
+        data = safe_get_json(required=False)
         result = BranchAppService.resume_branch(
             simulation_id=simulation_id,
             branch_id=branch_id,
@@ -307,7 +309,8 @@ def get_branch_run_status_route(simulation_id: str, branch_id: str):
 def create_comparison_snapshot():
     """Create a persisted comparison snapshot."""
     try:
-        data = request.get_json() or {}
+        data = safe_get_json()
+        if isinstance(data, tuple): return data
         snapshot = ComparisonAppService.create_comparison(data)
         return jsonify({"success": True, "data": snapshot})
     except ValueError as e:
@@ -354,7 +357,8 @@ def get_comparison_snapshot(comparison_id: str):
 def export_research_asset():
     """Export a research asset pack from a consumer simulation."""
     try:
-        data = request.get_json() or {}
+        data = safe_get_json()
+        if isinstance(data, tuple): return data
         project_id = data.get("project_id")
         simulation_id = data.get("simulation_id")
         branch_id = data.get("branch_id")
@@ -423,7 +427,8 @@ def run_consumer_research_action(simulation_id: str):
         err = _check_simulation_tenant(simulation_id)
         if err:
             return err
-        data = request.get_json() or {}
+        data = safe_get_json()
+        if isinstance(data, tuple): return data
         result = ConsumerResearchActionService.run_action(
             simulation_id=simulation_id,
             payload=data,
@@ -466,7 +471,8 @@ def run_consumer_interview(simulation_id: str):
         err = _check_simulation_tenant(simulation_id)
         if err:
             return err
-        data = request.get_json() or {}
+        data = safe_get_json()
+        if isinstance(data, tuple): return data
         result = ConsumerAppService.run_consumer_interview(simulation_id, data)
         return jsonify({"success": True, "data": result, "disclaimer": SIMULATION_DISCLAIMER})
     except ValueError as e:
@@ -483,7 +489,8 @@ def run_focus_group(simulation_id: str):
         err = _check_simulation_tenant(simulation_id)
         if err:
             return err
-        data = request.get_json() or {}
+        data = safe_get_json()
+        if isinstance(data, tuple): return data
         result = ConsumerAppService.run_focus_group(simulation_id, data)
         return jsonify({"success": True, "data": result, "disclaimer": SIMULATION_DISCLAIMER})
     except ValueError as e:
@@ -534,7 +541,7 @@ def get_run_estimate(simulation_id: str):
         err = _check_simulation_tenant(simulation_id)
         if err:
             return err
-        data = request.get_json(silent=True) or {}
+        data = safe_get_json(required=False)
         data["simulation_id"] = simulation_id
         result = SimulationAppService.estimate_run(data)
         return jsonify({"success": True, "data": result})
