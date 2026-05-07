@@ -41,6 +41,16 @@ class ExpressionEngine:
 
         return self._template_opinion(agent, choice, reasoning)
 
+    def generate_misread_variant(
+        self,
+        perception_state: Mapping[str, Any],
+    ) -> str | None:
+        """Generate a misread variant if the perception has confusion points."""
+        confusion_points = perception_state.get("confusion_points", [])
+        if confusion_points:
+            return f"消费者可能误解为: {confusion_points[0]}"
+        return None
+
     def generate_social_post(
         self,
         agent: ConsumerSocietyAgent,

@@ -27,6 +27,9 @@ class ExpressionOutput(BaseModel):
     sentiment: str = "neutral"
     channel: str = "general"
     generated_by: str = "llm"  # llm / fallback / template
+    misread_variant: Optional[str] = None  # 误解变体
+    first_person_voice: str = ""  # 第一人称表述
+    channel_style: str = "neutral"  # 渠道风格
 
 
 class CognitionResult(BaseModel):
@@ -38,3 +41,5 @@ class CognitionResult(BaseModel):
     reasoning_trace: Dict = Field(default_factory=dict)
     dimension_scores: Dict[str, float] = Field(default_factory=dict)
     persona_id: Optional[str] = None
+    input_span: Optional[str] = None  # 输入来源标识
+    memory_state: Optional[Dict] = None  # 记忆状态快照

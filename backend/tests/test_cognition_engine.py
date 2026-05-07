@@ -423,3 +423,93 @@ class TestConsumerCognitionEngine:
         result = engine.process_turn(agent, social_context={}, media_content={}, persona=persona_dict)
 
         assert result["reasoning_trace"]["persona_id"] == "p-dict"
+
+    def test_process_turn_reason_codes_non_empty(self):
+        """reason_codes is always a non-empty list."""
+        engine = ConsumerCognitionEngine()
+        agent = _make_agent()
+
+        result = engine.process_turn(agent, social_context={}, media_content={})
+
+        reason_codes = result["decision"]["reason_codes"]
+        assert isinstance(reason_codes, list)
+        assert len(reason_codes) > 0
+
+    def test_process_turn_reason_codes_high_trust(self):
+        """High trust produces 'high_trust' reason code."""
+        engine = ConsumerCognitionEngine()
+        agent = _make_agent(
+            trust_baseline=0.9, skepticism=0.1,
+            state={"trust": 0.9, "purchase_intent": 0.5, "awareness": 0.0},
+        )
+        social = _make_social_context(positive=5, negative=0)
+        media = _make_media_content(source_type="official")
+
+        result = engine.process_turn(agent, social_context=social, media_content=media)
+
+        assert "high_trust" in result["decision"]["reason_codes"]
+
+    def test_process_turn_misread_variant_with_confusion(self):
+        """misread_variant is set when perception has confusion_points."""
+        engine = ConsumerCognitionEngine()
+        agent = _make_agent(skepticism=0.9)
+        # Conflicting signals to generate confusion
+        social = _make_social_context(positive=1, negative=3)
+        media = _make_media_content(source_type="advertising")
+
+        result = engine.process_turn(agent, social_context=social, media_content=media)
+
+        confusion = result["perception"]["confusion_points"]
+        if confusion:
+            assert result["expression"]["misread_variant"] is not None
+            assert "误解" in result["expression"]["misread_variant"]
+
+    def test_process_turn_misread_variant_no_confusion(self):
+        """misread_variant is None when no confusion_points."""
+        engine = ConsumerCognitionEngine()
+        agent = _make_agent(skepticism=0.1)
+        social = _make_social_context(positive=3, negative=0)
+
+        result = engine.process_turn(agent, social_context=social, media_content={})
+
+        if not result["perception"]["confusion_points"]:
+            assert result["expression"]["misread_variant"] is None
+
+    def test_process_turn_input_span_present(self):
+        """input_span is populated in the result."""
+        engine = ConsumerCognitionEngine()
+        agent = _make_agent(agent_id="span-test")
+
+        result = engine.process_turn(agent, social_context={}, media_content={})
+
+        assert "input_span" in result
+        assert result["input_span"] is not None
+        assert "span-test" in result["input_span"]
+
+    def test_process_turn_memory_state_present(self):
+        """memory_state is populated with trust, awareness, social_pressure."""
+        engine = ConsumerCognitionEngine()
+        agent = _make_agent()
+
+        result = engine.process_turn(agent, social_context={}, media_content={})
+
+        assert "memory_state" in result
+        assert result["memory_state"] is not None
+        assert "trust" in result["memory_state"]
+        assert "awareness" in result["memory_state"]
+        assert "social_pressure" in result["memory_state"]
+
+    def test_process_turn_channel_style(self):
+        """channel_style reflects media source type."""
+        engine = ConsumerCognitionEngine()
+        agent = _make_agent()
+
+        result_official = engine.process_turn(
+            agent, social_context={}, media_content=_make_media_content(source_type="official"),
+        )
+        assert result_official["expression"]["channel_style"] == "formal"
+
+        result_casual = engine.process_turn(
+            agent, social_context={}, media_content={},
+        )
+        assert result_casual["expression"]["channel_style"] == "casual"

@@ -101,11 +101,30 @@ class DecisionEngine:
             f"{best['rationale']}"
         )
 
+        # Generate reason_codes based on perception scores
+        trust_score = float(perception_state.get("trust", 0.5))
+        price_score = float(perception_state.get("persona", {}).get("price_sensitivity", 0.5))
+        risk_score = (1.0 - trust_score + (1.0 - float(perception_state.get("media", {}).get("credibility", 0.5)))) / 2.0
+        social_influence = float(perception_state.get("social", {}).get("social_pressure", 0.0))
+
+        reason_codes: List[str] = []
+        if trust_score > 0.7:
+            reason_codes.append("high_trust")
+        if price_score > 0.7:
+            reason_codes.append("price_appealing")
+        if risk_score > 0.6:
+            reason_codes.append("risk_concern")
+        if social_influence > 0.5:
+            reason_codes.append("social_influenced")
+        if not reason_codes:
+            reason_codes.append("neutral_assessment")
+
         result: Dict[str, Any] = {
             "choice": best["action_id"],
             "reasoning": reasoning,
             "scores": evaluated,
             "confidence": confidence,
+            "reason_codes": reason_codes,
         }
 
         # Compute dimension alignment scores when persona is available

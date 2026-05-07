@@ -79,6 +79,10 @@ class ConsumerCognitionEngine:
         formatted_opinion = self.expression.format_response(agent, opinion)
         formatted_post = self.expression.format_response(agent, social_post)
 
+        # --- Expression enrichment ---
+        misread_variant = self.expression.generate_misread_variant(perception_state)
+        channel_style = "formal" if media_content and media_content.get("source_type") == "official" else "casual"
+
         # --- Reasoning Trace ---
         reasoning_trace = {
             "perception_summary": str(perception_state),
@@ -111,7 +115,18 @@ class ConsumerCognitionEngine:
             paraphrase=formatted_post,
             sentiment=decision.get("sentiment", "neutral"),
             channel=decision.get("channel", "general"),
+            misread_variant=misread_variant,
+            first_person_voice=formatted_opinion,
+            channel_style=channel_style,
         )
+
+        # --- Traceability fields ---
+        input_span = f"{agent.agent_id}:r{decision.get('round_id', 0)}"
+        memory_state = {
+            "trust": perception_state.get("trust", agent.trust_baseline),
+            "awareness": perception_state.get("awareness", 0.0),
+            "social_pressure": perception_state.get("social", {}).get("social_pressure", 0.0),
+        }
 
         result = CognitionResult(
             agent_id=str(agent.agent_id),
@@ -122,6 +137,8 @@ class ConsumerCognitionEngine:
             reasoning_trace=reasoning_trace,
             dimension_scores=decision.get("dimension_scores", {}),
             persona_id=persona.persona_id if persona else None,
+            input_span=input_span,
+            memory_state=memory_state,
         )
 
         return result.model_dump()
