@@ -15,6 +15,24 @@ from flask_cors import CORS
 from .config import Config
 from .utils.logger import setup_logger, get_logger
 
+SENSITIVE_FIELDS = {'api_key', 'token', 'secret', 'password', 'concept', 'price',
+                    'claims', 'consumer_data', 'uploaded_text', 'LLM_API_KEY'}
+
+
+def _sanitize_log_data(data, max_length=200):
+    """脱敏日志数据"""
+    if not isinstance(data, dict):
+        return str(data)[:max_length]
+    sanitized = {}
+    for k, v in data.items():
+        if any(s in k.lower() for s in SENSITIVE_FIELDS):
+            sanitized[k] = '***REDACTED***'
+        elif isinstance(v, str) and len(v) > 100:
+            sanitized[k] = v[:50] + '...[truncated]'
+        else:
+            sanitized[k] = v
+    return sanitized
+
 
 def create_app(config_class=Config):
     """Flask应用工厂函数"""
@@ -71,7 +89,7 @@ def create_app(config_class=Config):
         logger = get_logger('miroconsumer.request')
         logger.debug(f"请求: {request.method} {request.path}")
         if request.content_type and 'json' in request.content_type:
-            logger.debug(f"请求体: {request.get_json(silent=True)}")
+            logger.debug(f"请求体: {_sanitize_log_data(request.get_json(silent=True))}")
     
     @app.after_request
     def log_response(response):

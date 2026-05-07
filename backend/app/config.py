@@ -29,6 +29,9 @@ class _ClassProperty:
         return self.fget(cls)
 
 
+WEAK_SECRET_KEYS = {'dev-only-change-me', 'dev-secret', 'secret', 'change-me', 'miroconsumer'}
+
+
 class Config:
     """Flask配置类"""
 
@@ -248,8 +251,14 @@ class Config:
         if queue_backend == 'rq' and not cls.REDIS_URL:
             errors.append("REDIS_URL is required when QUEUE_BACKEND=rq")
 
-        if not cls.DEBUG and not cls.SECRET_KEY:
-            errors.append("SECRET_KEY is required in production")
+        if not cls.DEBUG:
+            sk = cls.SECRET_KEY
+            if not sk:
+                errors.append("SECRET_KEY is required in production")
+            elif sk in WEAK_SECRET_KEYS:
+                errors.append("SECRET_KEY must not use a default/weak value")
+            elif len(sk) < 32:
+                errors.append(f"SECRET_KEY must be >= 32 bytes, got {len(sk)}")
 
         storage_backend = cls.STORAGE_BACKEND
         valid_storage_backends = ('local', 's3')

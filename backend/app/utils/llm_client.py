@@ -15,6 +15,7 @@ from openai import OpenAI
 
 from ..config import Config
 from .llm_governance import validate_llm_output
+from .llm_governor import governor
 
 logger = logging.getLogger(__name__)
 
@@ -64,29 +65,51 @@ class LLMClient:
         Returns:
             模型响应文本
         """
+        # Governor: 预算检查
+        tenant_id = "default"
+        if not governor.check_budget(tenant_id):
+            raise RuntimeError(f"LLM budget exhausted for tenant {tenant_id}")
+
+        # Governor: 熔断检查
+        service = "llm"
+        if not governor.check_circuit(service):
+            raise RuntimeError(f"LLM circuit breaker open for service {service}")
+
         kwargs = {
             "model": self.model,
             "messages": messages,
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
-        
+
         if response_format:
             kwargs["response_format"] = response_format
         request_timeout = timeout if timeout is not None else self.request_timeout
         if request_timeout is not None:
             kwargs["timeout"] = request_timeout
-        
+
         start_time = time.time()
         prompt_hash = hashlib.md5(str(messages).encode()).hexdigest()[:8]
-        response = self.client.chat.completions.create(**kwargs)
+        try:
+            response = self.client.chat.completions.create(**kwargs)
+        except Exception:
+            governor.record_circuit_failure(service)
+            raise
         elapsed = time.time() - start_time
         content = response.choices[0].message.content
         # 部分模型（如MiniMax M2.5）会在content中包含<think>思考内容，需要移除
         content = re.sub(r'<think>[\s\S]*?</think>', '', content).strip()
 
-        # 记录LLM调用详情
+        # Governor: 记录成功
+        governor.record_circuit_success(service)
         usage = response.usage
+        if usage:
+            total_tokens = usage.prompt_tokens + usage.completion_tokens
+            # 粗略成本估算: $0.002 / 1K tokens
+            cost = total_tokens * 0.002 / 1000
+            governor.record_cost(tenant_id, total_tokens, cost)
+
+        # 记录LLM调用详情
         tokens_str = f"prompt={usage.prompt_tokens},completion={usage.completion_tokens}" if usage else "N/A"
         logger.info(
             "LLM调用: model=%s, prompt_hash=%s, tokens=%s, elapsed=%.2fs",

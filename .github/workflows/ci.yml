@@ -98,3 +98,25 @@ jobs:
           uv run --python 3.12 pytest
           tests/e2e/test_consumer_concept_test_golden_flow.py
           tests/e2e/test_consumer_golden_cases.py
+
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install pip-audit
+
+      - name: Run pip-audit
+        run: pip-audit
+
+      - name: Check for secrets
+        run: |
+          grep -r "SECRET_KEY=dev" .env* && echo "WARNING: Default secret key found" && exit 1 || true
