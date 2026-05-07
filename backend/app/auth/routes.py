@@ -78,6 +78,18 @@ def me():
     }})
 
 
+@auth_bp.route('/admin/llm-cost', methods=['GET'])
+@require_permission('admin.manage_users')
+def llm_cost_dashboard():
+    """管理员 LLM 成本看板"""
+    from ..utils.llm_governor import governor
+
+    tenant_id = request.args.get('tenant_id', g.current_user.tenant_id)
+    stats = governor.get_stats(tenant_id)
+
+    return jsonify({"success": True, "data": stats})
+
+
 def clear_auth_routes_state():
     """清除路由状态（供测试使用）"""
     _users_db.clear()

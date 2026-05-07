@@ -60,18 +60,18 @@ class TestLLMGovernor:
 
     def test_check_budget_pass(self):
         gov = LLMGovernor()
-        gov.set_budget("t1", 100)
+        gov.set_budget(tenant_id="t1", limit=100)
         assert gov.check_budget("t1") is True
 
     def test_check_budget_reject_after_exhaustion(self):
         gov = LLMGovernor()
-        gov.set_budget("t1", 10)
+        gov.set_budget(tenant_id="t1", limit=10)
         gov.record_cost("t1", tokens=100, cost=10.0)
         assert gov.check_budget("t1") is False
 
     def test_budget_accumulation(self):
         gov = LLMGovernor()
-        gov.set_budget("t1", 100)
+        gov.set_budget(tenant_id="t1", limit=100)
         gov.record_cost("t1", tokens=50, cost=40.0)
         assert gov.check_budget("t1") is True
         gov.record_cost("t1", tokens=50, cost=40.0)
@@ -102,9 +102,9 @@ class TestLLMGovernor:
 
     def test_get_stats(self):
         gov = LLMGovernor()
-        gov.set_budget("t1", 200)
-        gov.record_cost("t1", tokens=50, cost=30.0)
-        stats = gov.get_stats("t1")
+        gov.set_budget(tenant_id="t1", limit=200)
+        gov.record_cost(tenant_id="t1", tokens=50, cost=30.0)
+        stats = gov.get_stats(tenant_id="t1")
         assert stats["budget_limit"] == 200
         assert stats["budget_used"] == 30.0
         assert stats["budget_remaining"] == 170.0
@@ -114,3 +114,49 @@ class TestLLMGovernor:
         gov = LLMGovernor()
         # 默认 budget limit = 500
         assert gov.check_budget("unknown_tenant") is True
+
+    def test_per_user_budget(self):
+        gov = LLMGovernor()
+        gov.set_budget(user_id="u1", limit=50)
+        assert gov.check_budget(user_id="u1") is True
+        gov.record_cost(user_id="u1", tokens=100, cost=50.0)
+        assert gov.check_budget(user_id="u1") is False
+        # 其他 user 不受影响
+        assert gov.check_budget(user_id="u2") is True
+
+    def test_per_project_budget(self):
+        gov = LLMGovernor()
+        gov.set_budget(project_id="p1", limit=30)
+        assert gov.check_budget(project_id="p1") is True
+        gov.record_cost(project_id="p1", tokens=100, cost=30.0)
+        assert gov.check_budget(project_id="p1") is False
+        # 其他 project 不受影响
+        assert gov.check_budget(project_id="p2") is True
+
+    def test_multi_dimension_budget_hierarchy(self):
+        """tenant / user / project 三个维度独立检查"""
+        gov = LLMGovernor()
+        gov.set_budget(tenant_id="t1", limit=100)
+        gov.set_budget(user_id="u1", limit=50)
+        gov.set_budget(project_id="p1", limit=20)
+
+        # 未超限，全部通过
+        assert gov.check_budget(tenant_id="t1", user_id="u1", project_id="p1") is True
+
+        # project 维度超限
+        gov.record_cost(project_id="p1", tokens=100, cost=20.0)
+        assert gov.check_budget(tenant_id="t1", user_id="u1", project_id="p1") is False
+        # 仅检查 tenant + user 仍通过
+        assert gov.check_budget(tenant_id="t1", user_id="u1") is True
+
+    def test_record_cost_updates_all_dimensions(self):
+        """record_cost 应同时更新所有维度的 used"""
+        gov = LLMGovernor()
+        gov.set_budget(tenant_id="t1", limit=200)
+        gov.set_budget(user_id="u1", limit=100)
+        gov.record_cost(tenant_id="t1", user_id="u1", tokens=50, cost=40.0)
+
+        stats_t = gov.get_stats(tenant_id="t1")
+        stats_u = gov.get_stats(user_id="u1")
+        assert stats_t["budget_used"] == 40.0
+        assert stats_u["budget_used"] == 40.0

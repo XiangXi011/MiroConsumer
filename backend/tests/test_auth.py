@@ -289,6 +289,44 @@ class TestModels:
 
 # ============== 注册验证测试 ==============
 
+# ============== 管理员 LLM 成本看板测试 ==============
+
+class TestAdminLLMCost:
+    def test_admin_can_access_llm_cost(self, auth_client, admin_user):
+        """admin 可以访问 LLM 成本看板"""
+        token = _get_jwt(auth_client, admin_user['user_id'])
+        resp = auth_client.get('/api/auth/admin/llm-cost', headers={
+            'Authorization': f'Bearer {token}'
+        })
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data['success'] is True
+        assert 'budget_limit' in data['data']
+        assert 'budget_used' in data['data']
+        assert 'budget_remaining' in data['data']
+
+    def test_viewer_cannot_access_llm_cost(self, auth_client, viewer_user):
+        """viewer 不能访问 LLM 成本看板"""
+        token = _get_jwt(auth_client, viewer_user['user_id'])
+        resp = auth_client.get('/api/auth/admin/llm-cost', headers={
+            'Authorization': f'Bearer {token}'
+        })
+        assert resp.status_code == 403
+
+    def test_researcher_cannot_access_llm_cost(self, auth_client, registered_user):
+        """researcher 不能访问 LLM 成本看板"""
+        token = _get_jwt(auth_client, registered_user['user_id'])
+        resp = auth_client.get('/api/auth/admin/llm-cost', headers={
+            'Authorization': f'Bearer {token}'
+        })
+        assert resp.status_code == 403
+
+    def test_unauthenticated_cannot_access_llm_cost(self, auth_client):
+        """未认证不能访问 LLM 成本看板"""
+        resp = auth_client.get('/api/auth/admin/llm-cost')
+        assert resp.status_code == 401
+
+
 class TestRegistration:
     def test_register_requires_username_and_email(self, auth_client):
         """注册需要 username 和 email"""
