@@ -3,13 +3,14 @@ MiroConsumer Backend - Flask应用工厂
 """
 
 import os
+import uuid
 import warnings
 
 # 抑制 multiprocessing resource_tracker 的警告（来自第三方库如 transformers）
 # 需要在所有其他导入之前设置
 warnings.filterwarnings("ignore", message=".*resource_tracker.*")
 
-from flask import Flask, request
+from flask import Flask, g, request
 from flask_cors import CORS
 
 from .config import Config
@@ -94,11 +95,12 @@ def create_app(config_class=Config):
     # 请求日志中间件
     @app.before_request
     def log_request():
+        g.request_id = request.headers.get('X-Request-ID', str(uuid.uuid4())[:8])
         logger = get_logger('miroconsumer.request')
         logger.debug(f"请求: {request.method} {request.path}")
         if request.content_type and 'json' in request.content_type:
             logger.debug(f"请求体: {_sanitize_log_data(request.get_json(silent=True))}")
-    
+
     @app.after_request
     def log_response(response):
         logger = get_logger('miroconsumer.request')
@@ -109,6 +111,11 @@ def create_app(config_class=Config):
         response.headers['X-XSS-Protection'] = '1; mode=block'
         response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
         response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
+        # Inject request_id into response
+        response.headers['X-Request-ID'] = getattr(g, 'request_id', 'unknown')
+        # Record metrics
+        from .utils.metrics import record_request
+        record_request(response.status_code)
         return response
     
     # 注册蓝图
@@ -120,6 +127,26 @@ def create_app(config_class=Config):
     app.register_blueprint(report_bp, url_prefix='/api/report')
     app.register_blueprint(consumer_bp, url_prefix='/api/consumer')
     
+    # Sentry error tracking (configurable)
+    sentry_dsn = os.environ.get('SENTRY_DSN')
+    if sentry_dsn:
+        try:
+            import sentry_sdk
+            from sentry_sdk.integrations.flask import FlaskIntegration
+            sentry_sdk.init(
+                dsn=sentry_dsn,
+                integrations=[FlaskIntegration()],
+                traces_sample_rate=0.1,
+                environment=os.environ.get('FLASK_ENV', 'production'),
+            )
+            logger.info("Sentry enabled")
+        except ImportError:
+            logger.warning("sentry-sdk not installed, skipping Sentry integration")
+
+    # 注册 metrics 蓝图
+    from .utils.metrics import metrics_bp
+    app.register_blueprint(metrics_bp)
+
     # 健康检查
     @app.route('/health')
     def health():

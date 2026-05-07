@@ -59,6 +59,7 @@ class Config:
     LOG_FORMAT = os.environ.get('LOG_FORMAT', 'json')
     SECURITY_HEADERS_ENABLED = os.environ.get('SECURITY_HEADERS_ENABLED', 'true').lower() == 'true'
     ENABLE_REASONING_TRACE = os.environ.get('ENABLE_REASONING_TRACE', 'true').lower() == 'true'
+    SENTRY_DSN = os.environ.get('SENTRY_DSN', '')
     UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), '../uploads')
     ALLOWED_EXTENSIONS = {'pdf', 'md', 'txt', 'markdown'}
 

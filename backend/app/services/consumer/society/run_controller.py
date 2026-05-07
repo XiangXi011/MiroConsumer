@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Any, Dict, Iterable, List, Mapping
 
 from ....utils.atomic_json import atomic_write_json
+from ....utils.metrics import record_simulation_run, set_active_runs
 from ..reasoning_trace import ReasoningTrace, write_reasoning_traces
 from .agent_step_executor import AgentStepExecutor
 from .budget_manager import SocietyBudgetManager
@@ -61,6 +62,8 @@ class RunController:
         if self.dry_run:
             return self._dry_run_preview(simulation_id, config, persona_pack, brief_context)
 
+        record_simulation_run()
+        set_active_runs(1)
         started_at = datetime.now().isoformat()
         self.store.ensure_started(simulation_id)
         research_findings_list = list(research_findings or [])
@@ -279,6 +282,7 @@ class RunController:
             failed_count=failed_count,
         )
 
+        set_active_runs(0)
         return SocietyReportAdapter(base_dir=self.store.base_dir).build_report_context(simulation_id)
 
     def _dry_run_preview(
