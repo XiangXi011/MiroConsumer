@@ -5,7 +5,7 @@ Report API路由
 
 import os
 import tempfile
-from flask import request, jsonify, send_file
+from flask import request, jsonify, send_file, g
 
 from . import report_bp, api_error_payload
 from ..config import Config
@@ -210,6 +210,14 @@ def get_report(report_id: str):
                 "error": t('api.reportNotFound', id=report_id)
             }), 404
 
+        # 租户隔离检查
+        current_tenant = getattr(g, 'current_tenant', None)
+        if current_tenant and report.simulation_id:
+            from ..services.simulation_manager import SimulationManager
+            sim = SimulationManager().get_simulation(report.simulation_id)
+            if sim and sim.tenant_id and sim.tenant_id != current_tenant:
+                return jsonify({"success": False, "error": "FORBIDDEN", "message": "Access denied: tenant mismatch"}), 403
+
         methodology_limits = _build_methodology_limits(report.simulation_id)
 
         return jsonify({
@@ -290,6 +298,18 @@ def list_reports():
             simulation_id=simulation_id,
             limit=limit
         )
+
+        # 租户过滤
+        current_tenant = getattr(g, 'current_tenant', None)
+        if current_tenant and reports:
+            from ..services.simulation_manager import SimulationManager
+            sim_manager = SimulationManager()
+            filtered = []
+            for r in reports:
+                sim = sim_manager.get_simulation(r.simulation_id)
+                if sim and (not sim.tenant_id or sim.tenant_id == current_tenant):
+                    filtered.append(r)
+            reports = filtered
 
         report_dicts = []
         for r in reports:

@@ -4,7 +4,7 @@ Step2: Zep实体读取与过滤、OASIS模拟准备与运行（全程自动化�
 """
 
 import os
-from flask import request, jsonify, send_file
+from flask import request, jsonify, send_file, g
 
 from . import simulation_bp, api_error_payload
 from ..config import Config
@@ -248,6 +248,9 @@ def create_simulation():
                 "details": errors
             }), 400
 
+        # 注入租户ID
+        data['tenant_id'] = getattr(g, 'current_tenant', 'default') or 'default'
+
         # 幂等检查：同 project_id 已有仿真则直接返回
         project_id = data.get('project_id', '')
         if project_id:
@@ -373,7 +376,13 @@ def get_simulation(simulation_id: str):
                 "success": False,
                 "error": t('api.simulationNotFound', id=simulation_id)
             }), 404
-        
+
+        # 租户隔离检查
+        if state.tenant_id:
+            current_tenant = getattr(g, 'current_tenant', None)
+            if current_tenant and state.tenant_id != current_tenant:
+                return jsonify({"success": False, "error": "FORBIDDEN", "message": "Access denied: tenant mismatch"}), 403
+
         result = state.to_dict()
         
         # 如果模拟已准备好，附加运行说明
@@ -435,7 +444,12 @@ def list_simulations():
         
         manager = SimulationManager()
         simulations = manager.list_simulations(project_id=project_id)
-        
+
+        # 租户过滤
+        current_tenant = getattr(g, 'current_tenant', None)
+        if current_tenant and simulations:
+            simulations = [s for s in simulations if getattr(s, 'tenant_id', None) == current_tenant or not getattr(s, 'tenant_id', None)]
+
         return jsonify({
             "success": True,
             "data": [s.to_dict() for s in simulations],
@@ -546,7 +560,12 @@ def get_simulation_history():
         
         manager = SimulationManager()
         simulations = manager.list_simulations()[:limit]
-        
+
+        # 租户过滤
+        current_tenant = getattr(g, 'current_tenant', None)
+        if current_tenant and simulations:
+            simulations = [s for s in simulations if getattr(s, 'tenant_id', None) == current_tenant or not getattr(s, 'tenant_id', None)]
+
         # 增强模拟数据，只从 Simulation 文件读取
         enriched_simulations = []
         for sim in simulations:

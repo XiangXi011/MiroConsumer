@@ -193,6 +193,7 @@ class FilesystemSimulationRepository(SimulationRepository):
             enable_twitter=enable_twitter,
             enable_reddit=enable_reddit,
             status=SimulationStatus.CREATED,
+            tenant_id=tenant_id,
         )
         self.save_simulation(state)
         return state

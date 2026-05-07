@@ -8,7 +8,7 @@ thin compatibility shims that delegate to the same consumer app service.
 New canonical consumer URLs are prefixed with /api/consumer/.
 """
 
-from flask import jsonify, request
+from flask import jsonify, request, g
 
 from . import consumer_bp, api_error_payload
 from ..services.application.consumer_app_service import ConsumerAppService
@@ -26,8 +26,20 @@ from ..utils.logger import get_logger
 from ..utils.disclaimer import SIMULATION_DISCLAIMER
 from ..auth.middleware import require_permission
 from ..middleware.rate_limiter import export_rate_limit
+from ..services.simulation_manager import SimulationManager
 
 logger = get_logger("miroconsumer.api.consumer")
+
+
+def _check_simulation_tenant(simulation_id: str):
+    """Check tenant access for a simulation. Returns error response or None."""
+    current_tenant = getattr(g, 'current_tenant', None)
+    if not current_tenant:
+        return None
+    sim = SimulationManager().get_simulation(simulation_id)
+    if sim and sim.tenant_id and sim.tenant_id != current_tenant:
+        return jsonify({"success": False, "error": "FORBIDDEN", "message": "Access denied: tenant mismatch"}), 403
+    return None
 
 
 def _status_from_value_error(e: ValueError) -> int:
@@ -64,6 +76,9 @@ def _value_error_response(e: ValueError):
 def get_consumer_summary(simulation_id: str):
     """Build and return the consumer propagation summary for a simulation."""
     try:
+        err = _check_simulation_tenant(simulation_id)
+        if err:
+            return err
         data = ConsumerAppService.get_consumer_summary(simulation_id)
         return jsonify({"success": True, "data": data, "disclaimer": SIMULATION_DISCLAIMER})
     except ValueError as e:
@@ -82,6 +97,9 @@ def get_consumer_summary(simulation_id: str):
 def get_channel_summary(simulation_id: str):
     """Return Phase 6H channel metrics and report context fields."""
     try:
+        err = _check_simulation_tenant(simulation_id)
+        if err:
+            return err
         data = ConsumerAppService.get_channel_summary(simulation_id)
         return jsonify({"success": True, "data": data, "disclaimer": SIMULATION_DISCLAIMER})
     except ValueError as e:
@@ -95,6 +113,9 @@ def get_channel_summary(simulation_id: str):
 def get_channel_events(simulation_id: str):
     """Return Phase 6H channel event stream."""
     try:
+        err = _check_simulation_tenant(simulation_id)
+        if err:
+            return err
         data = ConsumerAppService.get_channel_events(simulation_id)
         return jsonify({"success": True, "data": data, "disclaimer": SIMULATION_DISCLAIMER})
     except ValueError as e:
@@ -108,6 +129,9 @@ def get_channel_events(simulation_id: str):
 def get_propagation_paths(simulation_id: str):
     """Return Phase 6H cross-channel propagation paths."""
     try:
+        err = _check_simulation_tenant(simulation_id)
+        if err:
+            return err
         data = ConsumerAppService.get_propagation_paths(simulation_id)
         return jsonify({"success": True, "data": data, "disclaimer": SIMULATION_DISCLAIMER})
     except ValueError as e:
@@ -124,6 +148,9 @@ def get_propagation_paths(simulation_id: str):
 def create_branch(simulation_id: str):
     """Create a new branch for a consumer simulation."""
     try:
+        err = _check_simulation_tenant(simulation_id)
+        if err:
+            return err
         data = request.get_json() or {}
         result = BranchAppService.create_branch(
             simulation_id=simulation_id,
@@ -144,6 +171,9 @@ def create_branch(simulation_id: str):
 def list_branches(simulation_id: str):
     """List all branches for a simulation."""
     try:
+        err = _check_simulation_tenant(simulation_id)
+        if err:
+            return err
         result = BranchAppService.list_branches(simulation_id)
         return jsonify({"success": True, "data": {"branches": result}})
     except ValueError as e:
@@ -160,6 +190,9 @@ def list_branches(simulation_id: str):
 def list_interventions_for_simulation(simulation_id: str):
     """List interventions for a simulation (across all branches or filtered by branch_id)."""
     try:
+        err = _check_simulation_tenant(simulation_id)
+        if err:
+            return err
         branch_id = request.args.get("branch_id") or None
         result = BranchAppService.list_interventions(simulation_id, branch_id=branch_id)
         return jsonify({"success": True, "data": {"interventions": result}})
@@ -175,6 +208,9 @@ def list_interventions_for_simulation(simulation_id: str):
 def add_intervention(simulation_id: str, branch_id: str):
     """Add an intervention to a branch."""
     try:
+        err = _check_simulation_tenant(simulation_id)
+        if err:
+            return err
         data = request.get_json() or {}
         result = BranchAppService.add_intervention(
             simulation_id=simulation_id,
@@ -195,6 +231,9 @@ def add_intervention(simulation_id: str, branch_id: str):
 def list_interventions_for_branch(simulation_id: str, branch_id: str):
     """List interventions for a specific branch."""
     try:
+        err = _check_simulation_tenant(simulation_id)
+        if err:
+            return err
         result = BranchAppService.list_interventions(simulation_id, branch_id=branch_id)
         return jsonify({"success": True, "data": {"interventions": result}})
     except ValueError as e:
@@ -210,6 +249,9 @@ def list_interventions_for_branch(simulation_id: str, branch_id: str):
 def get_branch_comparison(simulation_id: str, branch_id: str):
     """Fetch branch comparison context with base-vs-branch summaries."""
     try:
+        err = _check_simulation_tenant(simulation_id)
+        if err:
+            return err
         result = BranchAppService.get_branch_comparison(simulation_id, branch_id)
         return jsonify({"success": True, "data": result})
     except ValueError as e:
@@ -226,6 +268,9 @@ def get_branch_comparison(simulation_id: str, branch_id: str):
 def resume_branch(simulation_id: str, branch_id: str):
     """Run or resume a branch simulation (consumer_test only)."""
     try:
+        err = _check_simulation_tenant(simulation_id)
+        if err:
+            return err
         data = request.get_json(silent=True) or {}
         result = BranchAppService.resume_branch(
             simulation_id=simulation_id,
@@ -244,6 +289,9 @@ def resume_branch(simulation_id: str, branch_id: str):
 def get_branch_run_status_route(simulation_id: str, branch_id: str):
     """Get branch simulation run status."""
     try:
+        err = _check_simulation_tenant(simulation_id)
+        if err:
+            return err
         result = BranchAppService.get_branch_run_status(simulation_id, branch_id)
         return jsonify({"success": True, "data": result})
     except ValueError as e:
@@ -317,6 +365,10 @@ def export_research_asset():
         if not simulation_id:
             return jsonify({"success": False, "error": "simulation_id is required"}), 400
 
+        err = _check_simulation_tenant(simulation_id)
+        if err:
+            return err
+
         asset_pack = ResearchAssetAppService.export_research_asset(
             project_id=project_id,
             simulation_id=simulation_id,
@@ -368,6 +420,9 @@ def get_research_asset(asset_id: str):
 def run_consumer_research_action(simulation_id: str):
     """Execute a consumer research action on a simulation."""
     try:
+        err = _check_simulation_tenant(simulation_id)
+        if err:
+            return err
         data = request.get_json() or {}
         result = ConsumerResearchActionService.run_action(
             simulation_id=simulation_id,
@@ -392,6 +447,9 @@ def run_consumer_research_action(simulation_id: str):
 def list_representative_agents(simulation_id: str):
     """Return representative consumer cards for a simulation."""
     try:
+        err = _check_simulation_tenant(simulation_id)
+        if err:
+            return err
         data = ConsumerAppService.list_representative_agents(simulation_id)
         return jsonify({"success": True, "data": data})
     except ValueError as e:
@@ -405,6 +463,9 @@ def list_representative_agents(simulation_id: str):
 def run_consumer_interview(simulation_id: str):
     """Run a single consumer interview."""
     try:
+        err = _check_simulation_tenant(simulation_id)
+        if err:
+            return err
         data = request.get_json() or {}
         result = ConsumerAppService.run_consumer_interview(simulation_id, data)
         return jsonify({"success": True, "data": result, "disclaimer": SIMULATION_DISCLAIMER})
@@ -419,6 +480,9 @@ def run_consumer_interview(simulation_id: str):
 def run_focus_group(simulation_id: str):
     """Run a virtual focus group session."""
     try:
+        err = _check_simulation_tenant(simulation_id)
+        if err:
+            return err
         data = request.get_json() or {}
         result = ConsumerAppService.run_focus_group(simulation_id, data)
         return jsonify({"success": True, "data": result, "disclaimer": SIMULATION_DISCLAIMER})
@@ -433,6 +497,9 @@ def run_focus_group(simulation_id: str):
 def list_interview_history(simulation_id: str):
     """Return interview history for a simulation."""
     try:
+        err = _check_simulation_tenant(simulation_id)
+        if err:
+            return err
         data = ConsumerAppService.list_interview_history(simulation_id)
         return jsonify({"success": True, "data": data})
     except ValueError as e:
@@ -446,6 +513,9 @@ def list_interview_history(simulation_id: str):
 def list_focus_group_history(simulation_id: str):
     """Return focus group history for a simulation."""
     try:
+        err = _check_simulation_tenant(simulation_id)
+        if err:
+            return err
         data = ConsumerAppService.list_focus_group_history(simulation_id)
         return jsonify({"success": True, "data": data})
     except ValueError as e:
@@ -461,6 +531,9 @@ def list_focus_group_history(simulation_id: str):
 def get_run_estimate(simulation_id: str):
     """Return Phase 7D pre-run LLM budget estimate."""
     try:
+        err = _check_simulation_tenant(simulation_id)
+        if err:
+            return err
         data = request.get_json(silent=True) or {}
         data["simulation_id"] = simulation_id
         result = SimulationAppService.estimate_run(data)
@@ -476,6 +549,15 @@ def get_run_estimate(simulation_id: str):
 def get_report_audit_chain(report_id: str):
     """Return Phase 7D report audit chain."""
     try:
+        # 租户隔离检查（通过 report -> simulation -> tenant 链路）
+        current_tenant = getattr(g, 'current_tenant', None)
+        if current_tenant:
+            from ..services.report_agent import ReportManager
+            report = ReportManager.get_report(report_id)
+            if report and report.simulation_id:
+                sim = SimulationManager().get_simulation(report.simulation_id)
+                if sim and sim.tenant_id and sim.tenant_id != current_tenant:
+                    return jsonify({"success": False, "error": "FORBIDDEN", "message": "Access denied: tenant mismatch"}), 403
         result = AuditChainService().build_report_chain(report_id)
         return jsonify({"success": True, "data": result})
     except ValueError as e:

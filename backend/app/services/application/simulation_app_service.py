@@ -188,6 +188,7 @@ class SimulationAppService:
             project_type=project.project_type or "default",
             enable_twitter=data.get("enable_twitter", True),
             enable_reddit=data.get("enable_reddit", True),
+            tenant_id=data.get("tenant_id", ""),
         )
         return state.to_dict()
 

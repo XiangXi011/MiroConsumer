@@ -128,6 +128,7 @@ class SimulationRepository(ABC):
         project_type: str = "default",
         enable_twitter: bool = True,
         enable_reddit: bool = True,
+        tenant_id: str = "",
     ) -> Any:
         """Create and persist a new simulation."""
 
