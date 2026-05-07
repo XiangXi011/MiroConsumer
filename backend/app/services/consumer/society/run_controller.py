@@ -18,6 +18,7 @@ from .profile_generator import ConsumerProfileGenerator
 from .progress_buffer import ProgressBuffer
 from .report_adapter import SocietyReportAdapter
 from .round_scheduler import RoundScheduler
+from ..runtime.control import RuntimeControlLayer, EarlyStopConfig
 from .state_store import SocietyStateStore
 
 
@@ -41,6 +42,10 @@ class RunController:
         self.reasoning_engine = reasoning_engine
         self.quality_checker = quality_checker
         self.channel_runtime = channel_runtime
+        self.runtime_control = RuntimeControlLayer(EarlyStopConfig(
+            enabled=True, patience=3, min_rounds=3,
+            event_threshold=5, attitude_change_threshold=0.01,
+        ))
 
     def run(
         self,
@@ -168,7 +173,26 @@ class RunController:
                 )
             )
             self.store.write_round_snapshot(simulation_id, snapshots[-1])
+
+            # RuntimeControl: save checkpoint and check early stop
+            avg_attitude = metrics.get("avg_attitude", 0.5)
+            agent_states = {a.agent_id: dict(a.state) for a in population}
+            self.runtime_control.save_checkpoint(
+                round_id=round_index,
+                state={"agents": agent_states, "events": round_events},
+                metrics={"avg_attitude": avg_attitude, "new_events": len(round_events)},
+            )
+            should_stop, reason = self.runtime_control.should_early_stop(
+                round_id=round_index,
+                current_metrics={"avg_attitude": avg_attitude, "new_events": len(round_events)},
+            )
+
             progress_buffer.round_completed(round_index)
+
+            if should_stop:
+                import logging
+                logging.getLogger(__name__).info(f"Early stop triggered at round {round_index}: {reason}")
+                break
 
         # Count backends from all events for config payload
         backend_counts: Dict[str, int] = {}
@@ -236,6 +260,13 @@ class RunController:
         )
 
         return SocietyReportAdapter(base_dir=self.store.base_dir).build_report_context(simulation_id)
+
+    def resume_from_checkpoint(self, round_id: int = -1):
+        """Resume simulation from a saved checkpoint."""
+        cp = self.runtime_control.get_resume_point(round_id)
+        if cp:
+            return {"resume_from": cp.round_id, "state": cp.agent_states}
+        return None
 
     @staticmethod
     def _progress(

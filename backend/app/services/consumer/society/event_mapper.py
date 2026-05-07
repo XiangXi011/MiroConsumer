@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any, Dict, Iterable, Mapping
 
 from ..event_ontology import ConsumerEventType
@@ -57,20 +58,76 @@ class ConsumerSocietyEventMapper:
 
         trust = max(0.0, min(1.0, float(agent.state.get("trust", agent.trust_baseline))))
         purchase_intent = max(0.0, min(1.0, float(agent.state.get("purchase_intent", 0.5))))
+        quote = self._quote_for_event(event_type, claim, agent)
+        event_id = f"{agent.agent_id}:r{round_index}:{event_type.value}"
+        reasoning_backend = agent.state.get("reasoning_backend", "llm")
+
+        # VOC category classification
+        if reasoning_backend == "template_fallback":
+            voc_category = "simulated_voc"
+        elif agent.state.get("data_source") == "real_data":
+            voc_category = "real_voc"
+        else:
+            voc_category = "synthesized_voc"
 
         return {
-            "event_id": f"{agent.agent_id}:r{round_index}:{event_type.value}",
+            "event_id": event_id,
+            "voc_id": f"voc_{event_id}",
             "round_index": round_index,
             "agent_id": agent.agent_id,
             "segment": agent.segment,
             "role": agent.role.value,
             "layer": agent.layer,
             "consumer_event_type": event_type.value,
+            "channel": event_type.value,
             "claim": claim,
             "trust": round(trust, 4),
             "purchase_intent": round(purchase_intent, 4),
-            "quote": self._quote_for_event(event_type, claim, agent),
+            "quote": quote,
+            # VOC extended fields
+            "quote_text": quote,
+            "paraphrase_text": agent.state.get("paraphrase", ""),
+            "sentiment": self._derive_sentiment(trust, purchase_intent),
+            "intent": self._derive_intent(event_type),
+            "risk_tags": list(agent.traits.get("risk_sensitivities", [])) if agent.traits else [],
+            "generated_by": reasoning_backend,
+            "model_version": agent.state.get("model_version", "unknown"),
+            "confidence": agent.state.get("confidence", 0.5),
+            "trigger_event_id": None,
+            "cognition_state_ref": f"cognition_{agent.agent_id}_{round_index}",
+            "source_input_refs": [
+                e.get("event_id") for e in agent.state.get("received_messages", []) if isinstance(e, dict)
+            ],
+            "voc_category": voc_category,
+            "event_type": event_type.value,
+            "timestamp": time.time(),
         }
+
+    @staticmethod
+    def _derive_sentiment(trust: float, purchase_intent: float) -> str:
+        if trust > 0.7 and purchase_intent > 0.6:
+            return "positive"
+        elif trust < 0.3 or purchase_intent < 0.3:
+            return "negative"
+        return "neutral"
+
+    @staticmethod
+    def _derive_intent(event_type: ConsumerEventType) -> str:
+        intent_map = {
+            ConsumerEventType.PURCHASE_INTENT_UP: "consideration",
+            ConsumerEventType.PURCHASE_INTENT_DOWN: "rejection",
+            ConsumerEventType.SHARE_TO_CHANNEL: "advocacy",
+            ConsumerEventType.FIRST_IMPRESSION: "observation",
+            ConsumerEventType.ASK_PROOF: "evaluation",
+            ConsumerEventType.MISREAD_CLAIM: "objection",
+            ConsumerEventType.PRICE_RESISTANCE: "objection",
+            ConsumerEventType.TRUST_DECAY: "disengagement",
+            ConsumerEventType.TRUST_RECOVERY: "consideration",
+            ConsumerEventType.BLOCK_PROPAGATION: "disengagement",
+            ConsumerEventType.AMPLIFY_CLAIM: "advocacy",
+            ConsumerEventType.NEGATIVE_CASCADE: "rejection",
+        }
+        return intent_map.get(event_type, "observation")
 
     def _quote_for_event(
         self,

@@ -89,3 +89,26 @@ class RuntimeControlLayer:
             if cp.round_id <= round_id:
                 return cp
         return None
+
+
+class ConvergenceDetector:
+    """收敛检测器"""
+
+    def __init__(self, window_size: int = 3, threshold: float = 0.01):
+        self.window_size = window_size
+        self.threshold = threshold
+        self.history: List[Dict] = []
+
+    def update(self, metrics: Dict):
+        self.history.append(metrics)
+
+    def is_converged(self) -> tuple:
+        if len(self.history) < self.window_size:
+            return False, ""
+        recent = self.history[-self.window_size:]
+        attitudes = [m.get("avg_attitude", 0) for m in recent]
+        mean_att = sum(attitudes) / len(attitudes)
+        variance = sum((a - mean_att) ** 2 for a in attitudes) / len(attitudes)
+        if variance < self.threshold:
+            return True, f"Attitude variance {variance:.4f} < threshold {self.threshold}"
+        return False, ""

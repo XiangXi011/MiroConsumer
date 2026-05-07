@@ -275,6 +275,28 @@ def build_confidence_summary(report_confidence: ReportConfidence) -> Dict[str, A
     }
 
 
+def compute_confidence(
+    source_quality: float,
+    evidence_sufficiency: float,
+    simulation_stability: float,
+    cross_run_consistency: float,
+    benchmark_alignment: float,
+    contradiction_count: int = 0,
+    fallback_count: int = 0,
+) -> float:
+    """Compute weighted confidence score with penalty terms."""
+    score = (
+        0.25 * source_quality
+        + 0.25 * evidence_sufficiency
+        + 0.20 * simulation_stability
+        + 0.15 * cross_run_consistency
+        + 0.15 * benchmark_alignment
+    )
+    score -= 0.05 * min(contradiction_count, 5)
+    score -= 0.03 * min(fallback_count, 10)
+    return max(0.0, min(1.0, round(score, 4)))
+
+
 def compute_comparison_confidence(
     left_confidence: Optional[Dict[str, Any]],
     right_confidence: Optional[Dict[str, Any]],
