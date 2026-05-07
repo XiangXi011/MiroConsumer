@@ -23,6 +23,7 @@ from ..services.application.simulation_app_service import SimulationAppService
 from ..services.application.branch_app_service import BranchAppService
 from ..services.application.consumer_app_service import ConsumerAppService
 from ..contracts.errors import ConcurrencyConflictError
+from ..auth.middleware import require_permission
 
 logger = get_logger('miroconsumer.api.simulation')
 
@@ -192,6 +193,7 @@ def get_entities_by_type(graph_id: str, entity_type: str):
 # ============== 模拟管理接口 ==============
 
 @simulation_bp.route('/create', methods=['POST'])
+@require_permission('simulation.run')
 def create_simulation():
     """
     创建新的模拟
@@ -368,6 +370,7 @@ def get_simulation(simulation_id: str):
 
 
 @simulation_bp.route('/<simulation_id>/export', methods=['GET'])
+@require_permission('report.export')
 def export_simulation(simulation_id):
     """导出仿真结果"""
     format_type = request.args.get('format', 'json')  # json/csv
@@ -1171,6 +1174,7 @@ def generate_profiles():
 # ============== 模拟运行控制接口 ==============
 
 @simulation_bp.route('/start', methods=['POST'])
+@require_permission('simulation.run')
 def start_simulation():
     """
     开始运行模拟

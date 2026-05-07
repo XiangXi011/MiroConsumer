@@ -24,6 +24,7 @@ from ..services.application.simulation_app_service import SimulationAppService
 from ..contracts.errors import ConcurrencyConflictError
 from ..utils.logger import get_logger
 from ..utils.disclaimer import SIMULATION_DISCLAIMER
+from ..auth.middleware import require_permission
 
 logger = get_logger("miroconsumer.api.consumer")
 
@@ -118,6 +119,7 @@ def get_propagation_paths(simulation_id: str):
 # ============== Branches ==============
 
 @consumer_bp.route("/simulations/<simulation_id>/branches", methods=["POST"])
+@require_permission('simulation.run')
 def create_branch(simulation_id: str):
     """Create a new branch for a consumer simulation."""
     try:
@@ -153,6 +155,7 @@ def list_branches(simulation_id: str):
 # ============== Interventions ==============
 
 @consumer_bp.route("/simulations/<simulation_id>/interventions", methods=["GET"])
+@require_permission('project.read')
 def list_interventions_for_simulation(simulation_id: str):
     """List interventions for a simulation (across all branches or filtered by branch_id)."""
     try:
@@ -167,6 +170,7 @@ def list_interventions_for_simulation(simulation_id: str):
 
 
 @consumer_bp.route("/simulations/<simulation_id>/branches/<branch_id>/interventions", methods=["POST"])
+@require_permission('simulation.run')
 def add_intervention(simulation_id: str, branch_id: str):
     """Add an intervention to a branch."""
     try:
@@ -217,6 +221,7 @@ def get_branch_comparison(simulation_id: str, branch_id: str):
 # ============== Branch Resume / Status ==============
 
 @consumer_bp.route("/simulations/<simulation_id>/branches/<branch_id>/resume", methods=["POST"])
+@require_permission('simulation.run')
 def resume_branch(simulation_id: str, branch_id: str):
     """Run or resume a branch simulation (consumer_test only)."""
     try:
@@ -295,6 +300,7 @@ def get_comparison_snapshot(comparison_id: str):
 # ============== Research Assets ==============
 
 @consumer_bp.route("/research-assets/export", methods=["POST"])
+@require_permission('asset.export')
 def export_research_asset():
     """Export a research asset pack from a consumer simulation."""
     try:
@@ -356,6 +362,7 @@ def get_research_asset(asset_id: str):
 # ============== Research Actions ==============
 
 @consumer_bp.route("/simulations/<simulation_id>/research-actions", methods=["POST"])
+@require_permission('simulation.run')
 def run_consumer_research_action(simulation_id: str):
     """Execute a consumer research action on a simulation."""
     try:

@@ -19,6 +19,7 @@ from ..services.application.research_asset_app_service import ResearchAssetAppSe
 from ..services.application.comparison_app_service import ComparisonAppService
 from ..contracts.errors import ConcurrencyConflictError
 from ..utils.pagination import paginate_query
+from ..auth.middleware import require_permission
 
 logger = get_logger('miroconsumer.api.report')
 
@@ -51,6 +52,7 @@ def _value_error_response(e: ValueError):
 # ============== 报告生成接口 ==============
 
 @report_bp.route('/generate', methods=['POST'])
+@require_permission('report.read')
 def generate_report():
     """
     生成模拟分析报告（异步任务）
@@ -276,6 +278,7 @@ def list_reports():
 
 
 @report_bp.route('/<report_id>/download', methods=['GET'])
+@require_permission('report.export')
 def download_report(report_id: str):
     """
     下载报告（Markdown格式）
@@ -802,6 +805,7 @@ def get_graph_statistics_tool():
 # ============== 研究资产接口 ==============
 
 @report_bp.route('/research-assets/export', methods=['POST'])
+@require_permission('asset.export')
 def export_research_asset():
     """
     Export a research asset pack from a consumer simulation.

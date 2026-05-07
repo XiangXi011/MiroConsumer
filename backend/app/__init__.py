@@ -54,7 +54,11 @@ def create_app(config_class=Config):
     # 启用CORS
     origins = [o.strip() for o in config_class.CORS_ALLOWED_ORIGINS.split(",") if o.strip()]
     CORS(app, resources={r"/api/*": {"origins": origins}})
-    
+
+    # 初始化认证授权系统
+    from .auth.middleware import init_auth
+    init_auth(app)
+
     # 注册模拟进程清理函数（确保服务器关闭时终止所有模拟进程）
     from .services.simulation_runner import SimulationRunner
     SimulationRunner.register_cleanup()
@@ -83,6 +87,8 @@ def create_app(config_class=Config):
     
     # 注册蓝图
     from .api import graph_bp, simulation_bp, report_bp, consumer_bp
+    from .auth.routes import auth_bp
+    app.register_blueprint(auth_bp)
     app.register_blueprint(graph_bp, url_prefix='/api/graph')
     app.register_blueprint(simulation_bp, url_prefix='/api/simulation')
     app.register_blueprint(report_bp, url_prefix='/api/report')
