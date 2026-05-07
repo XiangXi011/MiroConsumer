@@ -108,24 +108,26 @@ def _evidence_snippets_from_finding(finding: Any) -> List[str]:
         else finding.get("evidence_snippets", [])
     )
     return [s for s in snippets if isinstance(s, str) and s.strip()]
-def _detect_contradictions(atoms: List[Dict]) -> List[str]:
+def _detect_contradictions(atoms) -> List[str]:
     """检测证据矛盾"""
     contradictions = []
-    positive = [a for a in atoms if a.get("support_level") in ("strong", "moderate")]
-    negative = [a for a in atoms if a.get("support_level") in ("weak", "insufficient")]
+    dict_atoms = [a for a in atoms if isinstance(a, dict)]
+    positive = [a for a in dict_atoms if a.get("support_level") in ("strong", "moderate")]
+    negative = [a for a in dict_atoms if a.get("support_level") in ("weak", "insufficient")]
     if positive and negative:
         contradictions.append("mixed_evidence")
     return contradictions
 
 
-def _identify_gaps(atoms: List[Dict], claim: str = "") -> List[str]:
+def _identify_gaps(atoms, claim: str = "") -> List[str]:
     """识别证据缺口"""
     gaps = []
     if not atoms:
         gaps.append("no_evidence")
     elif len(atoms) < 2:
         gaps.append("insufficient_evidence_count")
-    has_source_type = any(a.get("source_type") for a in atoms)
+    dict_atoms = [a for a in atoms if isinstance(a, dict)]
+    has_source_type = any(a.get("source_type") for a in dict_atoms)
     if not has_source_type:
         gaps.append("missing_source_type")
     return gaps

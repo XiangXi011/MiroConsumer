@@ -60,8 +60,10 @@ class TestEvidenceRefs:
 
         agent = ConsumerSocietyAgent(
             agent_id="test_agent",
+            parent_persona_id="p1",
+            layer="core",
             segment="mainstream",
-            role="consumer",
+            role="advocate",
         )
         engine = DecisionEngine()
         perception_state = {
@@ -87,8 +89,10 @@ class TestEvidenceRefs:
 
         agent = ConsumerSocietyAgent(
             agent_id="test_agent_2",
+            parent_persona_id="p1",
+            layer="core",
             segment="mainstream",
-            role="consumer",
+            role="advocate",
         )
         engine = DecisionEngine()
         perception_state = {"trust": 0.5, "awareness": 0.5, "social": {}, "media": {}}
@@ -105,8 +109,10 @@ class TestReasonCodes:
 
         agent = ConsumerSocietyAgent(
             agent_id="test_agent_3",
+            parent_persona_id="p1",
+            layer="core",
             segment="skeptic",
-            role="consumer",
+            role="advocate",
         )
         engine = DecisionEngine()
         perception_state = {
