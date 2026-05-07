@@ -25,7 +25,7 @@ class TestExperimentModes:
         assert errors == []
 
     def test_research_mode_valid(self):
-        errors = validate_experiment_config("research", 50, 15)
+        errors = validate_experiment_config("research", 50, 15, hypothesis="Test hypothesis")
         assert errors == []
 
     def test_unknown_mode(self):
