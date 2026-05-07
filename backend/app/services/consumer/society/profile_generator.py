@@ -181,6 +181,11 @@ class ProfileValidator:
         data["interested_topics"] = _as_text_list(data.get("interested_topics")) or list(data["risk_sensitivities"])
         data["price_sensitivity"] = _clamp(data.get("price_sensitivity", 0.5))
         data["evidence_sensitivity"] = _clamp(data.get("evidence_sensitivity", 0.5))
+        data.setdefault("profile_source", "rule")
+        data.setdefault("supporting_evidence_ids", [])
+        if "unsupported_fields" not in data:
+            data["unsupported_fields"] = ["evidence_enrichment"] if data.get("profile_source") == "rule" else []
+        data.setdefault("research_findings", [])
         defaults = {
             "persona_id": "M01",
             "age_range": "28-35",

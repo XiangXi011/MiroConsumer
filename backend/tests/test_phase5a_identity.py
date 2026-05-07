@@ -214,7 +214,17 @@ ALLOWED_MiroFish_PATHS = {
     # keeping the consumer runtime/product identity separate.
     "app/services/consumer/society/mirofish_profile_adapter.py",
     "app/services/consumer/society/profile_generator.py",
+    "tests/consumer/society/test_consumer_profile_generator.py",
     "tests/consumer/society/test_mirofish_profile_adapter.py",
+}
+
+SKIPPED_SOURCE_SCAN_PARTS = {
+    ".venv",
+    "venv",
+    ".tox",
+    ".mypy_cache",
+    ".pytest_cache",
+    "__pycache__",
 }
 
 
@@ -230,6 +240,8 @@ def test_backend_source_files_do_not_contain_mirofish():
     for py_path in backend_dir.rglob("*.py"):
         # Skip exempt paths
         rel = py_path.relative_to(backend_dir).as_posix()
+        if any(part in SKIPPED_SOURCE_SCAN_PARTS for part in py_path.relative_to(backend_dir).parts):
+            continue
         if any(exempt in rel for exempt in ALLOWED_MiroFish_PATHS):
             continue
         text = py_path.read_text(encoding="utf-8")

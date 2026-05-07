@@ -483,3 +483,81 @@ class TestReportAppServicePhase6JHardGate:
 
         assert "calibration artifact is missing" in str(exc_info.value)
         assert exc_info.value.details["artifact_present"] is False
+
+    def test_blocks_consumer_report_exposes_structured_diagnostics(self, monkeypatch, tmp_path):
+        fake_state = MagicMock()
+        fake_state.project_id = "proj_123"
+        fake_state.simulation_id = "sim_123"
+        fake_state.consumer_mode = True
+        fake_state.project_type = "consumer_test"
+
+        monkeypatch.setattr(
+            "app.services.application.report_app_service.ReportAppService._simulation_repo.get_simulation",
+            lambda sim_id: fake_state,
+        )
+        monkeypatch.setattr(
+            "app.services.application.report_app_service.Config.OASIS_SIMULATION_DATA_DIR",
+            str(tmp_path),
+        )
+        monkeypatch.setattr(
+            "app.services.application.report_app_service.ReportAppService.get_existing_report_for_simulation",
+            lambda sim_id: None,
+        )
+        monkeypatch.setattr(
+            "app.services.application.report_app_service.ReportAppService._project_repo.get_project",
+            lambda pid: MagicMock(graph_id="g1", simulation_requirement="test", project_type="consumer_test", project_id=pid),
+        )
+
+        sim_dir = tmp_path / "sim_123"
+        sim_dir.mkdir(parents=True, exist_ok=True)
+        import json
+        artifact = {
+            "phase7_entry_decision": "BLOCKED",
+            "golden_flow_result": "BLOCKED",
+            "evidence_gatekeeping_result": "PASS",
+            "reasoning_backend_coverage": 0.6,
+            "template_fallback_coverage": 0.2,
+        }
+        (sim_dir / "phase6j_calibration_artifact.json").write_text(
+            json.dumps(artifact, indent=2), encoding="utf-8"
+        )
+
+        with pytest.raises(ValidationError) as exc_info:
+            ReportAppService.generate_report("sim_123", force_regenerate=False)
+
+        assert exc_info.value.details.get("error_code") == "PHASE6J_BLOCKED"
+        assert exc_info.value.details.get("blocking_stage") == "calibration"
+        assert exc_info.value.details.get("recoverable") is True
+        assert "next_action" in exc_info.value.details
+        assert exc_info.value.details.get("suggested_action") == exc_info.value.details.get("next_action")
+
+    def test_blocks_consumer_report_missing_artifact_exposes_error_code(self, monkeypatch, tmp_path):
+        fake_state = MagicMock()
+        fake_state.project_id = "proj_123"
+        fake_state.simulation_id = "sim_123"
+        fake_state.consumer_mode = True
+        fake_state.project_type = "consumer_test"
+
+        monkeypatch.setattr(
+            "app.services.application.report_app_service.ReportAppService._simulation_repo.get_simulation",
+            lambda sim_id: fake_state,
+        )
+        monkeypatch.setattr(
+            "app.services.application.report_app_service.Config.OASIS_SIMULATION_DATA_DIR",
+            str(tmp_path),
+        )
+        monkeypatch.setattr(
+            "app.services.application.report_app_service.ReportAppService.get_existing_report_for_simulation",
+            lambda sim_id: None,
+        )
+        monkeypatch.setattr(
+            "app.services.application.report_app_service.ReportAppService._project_repo.get_project",
+            lambda pid: MagicMock(graph_id="g1", simulation_requirement="test", project_type="consumer_test", project_id=pid),
+        )
+
+        with pytest.raises(ValidationError) as exc_info:
+            ReportAppService.generate_report("sim_123", force_regenerate=False)
+
+        assert exc_info.value.details.get("error_code") == "PHASE6J_ARTIFACT_MISSING"
+        assert exc_info.value.details.get("recoverable") is True
+        assert exc_info.value.details.get("next_action") == "run_calibration"

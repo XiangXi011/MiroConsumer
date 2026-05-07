@@ -46,7 +46,13 @@ def _status_from_value_error(e: ValueError) -> int:
 def _value_error_response(e: ValueError):
     if isinstance(e, ConcurrencyConflictError):
         return jsonify(e.to_response()), 409
-    return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
+    payload = {"success": False, "error": str(e)}
+    if hasattr(e, "details") and e.details:
+        payload["details"] = e.details
+        for key in ("error_code", "blocking_stage", "recoverable", "next_action", "suggested_action"):
+            if key in e.details:
+                payload[key] = e.details[key]
+    return jsonify(payload), _status_from_value_error(e)
 
 
 # ============== Consumer Summary ==============

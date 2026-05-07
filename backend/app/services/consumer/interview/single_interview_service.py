@@ -10,6 +10,7 @@ from .history_store import HistoryStore
 from .interview_models import ConsumerInterviewRequest, ConsumerInterviewResult, LiveInterviewUnavailable
 from .representative_card_builder import RepresentativeCardBuilder
 from .summary_synthesizer import InterviewSummarySynthesizer
+from ..reasoning_trace import append_reasoning_traces
 
 
 class SimulationRunnerLiveInterviewClient:
@@ -162,6 +163,30 @@ class SingleInterviewService:
                 f"I have a cautious view on this topic. "
                 f"The question '{question}' makes me think more carefully before deciding."
             )
+
+    def _trace_for_answer(self, answer_record: dict[str, Any]) -> dict[str, Any]:
+        source = str(answer_record.get("source", "snapshot_template"))
+        if source == "legacy_live_interview":
+            backend = "llm"
+            llm_invoked = True
+            fallback_reason = ""
+        elif source == "snapshot_template":
+            backend = "template_fallback"
+            llm_invoked = False
+            fallback_reason = "snapshot_template"
+        else:
+            backend = "rules"
+            llm_invoked = False
+            fallback_reason = ""
+        return {
+            "reasoning_backend": backend,
+            "llm_invoked": llm_invoked,
+            "source": source,
+            "fallback_reason": fallback_reason,
+            "model": "",
+            "latency_ms": 0.0,
+            "reasoning_summary": str(answer_record.get("answer", "")),
+        }
 
     def _extract_legacy_response_text(self, payload: dict) -> str:
         if not isinstance(payload, dict):
@@ -366,4 +391,8 @@ class SingleInterviewService:
             "followup_questions": result.followup_questions,
         }
         self.history_store.write_interview(request.simulation_id, record)
+        append_reasoning_traces(
+            str(self.history_store.base_dir / request.simulation_id),
+            [self._trace_for_answer(answer) for answer in answers],
+        )
         return result

@@ -27,6 +27,7 @@ from .consumer.hybrid_kernel import HybridSimulationKernel
 from .consumer.models import ResearchFinding
 from .consumer.orchestrator import ConsumerSimulationOrchestrator
 from .consumer.persona_pack import load_default_persona_pack, map_persona_to_agent_traits
+from .consumer.phase6j_artifact_builder import build_phase6j_calibration_artifact
 from .consumer.propagation_state import PropagationState, create_initial_state
 from .consumer.society.population_models import ConsumerSocietyRunConfig
 from .consumer.society.report_adapter import EMPTY_SOCIETY_CONTEXT
@@ -611,6 +612,10 @@ class SimulationRunner:
                 state.reddit_running = False
                 state.reddit_completed = True
                 state.completed_at = datetime.now().isoformat()
+                cls._build_phase6j_artifact_after_consumer_run(
+                    simulation_id,
+                    research_findings=research_findings,
+                )
                 cls._save_run_state(state)
                 return
 
@@ -699,6 +704,10 @@ class SimulationRunner:
             state.runner_status = RunnerStatus.COMPLETED
             state.reddit_running = False
             state.completed_at = datetime.now().isoformat()
+            cls._build_phase6j_artifact_after_consumer_run(
+                simulation_id,
+                research_findings=research_findings,
+            )
             cls._save_run_state(state)
         except Exception as e:
             logger.error(f"消费者传播仿真失败: {simulation_id}, error={str(e)}")
@@ -733,6 +742,171 @@ class SimulationRunner:
             brief_context=consumer_brief or {},
             research_findings=research_findings,
         )
+
+    @classmethod
+    def _build_phase6j_artifact_after_consumer_run(
+        cls,
+        simulation_id: str,
+        research_findings: Optional[List[ResearchFinding]] = None,
+    ) -> None:
+        """Build a Phase 6J artifact after consumer simulation completion.
+
+        The artifact may be BLOCKED when required calibration inputs are
+        missing. Its presence gives the report gate and UI a concrete repair
+        path instead of a generic missing-artifact failure.
+        """
+        simulation_dir = os.path.join(cls.RUN_STATE_DIR, simulation_id)
+        try:
+            cls._write_phase6j_calibration_inputs(
+                simulation_id,
+                research_findings=research_findings or [],
+            )
+            build_phase6j_calibration_artifact(simulation_dir)
+        except Exception as exc:
+            logger.warning(
+                "Phase 6J artifact build failed after consumer run",
+                extra={"simulation_id": simulation_id, "error": str(exc)},
+            )
+
+    @classmethod
+    def _write_phase6j_calibration_inputs(
+        cls,
+        simulation_id: str,
+        research_findings: Optional[List[ResearchFinding]] = None,
+    ) -> None:
+        """Write stable Phase 6J calibration inputs after consumer completion."""
+        from .consumer.evidence_validator import (
+            apply_evidence_gatekeeping_to_findings,
+            validate_findings,
+        )
+        from .consumer.reasoning_trace import ReasoningTrace, write_reasoning_traces
+        from ..utils.atomic_json import atomic_write_json
+
+        simulation_dir = os.path.join(cls.RUN_STATE_DIR, simulation_id)
+        society_dir = os.path.join(simulation_dir, "society")
+        os.makedirs(society_dir, exist_ok=True)
+        state = cls.get_run_state(simulation_id)
+        findings = list(research_findings or [])
+
+        reasoning_path = os.path.join(society_dir, "reasoning_traces.jsonl")
+        if not os.path.exists(reasoning_path):
+            traces = cls._build_quick_reasoning_traces_from_state(state)
+            write_reasoning_traces(simulation_dir, traces)
+
+        validation_results = validate_findings(findings) if findings else []
+        gatekeeping_results = (
+            apply_evidence_gatekeeping_to_findings(findings, validation_results)
+            if findings
+            else []
+        )
+        atomic_write_json(
+            os.path.join(simulation_dir, "evidence_validation_results.json"),
+            [cls._model_to_dict(result) for result in validation_results],
+        )
+        atomic_write_json(
+            os.path.join(simulation_dir, "evidence_gatekeeping_results.json"),
+            [cls._model_to_dict(result) for result in gatekeeping_results],
+        )
+        atomic_write_json(
+            os.path.join(simulation_dir, "golden_flow_checks.json"),
+            cls._build_phase6j_golden_flow_checks(simulation_id, state),
+        )
+
+    @staticmethod
+    def _model_to_dict(value: Any) -> Dict[str, Any]:
+        if hasattr(value, "model_dump"):
+            return value.model_dump()
+        if hasattr(value, "dict"):
+            return value.dict()
+        if hasattr(value, "to_dict"):
+            return value.to_dict()
+        return dict(value)
+
+    @staticmethod
+    def _build_quick_reasoning_traces_from_state(state: Optional[SimulationRunState]) -> List[Any]:
+        from .consumer.reasoning_trace import ReasoningTrace
+
+        traces: List[ReasoningTrace] = []
+        if not state:
+            return traces
+        for round_summary in state.rounds:
+            for action in round_summary.actions:
+                traces.append(
+                    ReasoningTrace(
+                        reasoning_backend="rules",
+                        llm_invoked=False,
+                        source="society_runtime",
+                        fallback_reason="",
+                        model="",
+                        latency_ms=0.0,
+                        reasoning_summary=str(action.result or action.action_type or ""),
+                    )
+                )
+        if not traces:
+            for action in state.recent_actions:
+                traces.append(
+                    ReasoningTrace(
+                        reasoning_backend="rules",
+                        llm_invoked=False,
+                        source="society_runtime",
+                        fallback_reason="",
+                        model="",
+                        latency_ms=0.0,
+                        reasoning_summary=str(action.result or action.action_type or ""),
+                    )
+                )
+        return traces
+
+    @classmethod
+    def _build_phase6j_golden_flow_checks(
+        cls,
+        simulation_id: str,
+        state: Optional[SimulationRunState],
+    ) -> List[Dict[str, Any]]:
+        simulation_dir = os.path.join(cls.RUN_STATE_DIR, simulation_id)
+        society_dir = os.path.join(simulation_dir, "society")
+        reasoning_path = os.path.join(society_dir, "reasoning_traces.jsonl")
+        consumer_rounds_path = os.path.join(simulation_dir, "consumer_rounds.jsonl")
+        rounds_dir = os.path.join(society_dir, "rounds")
+        has_round_files = (
+            os.path.isdir(rounds_dir)
+            and any(name.startswith("round_") and name.endswith(".json") for name in os.listdir(rounds_dir))
+        )
+        action_count = 0
+        if state:
+            action_count = sum(len(round_summary.actions) for round_summary in state.rounds)
+        has_consumer_rounds = os.path.exists(consumer_rounds_path) and os.path.getsize(consumer_rounds_path) > 0
+        has_reasoning = os.path.exists(reasoning_path) and os.path.getsize(reasoning_path) > 0
+        completed = bool(state and state.runner_status == RunnerStatus.COMPLETED)
+        completed_rounds_or_actions = bool(
+            has_round_files
+            or has_consumer_rounds
+            or action_count > 0
+            or (state and state.society_rounds_completed > 0)
+        )
+        return [
+            {
+                "check": "reasoning_traces",
+                "status": "passed" if has_reasoning else "failed",
+                "details": {"path": "society/reasoning_traces.jsonl"},
+            },
+            {
+                "check": "completed_rounds_or_actions",
+                "status": "passed" if completed_rounds_or_actions else "failed",
+                "details": {
+                    "action_count": action_count,
+                    "has_consumer_rounds": has_consumer_rounds,
+                    "has_society_round_files": has_round_files,
+                },
+            },
+            {
+                "check": "runtime_completed_status",
+                "status": "passed" if completed else "failed",
+                "details": {
+                    "runner_status": state.runner_status.value if state else "",
+                },
+            },
+        ]
 
     @classmethod
     def run_branch_simulation(

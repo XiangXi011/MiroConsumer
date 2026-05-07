@@ -6,6 +6,7 @@ import { dirname, join } from 'path'
 
 import {
   buildSocietyRunSummaryItems,
+  buildSocietyRunDiagnosticItems,
   formatSocietyDelta,
 } from '../src/utils/societyRunSummary.js'
 
@@ -98,4 +99,58 @@ test('Step3Simulation and Step4Report mount SocietyRunSummary', () => {
 
   assert.ok(step3.includes('SocietyRunSummary'), 'Step3Simulation must mount SocietyRunSummary')
   assert.ok(step4.includes('SocietyRunSummary'), 'Step4Report must mount SocietyRunSummary')
+})
+
+// ============== Diagnostic items ==============
+
+test('buildSocietyRunDiagnosticItems includes phase6j_status when present', () => {
+  const items = buildSocietyRunDiagnosticItems({ phase6j_status: 'incomplete' })
+  assert.ok(items.find(i => i.key === 'phase6j_status'))
+  assert.equal(items.find(i => i.key === 'phase6j_status').value, 'incomplete')
+})
+
+test('buildSocietyRunDiagnosticItems includes error_code when present', () => {
+  const items = buildSocietyRunDiagnosticItems({ error_code: 'PHASE6J_MISSING' })
+  assert.ok(items.find(i => i.key === 'error_code'))
+  assert.equal(items.find(i => i.key === 'error_code').value, 'PHASE6J_MISSING')
+})
+
+test('buildSocietyRunDiagnosticItems includes blocking_stage when present', () => {
+  const items = buildSocietyRunDiagnosticItems({ blocking_stage: 'phase6j' })
+  assert.ok(items.find(i => i.key === 'blocking_stage'))
+  assert.equal(items.find(i => i.key === 'blocking_stage').value, 'phase6j')
+})
+
+test('buildSocietyRunDiagnosticItems includes next_action when present', () => {
+  const items = buildSocietyRunDiagnosticItems({ next_action: 'retry' })
+  assert.ok(items.find(i => i.key === 'next_action'))
+  assert.equal(items.find(i => i.key === 'next_action').value, 'retry')
+})
+
+test('buildSocietyRunDiagnosticItems returns empty array when no diagnostics', () => {
+  const items = buildSocietyRunDiagnosticItems({})
+  assert.equal(items.length, 0)
+})
+
+test('buildSocietyRunDiagnosticItems returns empty array when only irrelevant keys', () => {
+  const items = buildSocietyRunDiagnosticItems({ society_mode: 'quick', status: 'idle' })
+  assert.equal(items.length, 0)
+})
+
+test('societyRunSummary.js exports diagnostic labels', () => {
+  const path = join(__dirname, '../src/utils/societyRunSummary.js')
+  const content = readFileSync(path, 'utf-8')
+
+  for (const label of ['Phase6J Status', 'Error Code', 'Blocking Stage', 'Next Action']) {
+    assert.ok(content.includes(label), `missing ${label}`)
+  }
+})
+
+test('SocietyRunSummary.vue references diagnosticItems and diagnostics in visible check', () => {
+  const content = readFileSync(
+    join(__dirname, '../src/components/consumer/SocietyRunSummary.vue'),
+    'utf-8'
+  )
+  assert.ok(content.includes('diagnosticItems'), 'component should reference diagnosticItems')
+  assert.ok(content.includes('diagnostics'), 'component should reference diagnostics in visible logic')
 })

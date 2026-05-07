@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "codex/**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Run backend test suite
+        working-directory: backend
+        run: uv run --python 3.12 pytest
+
+  frontend:
+    name: Frontend Build And Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Run frontend node tests
+        working-directory: frontend
+        run: node --test tests/*.test.js tests/composables/*.test.js
+
+  consumer-contract:
+    name: Consumer API Contract
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Run consumer contract tests
+        working-directory: backend
+        run: >
+          uv run --python 3.12 pytest
+          tests/api/test_consumer_canonical_routes.py
+          tests/api/test_phase6a_project_type_contract.py
+          tests/api/test_consumer_society_runtime.py
+
+  consumer-smoke:
+    name: Consumer Golden Smoke
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Run golden consumer smoke tests
+        working-directory: backend
+        run: >
+          uv run --python 3.12 pytest
+          tests/e2e/test_consumer_concept_test_golden_flow.py
+          tests/e2e/test_consumer_golden_cases.py

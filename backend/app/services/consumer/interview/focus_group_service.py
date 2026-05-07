@@ -12,6 +12,7 @@ from .disagreement_detector import DisagreementDetector
 from .focus_group_dialogue_engine import FocusGroupDialogueEngine
 from .moderator_prompt_engine import ModeratorPromptEngine
 from .representative_card_builder import RepresentativeCardBuilder
+from ..reasoning_trace import append_reasoning_traces
 
 
 class FocusGroupService:
@@ -294,6 +295,44 @@ class FocusGroupService:
 
         return turn
 
+    def _trace_for_dialogue_source(self, source: str, summary: str = "", error: str = "") -> Dict[str, Any]:
+        backend = "llm" if source in {"llm_moderator", "llm_participant"} else "rules"
+        fallback_reason = ""
+        if source in {"template_moderator_fallback", "template_participant_fallback"}:
+            backend = "template_fallback"
+            fallback_reason = error or "dialogue_engine_fallback"
+        return {
+            "reasoning_backend": backend,
+            "llm_invoked": backend == "llm",
+            "source": source,
+            "fallback_reason": fallback_reason,
+            "model": "",
+            "latency_ms": 0.0,
+            "reasoning_summary": summary,
+        }
+
+    def _persist_focus_group_reasoning_traces(self, simulation_id: str, turns: List[Dict[str, Any]]) -> None:
+        traces: List[Dict[str, Any]] = []
+        for turn in turns:
+            instruction = turn.get("moderator_instruction", {})
+            traces.append(
+                self._trace_for_dialogue_source(
+                    str(instruction.get("source", "template_moderator")),
+                    summary=str(instruction.get("reasoning_summary", "")),
+                    error=str(instruction.get("reasoning_error", "")),
+                )
+            )
+            for response in turn.get("responses", []):
+                traces.append(
+                    self._trace_for_dialogue_source(
+                        str(response.get("source", "template_participant")),
+                        summary=str(response.get("reasoning_summary", "")),
+                        error=str(response.get("reasoning_error", "")),
+                    )
+                )
+        if traces:
+            append_reasoning_traces(str(self.history_store.base_dir / simulation_id), traces)
+
     def run_focus_group(self, request: ConsumerInterviewRequest, moderator_goal: str) -> FocusGroupSession:
         self._validate_simulation(request.simulation_id)
 
@@ -368,4 +407,5 @@ class FocusGroupService:
             "evidence_map": session.evidence_map,
         }
         self.history_store.write_focus_group(request.simulation_id, record)
+        self._persist_focus_group_reasoning_traces(request.simulation_id, turns)
         return session

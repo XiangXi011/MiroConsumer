@@ -71,6 +71,15 @@ def test_adapter_returns_consumer_and_oasis_rich_fields_without_graph_id(tmp_pat
     assert profile["source"] in {"mirofish_adapter", "rule_fallback", "hybrid"}
     assert "Care-driven urban mom" not in profile["bio"]
     assert _brief()["research_goal"] not in profile["bio"]
+    assert profile["profile_source"] in {"rule", "evidence_enriched", "llm_enriched"}
+    assert "supporting_evidence_ids" in profile
+    assert "unsupported_fields" in profile
+    assert "research_findings" in profile
+    for finding in profile["research_findings"]:
+        assert "finding_id" in finding
+        assert "source_id" in finding
+        assert "evidence_snippets" in finding
+        assert "summary" in finding
 
 
 def test_adapter_exports_oasis_compatible_profiles(tmp_path):

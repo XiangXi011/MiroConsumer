@@ -95,3 +95,90 @@ def test_validator_blocks_english_default_persona_label_and_research_goal():
     assert "Care-driven urban mom" not in profile["bio"]
     assert "验证高价是否阻碍购买" not in profile["bio"]
     assert profile["persona"]
+
+
+def test_profile_source_is_rule_without_research_findings():
+    generator = ConsumerProfileGenerator(seed=1, enable_llm_enrichment=False)
+    profiles = generator.generate_profiles(brief=_brief(), count=3)
+    for profile in profiles:
+        assert profile["profile_source"] == "rule"
+        assert "evidence_enrichment" in profile["unsupported_fields"]
+        assert profile["supporting_evidence_ids"] == []
+        assert profile["research_findings"] == []
+
+
+def test_profile_source_is_evidence_enriched_with_research_findings():
+    generator = ConsumerProfileGenerator(seed=1, enable_llm_enrichment=False)
+    findings = [
+        {"finding_id": "F1", "source_id": "S1", "evidence_snippets": ["snippet1"], "summary": "summary1"},
+        {"finding_id": "F2", "source_id": "S2", "evidence_snippets": ["snippet2"], "summary": "summary2"},
+    ]
+    profiles = generator.generate_profiles(brief=_brief(), count=3, research_findings=findings)
+    for profile in profiles:
+        assert profile["profile_source"] == "evidence_enriched"
+        assert "evidence_enrichment" not in profile["unsupported_fields"]
+        assert set(profile["supporting_evidence_ids"]) == {"F1", "F2"}
+        assert len(profile["research_findings"]) == 2
+        for finding in profile["research_findings"]:
+            assert "finding_id" in finding
+            assert "source_id" in finding
+            assert "evidence_snippets" in finding
+            assert "summary" in finding
+
+
+def test_rule_first_fields_not_overwritten_by_evidence_enrichment():
+    generator = ConsumerProfileGenerator(seed=1, enable_llm_enrichment=False)
+    findings = [
+        {"finding_id": "F1", "source_id": "S1", "evidence_snippets": ["x"], "summary": "y"},
+    ]
+    profiles = generator.generate_profiles(brief=_brief(), count=3, research_findings=findings)
+    rule_first = generator.builder.build(_brief(), count=3)
+    for i, profile in enumerate(profiles):
+        for key in (
+            "age_range",
+            "city_tier",
+            "income_level",
+            "family_structure",
+            "purchase_channel",
+            "category_usage_frequency",
+            "price_sensitivity",
+            "evidence_sensitivity",
+            "risk_sensitivities",
+        ):
+            assert profile[key] == rule_first[i][key]
+
+
+def test_validator_repairs_missing_profile_evidence_fields():
+    generator = ConsumerProfileGenerator(seed=1, enable_llm_enrichment=False)
+    profile = generator.validator.validate({"persona_id": "M01"})
+    assert profile["profile_source"] == "rule"
+    assert profile["supporting_evidence_ids"] == []
+    assert profile["unsupported_fields"] == ["evidence_enrichment"]
+    assert profile["research_findings"] == []
+
+
+def test_profile_source_remains_rule_when_llm_enabled_without_client():
+    generator = ConsumerProfileGenerator(seed=1, enable_llm_enrichment=True)
+    profiles = generator.generate_profiles(brief=_brief(), count=2)
+    for profile in profiles:
+        assert profile["profile_source"] == "rule"
+
+
+def test_profile_source_is_llm_enriched_only_after_successful_enrichment():
+    class FakeLLMClient:
+        def chat_json(self, **kwargs):
+            return {
+                "bio": "她会结合真实使用反馈、材质证据和家庭预算判断是否购买。",
+                "persona": "证据敏感且重视家庭使用场景的消费者",
+                "expression_style": "谨慎追问证据",
+                "interested_topics": ["材质证据", "家庭使用", "价格比较"],
+            }
+
+    from app.services.consumer.society.mirofish_profile_adapter import MiroFishProfileAdapter
+
+    adapter = MiroFishProfileAdapter(seed=1, enable_llm_enrichment=True, llm_client=FakeLLMClient())
+    generator = ConsumerProfileGenerator(seed=1, adapter=adapter)
+    profiles = generator.generate_profiles(brief=_brief(), count=2)
+    for profile in profiles:
+        assert profile["profile_source"] == "llm_enriched"
+        assert profile["bio"] == "她会结合真实使用反馈、材质证据和家庭预算判断是否购买。"

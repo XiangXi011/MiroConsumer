@@ -76,6 +76,24 @@ class SocietyStateStore:
     def append_error(self, simulation_id: str, error: Mapping[str, Any]) -> None:
         self._append_jsonl(self.society_dir(simulation_id) / "errors.jsonl", error)
 
+    def write_reasoning_traces(self, simulation_id: str, traces: Iterable[Mapping[str, Any]]) -> None:
+        path = self.society_dir(simulation_id) / "reasoning_traces.jsonl"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w", encoding="utf-8") as f:
+            for trace in traces:
+                payload = trace.to_dict() if hasattr(trace, "to_dict") else dict(trace)
+                f.write(json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n")
+
+    def read_reasoning_traces(self, simulation_id: str) -> List[Dict[str, Any]]:
+        path = self.society_dir(simulation_id) / "reasoning_traces.jsonl"
+        if not path.exists():
+            return []
+        return [
+            json.loads(line)
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+
     def write_metrics(self, simulation_id: str, metrics: Mapping[str, Any]) -> None:
         self._write_json(self.society_dir(simulation_id) / "society_metrics.json", dict(metrics))
 

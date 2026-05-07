@@ -14,12 +14,26 @@
         <span class="society-summary-value mono">{{ item.value }}</span>
       </div>
     </div>
+    <div v-if="diagnosticItems.length" class="society-diagnostics">
+      <div class="society-diagnostics-head">
+        <span class="society-kicker">Diagnostics</span>
+      </div>
+      <div class="society-summary-grid">
+        <div v-for="item in diagnosticItems" :key="item.key" class="society-summary-item">
+          <span class="society-summary-label">{{ item.label }}</span>
+          <span class="society-summary-value mono">{{ item.value }}</span>
+        </div>
+      </div>
+    </div>
   </section>
 </template>
 
 <script setup>
 import { computed } from 'vue'
-import { buildSocietyRunSummaryItems } from '../../utils/societyRunSummary'
+import {
+  buildSocietyRunSummaryItems,
+  buildSocietyRunDiagnosticItems,
+} from '../../utils/societyRunSummary'
 
 const props = defineProps({
   context: {
@@ -30,13 +44,17 @@ const props = defineProps({
 
 const items = computed(() => buildSocietyRunSummaryItems(props.context || {}))
 
+const diagnosticItems = computed(() => buildSocietyRunDiagnosticItems(props.context || {}))
+
 const visible = computed(() => {
   const context = props.context || {}
-  return Boolean(
+  const hasMetrics = Boolean(
     context.society_mode ||
     context.society_agents_count ||
     context.society_metrics,
   )
+  const hasDiagnostics = diagnosticItems.value.length > 0
+  return hasMetrics || hasDiagnostics
 })
 </script>
 
@@ -101,6 +119,19 @@ const visible = computed(() => {
 
 .mono {
   font-family: 'JetBrains Mono', monospace;
+}
+
+.society-diagnostics {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.society-diagnostics-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
 }
 
 @media (max-width: 760px) {

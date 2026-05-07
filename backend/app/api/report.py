@@ -40,6 +40,9 @@ def _value_error_response(e: ValueError):
     }
     if hasattr(e, "details") and e.details:
         payload["details"] = e.details
+        for key in ("error_code", "blocking_stage", "recoverable", "next_action", "suggested_action"):
+            if key in e.details:
+                payload[key] = e.details[key]
     return jsonify(payload), _status_from_value_error(e)
 
 

@@ -11,6 +11,23 @@ export function formatSocietyDelta(value) {
   return points > 0 ? `+${points}pp` : `${points}pp`
 }
 
+export function buildSocietyRunDiagnosticItems(context = {}) {
+  const items = []
+  if (context.phase6j_status !== undefined) {
+    items.push({ key: 'phase6j_status', label: 'Phase6J Status', value: String(context.phase6j_status) })
+  }
+  if (context.error_code !== undefined) {
+    items.push({ key: 'error_code', label: 'Error Code', value: String(context.error_code) })
+  }
+  if (context.blocking_stage !== undefined) {
+    items.push({ key: 'blocking_stage', label: 'Blocking Stage', value: String(context.blocking_stage) })
+  }
+  if (context.next_action !== undefined) {
+    items.push({ key: 'next_action', label: 'Next Action', value: String(context.next_action) })
+  }
+  return items
+}
+
 export function buildSocietyRunSummaryItems(context = {}) {
   const metrics = context.society_metrics || {}
   const completedAgents = Number(context.completed_agents ?? context.society_completed_agents ?? 0)

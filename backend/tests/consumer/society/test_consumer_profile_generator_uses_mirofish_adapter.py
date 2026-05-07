@@ -26,3 +26,7 @@ def test_consumer_profile_generator_uses_mirofish_adapter_hybrid_mode():
         assert profile["risk_sensitivities"]
         assert profile["source"] in ["mirofish_adapter", "rule_fallback", "hybrid"]
         assert "Care-driven urban mom" not in profile["bio"]
+        assert profile["profile_source"] in ["rule", "evidence_enriched", "llm_enriched"]
+        assert "supporting_evidence_ids" in profile
+        assert "unsupported_fields" in profile
+        assert "research_findings" in profile

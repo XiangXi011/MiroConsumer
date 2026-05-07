@@ -595,6 +595,9 @@ class SimulationAppService:
         if gate["blocked"]:
             details = dict(gate.get("details") or {})
             details["blocked_mode"] = mode
+            for key in ("error_code", "blocking_stage", "recoverable", "next_action", "suggested_action"):
+                if key in gate:
+                    details[key] = gate[key]
             raise ValidationError(gate["reason"], details=details)
 
     @staticmethod

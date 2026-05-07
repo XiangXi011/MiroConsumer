@@ -88,9 +88,13 @@ class ReportAppService:
             from ...services.consumer.phase6j_calibration import check_phase6j_gate
             gate = check_phase6j_gate(simulation_dir)
             if gate["blocked"]:
+                details = dict(gate.get("details") or {})
+                for key in ("error_code", "blocking_stage", "recoverable", "next_action", "suggested_action"):
+                    if key in gate:
+                        details[key] = gate[key]
                 raise ValidationError(
                     gate["reason"],
-                    details=gate["details"],
+                    details=details,
                 )
 
         if not force_regenerate:

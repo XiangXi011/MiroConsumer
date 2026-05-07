@@ -68,17 +68,39 @@ class MiroFishProfileAdapter:
     ) -> List[Dict[str, Any]]:
         context = self.build_entity_context(brief, enabled_channels, research_findings)
         zep_status = "available" if graph_id else "unavailable"
+        findings_list = list(research_findings or [])
+        normalized_findings: List[Dict[str, Any]] = []
+        supporting_ids: List[str] = []
+        for item in findings_list:
+            if isinstance(item, Mapping):
+                nf = {
+                    "finding_id": str(item.get("finding_id") or ""),
+                    "source_id": str(item.get("source_id") or ""),
+                    "evidence_snippets": list(item.get("evidence_snippets") or []),
+                    "summary": str(item.get("summary") or item.get("claim") or ""),
+                }
+                normalized_findings.append(nf)
+                if nf["finding_id"]:
+                    supporting_ids.append(nf["finding_id"])
+        has_findings = bool(normalized_findings)
+        base_profile_source = "evidence_enriched" if has_findings else "rule"
+        unsupported = ["evidence_enrichment"] if not has_findings else []
         profiles: List[Dict[str, Any]] = []
         for index, blueprint in enumerate(blueprints):
             profile = dict(blueprint)
             profile.setdefault("persona_id", f"M{index + 1:02d}")
             profile.setdefault("name", f"消费者{index + 1:02d}")
             rich = self._rule_rich_profile(profile, context, index)
+            llm_enriched = False
             if self.enable_llm_enrichment and self.llm_client is not None:
-                rich = self._merge_llm_enrichment(rich, profile, context)
+                rich, llm_enriched = self._merge_llm_enrichment(rich, profile, context)
             profile.update(rich)
             profile["zep_context_status"] = zep_status
             profile["source"] = "hybrid" if zep_status == "available" else "rule_fallback"
+            profile["profile_source"] = "llm_enriched" if llm_enriched else base_profile_source
+            profile["supporting_evidence_ids"] = list(supporting_ids)
+            profile["unsupported_fields"] = list(unsupported)
+            profile["research_findings"] = list(normalized_findings)
             profiles.append(profile)
         return profiles
 
@@ -177,7 +199,7 @@ class MiroFishProfileAdapter:
         rich: Mapping[str, Any],
         profile: Mapping[str, Any],
         context: Mapping[str, Any],
-    ) -> Dict[str, Any]:
+    ) -> tuple[Dict[str, Any], bool]:
         try:
             payload = self.llm_client.chat_json(
                 messages=[
@@ -197,13 +219,15 @@ class MiroFishProfileAdapter:
                 max_tokens=500,
             )
         except Exception:
-            return dict(rich)
+            return dict(rich), False
 
         enriched = dict(rich)
+        changed = False
         for key in ("bio", "persona", "expression_style", "interested_topics"):
             if key in payload and payload[key]:
                 enriched[key] = payload[key]
-        return enriched
+                changed = True
+        return enriched, changed
 
     def _to_oasis_profile(self, profile: Mapping[str, Any], index: int) -> OasisAgentProfile:
         user_id = index + 1
