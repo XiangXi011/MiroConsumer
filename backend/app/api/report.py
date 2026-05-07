@@ -18,6 +18,7 @@ from ..services.application.benchmark_app_service import BenchmarkAppService
 from ..services.application.research_asset_app_service import ResearchAssetAppService
 from ..services.application.comparison_app_service import ComparisonAppService
 from ..contracts.errors import ConcurrencyConflictError
+from ..utils.pagination import paginate_query
 
 logger = get_logger('miroconsumer.api.report')
 
@@ -231,32 +232,41 @@ def get_report_by_simulation(simulation_id: str):
 @report_bp.route('/list', methods=['GET'])
 def list_reports():
     """
-    列出所有报告
+    列出所有报告（分页）
 
     Query参数：
         simulation_id: 按模拟ID过滤（可选）
         limit: 返回数量限制（默认50）
+        page: 页码（默认1）
+        per_page: 每页条数（默认20，上限100）
 
     返回：
         {
             "success": true,
             "data": [...],
-            "count": 10
+            "count": 10,
+            "pagination": { "page": 1, "per_page": 20, "total": 10, "pages": 1 }
         }
     """
     try:
         simulation_id = request.args.get('simulation_id')
         limit = request.args.get('limit', 50, type=int)
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 20, type=int)
 
         reports = ReportManager.list_reports(
             simulation_id=simulation_id,
             limit=limit
         )
 
+        report_dicts = [r.to_dict() for r in reports]
+        result = paginate_query(report_dicts, page=page, per_page=per_page)
+
         return jsonify({
             "success": True,
-            "data": [r.to_dict() for r in reports],
-            "count": len(reports),
+            "data": result["items"],
+            "count": len(result["items"]),
+            "pagination": result["pagination"],
             "disclaimer": REPORT_DISCLAIMER
         })
 

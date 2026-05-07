@@ -13,33 +13,46 @@ ANTI_MATH_PATTERNS = [
 
 
 def validate_llm_output(text: Optional[str], context: str = "") -> dict:
-    """校验LLM输出质量"""
+    """校验LLM输出质量，返回严重程度分级"""
     issues = []
+    severity = "ok"  # ok / warning / error
 
     # 1. 空输出检查
     if not text or not text.strip():
         issues.append("LLM返回空内容")
+        severity = "error"
 
     # 2. 过短输出检查（可能是截断）
     if text and len(text.strip()) < 10:
         issues.append(f"LLM输出过短({len(text.strip())}字符)")
+        severity = "error"
 
     # 3. 反数学规则检查
     if text:
         for pattern in ANTI_MATH_PATTERNS:
             if re.search(pattern, text):
-                issues.append(f"检测到LLM数学推断（不可靠）: {pattern}")
+                issues.append(f"检测到LLM数学推断: {pattern}")
+                if severity != "error":
+                    severity = "warning"
 
-    # 4. 重复内容检查
+    # 4. 超长输出检查
+    if text and len(text) > 50000:
+        issues.append(f"LLM输出超长({len(text)}字符)")
+        severity = "error"
+
+    # 5. 重复内容检查
     if text and len(text) > 100:
         sentences = text.split('。')
         if len(sentences) > 3:
             unique = set(s.strip() for s in sentences if s.strip())
             if len(unique) < len(sentences) * 0.5:
                 issues.append("检测到大量重复内容")
+                if severity != "error":
+                    severity = "warning"
 
     return {
-        "valid": len(issues) == 0,
+        "valid": severity != "error",
+        "severity": severity,
         "issues": issues,
         "context": context,
         "output_length": len(text) if text else 0

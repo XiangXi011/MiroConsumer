@@ -5,9 +5,11 @@ LLM客户端封装
 
 import json
 import logging
+import os
 import re
 import time
 import hashlib
+import datetime
 from typing import Optional, Dict, Any, List
 from openai import OpenAI
 
@@ -15,6 +17,8 @@ from ..config import Config
 from .llm_governance import validate_llm_output
 
 logger = logging.getLogger(__name__)
+
+LLM_LOG_DIR = os.path.join(os.path.dirname(__file__), '../../logs/llm')
 
 
 class LLMClient:
@@ -83,12 +87,22 @@ class LLMClient:
 
         # 记录LLM调用详情
         usage = response.usage
+        tokens_str = f"prompt={usage.prompt_tokens},completion={usage.completion_tokens}" if usage else "N/A"
         logger.info(
             "LLM调用: model=%s, prompt_hash=%s, tokens=%s, elapsed=%.2fs",
             self.model,
             prompt_hash,
-            f"prompt={usage.prompt_tokens},completion={usage.completion_tokens}" if usage else "N/A",
+            tokens_str,
             elapsed,
+        )
+
+        # 持久化日志到文件
+        self._log_llm_call(
+            model=self.model,
+            prompt_hash=prompt_hash,
+            tokens=tokens_str,
+            elapsed=elapsed,
+            status="success",
         )
 
         # LLM 输出治理校验
@@ -137,6 +151,24 @@ class LLMClient:
         content = re.sub(r'<think>[\s\S]*?</think>', '', content).strip()
         finish_reason = response.choices[0].finish_reason
         return content, finish_reason
+
+    def _log_llm_call(self, model, prompt_hash, tokens, elapsed, status):
+        """将LLM调用日志写入JSONL文件"""
+        try:
+            os.makedirs(LLM_LOG_DIR, exist_ok=True)
+            log_entry = {
+                "timestamp": datetime.datetime.utcnow().isoformat(),
+                "model": model,
+                "prompt_hash": prompt_hash,
+                "tokens": tokens,
+                "elapsed_seconds": round(elapsed, 3),
+                "status": status,
+            }
+            log_file = os.path.join(LLM_LOG_DIR, f"llm_{datetime.date.today().isoformat()}.jsonl")
+            with open(log_file, 'a', encoding='utf-8') as f:
+                f.write(json.dumps(log_entry, ensure_ascii=False) + '\n')
+        except Exception:
+            logger.debug("LLM日志写入失败", exc_info=True)
 
     @staticmethod
     def clean_llm_text(text: str) -> str:

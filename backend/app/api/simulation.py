@@ -231,6 +231,18 @@ def create_simulation():
                 "details": errors
             }), 400
 
+        # 幂等检查：同 project_id 已有仿真则直接返回
+        project_id = data.get('project_id', '')
+        if project_id:
+            manager = SimulationManager()
+            existing_sims = manager.list_simulations(project_id=project_id)
+            if existing_sims:
+                return jsonify({
+                    "success": True,
+                    "data": existing_sims[0].to_dict(),
+                    "message": "仿真已存在（幂等返回）"
+                }), 200
+
         result = SimulationAppService.create_simulation(data)
         result["disclaimer"] = SIMULATION_DISCLAIMER
         return jsonify({

@@ -36,7 +36,7 @@ class TestValidateLLMOutput:
         ]
         for text in texts:
             result = validate_llm_output(text)
-            assert result["valid"] is False, f"应检测到数学推断: {text}"
+            assert result["severity"] == "warning", f"应检测到数学推断: {text}"
             assert any("数学推断" in i for i in result["issues"])
 
     def test_normal_long_text_returns_valid(self):
@@ -50,7 +50,7 @@ class TestValidateLLMOutput:
         sentence = "消费者对该产品持正面态度"
         text = (sentence + "。") * 10
         result = validate_llm_output(text)
-        assert result["valid"] is False
+        assert result["severity"] == "warning"
         assert any("重复" in i for i in result["issues"])
 
     def test_context_passed_through(self):
@@ -68,6 +68,38 @@ class TestValidateLLMOutput:
         result = validate_llm_output(text)
         # 不应有重复相关issue
         assert not any("重复" in i for i in result["issues"])
+
+    def test_severity_ok_for_normal_text(self):
+        text = "这是一段正常的LLM输出，内容足够长且不包含任何数学推断或重复内容。"
+        result = validate_llm_output(text)
+        assert result["severity"] == "ok"
+        assert result["valid"] is True
+
+    def test_severity_error_for_empty(self):
+        result = validate_llm_output("")
+        assert result["severity"] == "error"
+        assert result["valid"] is False
+
+    def test_severity_error_for_too_short(self):
+        result = validate_llm_output("短")
+        assert result["severity"] == "error"
+        assert result["valid"] is False
+
+    def test_ultra_long_output_detected(self):
+        text = "x" * 60000
+        result = validate_llm_output(text)
+        assert result["severity"] == "error"
+        assert result["valid"] is False
+        assert any("超长" in i for i in result["issues"])
+
+    def test_output_under_50k_is_ok(self):
+        # 用不重复的句子构造长文本
+        sentences = [f"这是第{i}段分析内容，描述消费者行为的第{i}个维度。" for i in range(500)]
+        text = "".join(sentences)
+        result = validate_llm_output(text)
+        assert len(text) < 50000
+        assert result["severity"] == "ok"
+        assert not any("超长" in i for i in result["issues"])
 
 
 class TestGetFallbackResponse:
