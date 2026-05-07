@@ -1,8 +1,19 @@
 """人群生成器 — 生成多样化的消费者群体"""
 
+from dataclasses import dataclass
 from .persona import ConsumerPersona
 import random
 import uuid
+
+
+@dataclass
+class ShadowPersona:
+    """影子Agent — 概率参与"""
+    base_persona: ConsumerPersona
+    activation_probability: float = 0.3  # 每轮参与概率
+
+    def should_activate(self, rng: random.Random) -> bool:
+        return rng.random() < self.activation_probability
 
 # 预设人群模板
 PERSONA_TEMPLATES = {
@@ -99,3 +110,46 @@ class PopulationGenerator:
             persona.brand_loyalty = max(0, min(1, persona.brand_loyalty + self.rng.gauss(0, 0.1)))
             population.append(persona)
         return population
+
+    def generate_shadow_population(self, n: int, activation_probability: float = 0.3) -> list:
+        """生成影子Agent人群 — 概率参与的低活跃度Agent"""
+        templates = list(PERSONA_TEMPLATES.keys())
+        shadows = []
+        for i in range(n):
+            template = templates[i % len(templates)]
+            persona = self.generate_from_template(template)
+            persona.price_sensitivity = max(0, min(1, persona.price_sensitivity + self.rng.gauss(0, 0.1)))
+            persona.brand_loyalty = max(0, min(1, persona.brand_loyalty + self.rng.gauss(0, 0.1)))
+            shadow = ShadowPersona(
+                base_persona=persona,
+                activation_probability=activation_probability,
+            )
+            shadows.append(shadow)
+        return shadows
+
+    def get_population_stats(self, population: list) -> dict:
+        """生成人群统计报表"""
+        if not population:
+            return {"total": 0}
+
+        # 支持 ConsumerPersona 和 ShadowPersona（取 base_persona）
+        personas = []
+        for p in population:
+            if isinstance(p, ShadowPersona):
+                personas.append(p.base_persona)
+            else:
+                personas.append(p)
+
+        total = len(personas)
+        template_counts: dict = {}
+        for p in personas:
+            template_counts[p.name] = template_counts.get(p.name, 0) + 1
+
+        return {
+            "total": total,
+            "avg_price_sensitivity": sum(p.price_sensitivity for p in personas) / total,
+            "avg_brand_loyalty": sum(p.brand_loyalty for p in personas) / total,
+            "city_tier_distribution": {t: sum(1 for p in personas if p.city_tier == t) for t in range(1, 6)},
+            "income_distribution": {l: sum(1 for p in personas if p.income_level == l) for l in ["low", "middle", "high"]},
+            "template_distribution": template_counts,
+        }

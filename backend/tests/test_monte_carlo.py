@@ -17,6 +17,8 @@ for mod_name in [
 from app.services.consumer.validation.monte_carlo import (
     MonteCarloValidator,
     ValidationResult,
+    SimulationHistory,
+    ComparisonEngine,
 )
 
 
@@ -113,3 +115,84 @@ class TestMonteCarloValidator:
         results = validator.validate_simulation_results(observed, baseline, n_simulations=100)
         assert "a" in results
         assert "b" not in results
+
+
+class TestSimulationHistory:
+
+    def test_record_and_get_history(self):
+        h = SimulationHistory()
+        h.record_run("run-1", {"accuracy": 0.85, "latency": 120.0}, seed=42, timestamp=1000.0)
+        h.record_run("run-2", {"accuracy": 0.90, "latency": 110.0}, seed=43, timestamp=2000.0)
+
+        assert len(h.get_history()) == 2
+        assert h.get_history()[0]["run_id"] == "run-1"
+
+    def test_get_history_by_metric(self):
+        h = SimulationHistory()
+        h.record_run("run-1", {"accuracy": 0.85}, seed=42)
+        h.record_run("run-2", {"latency": 110.0}, seed=43)
+        h.record_run("run-3", {"accuracy": 0.90, "latency": 100.0}, seed=44)
+
+        acc_runs = h.get_history("accuracy")
+        assert len(acc_runs) == 2
+        assert all("accuracy" in r["metrics"] for r in acc_runs)
+
+        lat_runs = h.get_history("latency")
+        assert len(lat_runs) == 2
+
+    def test_get_history_missing_metric(self):
+        h = SimulationHistory()
+        h.record_run("run-1", {"accuracy": 0.85}, seed=42)
+
+        assert h.get_history("nonexistent") == []
+
+    def test_empty_history(self):
+        h = SimulationHistory()
+        assert h.get_history() == []
+
+
+class TestComparisonEngine:
+
+    def test_compare_basic(self):
+        engine = ComparisonEngine()
+        a = {"accuracy": 0.80, "latency": 100.0}
+        b = {"accuracy": 0.90, "latency": 80.0}
+
+        result = engine.compare(a, b)
+
+        assert result["accuracy"]["a"] == 0.80
+        assert result["accuracy"]["b"] == 0.90
+        assert result["accuracy"]["diff"] == pytest.approx(0.10)
+        assert result["accuracy"]["pct_change"] == pytest.approx(12.5)
+
+        assert result["latency"]["diff"] == pytest.approx(-20.0)
+        assert result["latency"]["pct_change"] == pytest.approx(-20.0)
+
+    def test_compare_only_common_metrics(self):
+        engine = ComparisonEngine()
+        a = {"accuracy": 0.80, "extra_a": 1.0}
+        b = {"accuracy": 0.90, "extra_b": 2.0}
+
+        result = engine.compare(a, b)
+
+        assert set(result.keys()) == {"accuracy"}
+
+    def test_compare_zero_baseline(self):
+        engine = ComparisonEngine()
+        a = {"metric": 0.0}
+        b = {"metric": 5.0}
+
+        result = engine.compare(a, b)
+
+        assert result["metric"]["diff"] == 5.0
+        assert result["metric"]["pct_change"] == 0.0  # division by zero guard
+
+    def test_compare_identical(self):
+        engine = ComparisonEngine()
+        m = {"x": 42.0, "y": 7.0}
+
+        result = engine.compare(m, m)
+
+        for metric in result:
+            assert result[metric]["diff"] == 0.0
+            assert result[metric]["pct_change"] == 0.0

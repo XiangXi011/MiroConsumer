@@ -162,3 +162,66 @@ class TestCommunityStructureGenerator:
         g = gen.generate_community_structure(ids, n_communities=4, intra_density=1.0)
         for nid in ids:
             assert len(g.get_neighbors(nid)) > 0, f"Node {nid} is isolated"
+
+
+class TestGetActivatedNodes:
+    def test_seed_nodes_always_activated(self):
+        g = SocialGraph()
+        g.add_edge(SocialEdge("a", "b", 0.8, "friend", 0.6))
+        g.add_edge(SocialEdge("b", "c", 0.7, "friend", 0.5))
+
+        activated = g.get_activated_nodes(["a"], threshold=0.5)
+        assert "a" in activated
+
+    def test_activation_respects_threshold(self):
+        g = SocialGraph()
+        g.add_edge(SocialEdge("a", "b", 0.8, "friend", 0.6))
+        g.add_edge(SocialEdge("b", "c", 0.3, "friend", 0.2))
+
+        # threshold=0.5: b activates (0.8 >= 0.5) but c doesn't (0.3 < 0.5)
+        activated = g.get_activated_nodes(["a"], threshold=0.5)
+        assert "a" in activated
+        assert "b" in activated
+        assert "c" not in activated
+
+    def test_activation_propagation(self):
+        g = SocialGraph()
+        g.add_edge(SocialEdge("a", "b", 0.9, "friend", 0.8))
+        g.add_edge(SocialEdge("b", "c", 0.8, "friend", 0.7))
+        g.add_edge(SocialEdge("c", "d", 0.7, "friend", 0.6))
+
+        # All edges >= 0.5, should propagate through chain
+        activated = g.get_activated_nodes(["a"], threshold=0.5)
+        assert activated == {"a", "b", "c", "d"}
+
+    def test_activation_stops_at_threshold(self):
+        g = SocialGraph()
+        g.add_edge(SocialEdge("a", "b", 0.9, "friend", 0.8))
+        g.add_edge(SocialEdge("b", "c", 0.4, "friend", 0.3))  # below threshold
+        g.add_edge(SocialEdge("c", "d", 0.9, "friend", 0.8))
+
+        activated = g.get_activated_nodes(["a"], threshold=0.5)
+        assert activated == {"a", "b"}  # stops at b->c
+
+    def test_multiple_seed_nodes(self):
+        g = SocialGraph()
+        g.add_edge(SocialEdge("a", "x", 0.8, "friend", 0.6))
+        g.add_edge(SocialEdge("b", "y", 0.9, "friend", 0.7))
+
+        activated = g.get_activated_nodes(["a", "b"], threshold=0.5)
+        assert activated == {"a", "b", "x", "y"}
+
+    def test_no_edges_returns_only_seeds(self):
+        g = SocialGraph()
+        g.add_node("a")
+        g.add_node("b")
+
+        activated = g.get_activated_nodes(["a"], threshold=0.5)
+        assert activated == {"a"}
+
+    def test_empty_seeds(self):
+        g = SocialGraph()
+        g.add_edge(SocialEdge("a", "b", 0.8, "friend", 0.6))
+
+        activated = g.get_activated_nodes([], threshold=0.5)
+        assert activated == set()

@@ -29,6 +29,7 @@ from app.services.consumer.cognition.decision import DecisionEngine, DEFAULT_ACT
 from app.services.consumer.cognition.engine import ConsumerCognitionEngine
 from app.services.consumer.cognition.expression import ExpressionEngine
 from app.services.consumer.cognition.perception import PerceptionEngine
+from app.services.consumer.demographics.persona import ConsumerPersona
 from app.services.consumer.society.consumer_roles import ConsumerRole
 from app.services.consumer.society.population_models import ConsumerSocietyAgent
 
@@ -367,3 +368,67 @@ class TestConsumerCognitionEngine:
 
         assert result["expression"]["opinion"] == "I think this is great!"
         assert result["expression"]["social_post"] == "Loving this product! #young_professional"
+
+    def test_process_turn_with_persona(self):
+        """process_turn with persona populates persona info in perception and decision."""
+        engine = ConsumerCognitionEngine()
+        agent = _make_agent()
+        persona = ConsumerPersona(
+            persona_id="p-test",
+            name="test persona",
+            price_sensitivity=0.8,
+            brand_loyalty=0.3,
+            social_influence_weight=0.6,
+        )
+
+        result = engine.process_turn(agent, social_context={}, media_content={}, persona=persona)
+
+        # persona info in perception_state
+        assert "persona" in result["perception_state"]
+        assert result["perception_state"]["persona"]["persona_id"] == "p-test"
+        assert result["perception_state"]["persona"]["price_sensitivity"] == 0.8
+
+        # dimension_scores in decision
+        assert "dimension_scores" in result["decision"]
+        assert "price_alignment" in result["decision"]["dimension_scores"]
+        assert "brand_alignment" in result["decision"]["dimension_scores"]
+        assert "social_alignment" in result["decision"]["dimension_scores"]
+
+    def test_process_turn_reasoning_trace(self):
+        """process_turn returns reasoning_trace with expected keys."""
+        engine = ConsumerCognitionEngine()
+        agent = _make_agent()
+        persona = ConsumerPersona(persona_id="p-trace", name="trace persona")
+
+        result = engine.process_turn(agent, social_context={}, media_content={}, persona=persona)
+
+        assert "reasoning_trace" in result
+        trace = result["reasoning_trace"]
+        assert "perception_summary" in trace
+        assert "decision_reasoning" in trace
+        assert "confidence" in trace
+        assert trace["persona_id"] == "p-trace"
+
+    def test_process_turn_reasoning_trace_no_persona(self):
+        """reasoning_trace has persona_id=None when no persona provided."""
+        engine = ConsumerCognitionEngine()
+        agent = _make_agent()
+
+        result = engine.process_turn(agent, social_context={}, media_content={})
+
+        assert result["reasoning_trace"]["persona_id"] is None
+
+    def test_process_turn_persona_as_dict(self):
+        """persona can be passed as a dict and gets auto-converted."""
+        engine = ConsumerCognitionEngine()
+        agent = _make_agent()
+        persona_dict = {
+            "persona_id": "p-dict",
+            "name": "dict persona",
+            "price_sensitivity": 0.5,
+            "brand_loyalty": 0.5,
+        }
+
+        result = engine.process_turn(agent, social_context={}, media_content={}, persona=persona_dict)
+
+        assert result["reasoning_trace"]["persona_id"] == "p-dict"

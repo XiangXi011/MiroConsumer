@@ -60,6 +60,26 @@ class SocialGraph:
             frontier = next_frontier
         return visited
 
+    def get_activated_nodes(self, topic_seed_nodes: list, threshold: float = 0.5) -> Set[str]:
+        """基于话题激活阈值获取被激活的节点
+
+        从种子节点出发，沿出边扩散，仅当边权重 >= threshold 时才激活下游节点。
+        返回所有被激活的节点集合（包含种子节点）。
+        """
+        activated: Set[str] = set(topic_seed_nodes)
+        frontier: Set[str] = set(topic_seed_nodes)
+
+        while frontier:
+            next_frontier: Set[str] = set()
+            for node in frontier:
+                for edge in self.edges.get(node, []):
+                    if edge.target_id not in activated and edge.weight >= threshold:
+                        activated.add(edge.target_id)
+                        next_frontier.add(edge.target_id)
+            frontier = next_frontier
+
+        return activated
+
     @property
     def node_count(self) -> int:
         return len(self.nodes)

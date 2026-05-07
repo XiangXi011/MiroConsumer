@@ -22,6 +22,7 @@ from app.services.consumer.demographics.persona import ConsumerPersona
 from app.services.consumer.demographics.population import (
     PERSONA_TEMPLATES,
     PopulationGenerator,
+    ShadowPersona,
 )
 
 
@@ -130,3 +131,95 @@ class TestPopulationGenerator:
         for a, b in zip(pop1, pop2):
             assert a.price_sensitivity == b.price_sensitivity
             assert a.brand_loyalty == b.brand_loyalty
+
+
+class TestShadowPersona:
+    """ShadowPersona tests."""
+
+    def test_should_activate_uses_rng(self):
+        import random
+        persona = ConsumerPersona(persona_id="s1", name="shadow")
+        shadow = ShadowPersona(base_persona=persona, activation_probability=0.5)
+        rng = random.Random(42)
+
+        activations = [shadow.should_activate(rng) for _ in range(1000)]
+        true_count = sum(activations)
+        # With p=0.5 and 1000 trials, expect ~500, allow wide margin
+        assert 350 < true_count < 650
+
+    def test_should_activate_low_probability(self):
+        import random
+        persona = ConsumerPersona(persona_id="s2", name="shadow")
+        shadow = ShadowPersona(base_persona=persona, activation_probability=0.1)
+        rng = random.Random(42)
+
+        activations = [shadow.should_activate(rng) for _ in range(1000)]
+        true_count = sum(activations)
+        assert true_count < 200
+
+    def test_generate_shadow_population_count(self):
+        gen = PopulationGenerator(seed=42)
+        shadows = gen.generate_shadow_population(10)
+        assert len(shadows) == 10
+        assert all(isinstance(s, ShadowPersona) for s in shadows)
+
+    def test_generate_shadow_population_custom_probability(self):
+        gen = PopulationGenerator(seed=42)
+        shadows = gen.generate_shadow_population(5, activation_probability=0.8)
+        for s in shadows:
+            assert s.activation_probability == 0.8
+
+
+class TestPopulationStats:
+    """PopulationGenerator.get_population_stats tests."""
+
+    def test_stats_basic_fields(self):
+        gen = PopulationGenerator(seed=42)
+        pop = gen.generate_diverse_population(20)
+        stats = gen.get_population_stats(pop)
+
+        assert stats["total"] == 20
+        assert "avg_price_sensitivity" in stats
+        assert "avg_brand_loyalty" in stats
+        assert 0.0 <= stats["avg_price_sensitivity"] <= 1.0
+        assert 0.0 <= stats["avg_brand_loyalty"] <= 1.0
+
+    def test_stats_city_tier_distribution(self):
+        gen = PopulationGenerator(seed=42)
+        pop = gen.generate_diverse_population(20)
+        stats = gen.get_population_stats(pop)
+
+        tier_dist = stats["city_tier_distribution"]
+        assert set(tier_dist.keys()) == {1, 2, 3, 4, 5}
+        assert sum(tier_dist.values()) == 20
+
+    def test_stats_income_distribution(self):
+        gen = PopulationGenerator(seed=42)
+        pop = gen.generate_diverse_population(20)
+        stats = gen.get_population_stats(pop)
+
+        income_dist = stats["income_distribution"]
+        assert set(income_dist.keys()) == {"low", "middle", "high"}
+        assert sum(income_dist.values()) == 20
+
+    def test_stats_template_distribution(self):
+        gen = PopulationGenerator(seed=42)
+        pop = gen.generate_diverse_population(20)
+        stats = gen.get_population_stats(pop)
+
+        template_dist = stats["template_distribution"]
+        assert sum(template_dist.values()) == 20
+        assert len(template_dist) == 4  # 4 templates
+
+    def test_stats_empty_population(self):
+        gen = PopulationGenerator(seed=42)
+        stats = gen.get_population_stats([])
+        assert stats["total"] == 0
+
+    def test_stats_with_shadow_personas(self):
+        gen = PopulationGenerator(seed=42)
+        shadows = gen.generate_shadow_population(10)
+        stats = gen.get_population_stats(shadows)
+
+        assert stats["total"] == 10
+        assert "avg_price_sensitivity" in stats

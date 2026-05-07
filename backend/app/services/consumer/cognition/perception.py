@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Mapping
 
+from ..demographics.persona import ConsumerPersona
 from ..society.population_models import ConsumerSocietyAgent
 
 logger = logging.getLogger(__name__)
@@ -98,11 +99,14 @@ class PerceptionEngine:
         agent: ConsumerSocietyAgent,
         social_input: Dict[str, Any] | None = None,
         media_input: Dict[str, Any] | None = None,
+        persona: ConsumerPersona | None = None,
     ) -> Dict[str, Any]:
         """Build the unified perception state from processed inputs.
 
         Combines social and media perception into a single state dict
-        that the Decision layer consumes.
+        that the Decision layer consumes.  When a *persona* is supplied its
+        description and key traits are embedded in the state so downstream
+        layers can reason over them.
         """
         social = social_input or {}
         media = media_input or {}
@@ -117,13 +121,26 @@ class PerceptionEngine:
         elif social.get("dominant_sentiment") == "positive":
             trust = min(1.0, trust + 0.03 * agent.evidence_sensitivity)
 
-        return {
+        state: Dict[str, Any] = {
             "agent_id": agent.agent_id,
             "awareness": awareness,
             "trust": round(trust, 4),
             "social": social,
             "media": media,
         }
+
+        # Embed persona information when available
+        if persona is not None:
+            state["persona"] = {
+                "persona_id": persona.persona_id,
+                "description": persona.to_prompt_description(),
+                "price_sensitivity": persona.price_sensitivity,
+                "brand_loyalty": persona.brand_loyalty,
+                "social_influence_weight": persona.social_influence_weight,
+                "innovation_adoption": persona.innovation_adoption,
+            }
+
+        return state
 
     # ------------------------------------------------------------------
     # Internal helpers

@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Mapping
 
+from ..demographics.persona import ConsumerPersona
 from ..society.population_models import ConsumerSocietyAgent
 
 logger = logging.getLogger(__name__)
@@ -70,6 +71,7 @@ class DecisionEngine:
         agent: ConsumerSocietyAgent,
         perception_state: Mapping[str, Any],
         options: List[Dict[str, Any]] | None = None,
+        persona: ConsumerPersona | None = None,
     ) -> Dict[str, Any]:
         """Make a decision by evaluating options and picking the top one.
 
@@ -78,6 +80,7 @@ class DecisionEngine:
             reasoning: str — human-readable explanation
             scores: list — full scored option list
             confidence: float 0-1
+            dimension_scores: dict — persona-alignment scores (when persona provided)
         """
         evaluated = self.evaluate_options(agent, perception_state, options)
         if not evaluated:
@@ -98,12 +101,27 @@ class DecisionEngine:
             f"{best['rationale']}"
         )
 
-        return {
+        result: Dict[str, Any] = {
             "choice": best["action_id"],
             "reasoning": reasoning,
             "scores": evaluated,
             "confidence": confidence,
         }
+
+        # Compute dimension alignment scores when persona is available
+        if persona is not None:
+            persona_state = perception_state.get("persona", {})
+            price_score = persona_state.get("price_sensitivity", 0.5)
+            brand_score = persona_state.get("brand_loyalty", 0.5)
+            social_score = persona_state.get("social_influence_weight", 0.5)
+
+            result["dimension_scores"] = {
+                "price_alignment": 1.0 - abs(persona.price_sensitivity - price_score),
+                "brand_alignment": 1.0 - abs(persona.brand_loyalty - brand_score),
+                "social_alignment": 1.0 - abs(persona.social_influence_weight - social_score),
+            }
+
+        return result
 
     # ------------------------------------------------------------------
     # Internal scoring

@@ -2,8 +2,9 @@
 
 import random
 import math
+import time
 from typing import List, Dict, Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -101,3 +102,42 @@ class MonteCarloValidator:
             t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))))
         )
         return 2.0 * p
+
+
+class SimulationHistory:
+    """运行历史管理"""
+
+    def __init__(self):
+        self.runs: List[Dict] = []
+
+    def record_run(self, run_id: str, metrics: Dict[str, float], seed: int | None = None, timestamp: float | None = None):
+        self.runs.append({
+            "run_id": run_id,
+            "metrics": metrics,
+            "seed": seed,
+            "timestamp": timestamp if timestamp is not None else time.time(),
+        })
+
+    def get_history(self, metric_name: str | None = None) -> List[Dict]:
+        if metric_name:
+            return [r for r in self.runs if metric_name in r["metrics"]]
+        return self.runs
+
+
+class ComparisonEngine:
+    """A/B 对比引擎"""
+
+    def compare(self, run_a_metrics: Dict[str, float], run_b_metrics: Dict[str, float]) -> Dict[str, Dict]:
+        results = {}
+        for metric in set(run_a_metrics) & set(run_b_metrics):
+            a_val = run_a_metrics[metric]
+            b_val = run_b_metrics[metric]
+            diff = b_val - a_val
+            pct = (diff / a_val * 100) if a_val != 0 else 0.0
+            results[metric] = {
+                "a": a_val,
+                "b": b_val,
+                "diff": diff,
+                "pct_change": pct,
+            }
+        return results

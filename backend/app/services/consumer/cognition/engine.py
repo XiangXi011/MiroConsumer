@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, Mapping
 
+from ..demographics.persona import ConsumerPersona
 from ..society.population_models import ConsumerSocietyAgent
 from .decision import DecisionEngine
 from .expression import ExpressionEngine
@@ -22,7 +23,7 @@ class ConsumerCognitionEngine:
     Usage::
 
         engine = ConsumerCognitionEngine(llm_client=my_llm)
-        result = engine.process_turn(agent, social_context, media_content)
+        result = engine.process_turn(agent, social_context, media_content, persona=persona)
     """
 
     def __init__(self, llm_client: Any | None = None):
@@ -36,6 +37,7 @@ class ConsumerCognitionEngine:
         agent: ConsumerSocietyAgent,
         social_context: Mapping[str, Any] | None = None,
         media_content: Mapping[str, Any] | None = None,
+        persona: ConsumerPersona | Mapping[str, Any] | None = None,
     ) -> Dict[str, Any]:
         """Run one complete cognitive cycle and return full result.
 
@@ -43,7 +45,12 @@ class ConsumerCognitionEngine:
             - perception_state: structured perception data
             - decision: decision dict (choice, reasoning, scores, confidence)
             - expression: dict with opinion and social_post
+            - reasoning_trace: trace of the cognitive reasoning process
         """
+        # Resolve persona to ConsumerPersona if given as dict
+        if isinstance(persona, dict):
+            persona = ConsumerPersona(**persona)
+
         # --- Perception ---
         social_input = self.perception.process_social_input(
             agent, social_context or {},
@@ -53,10 +60,11 @@ class ConsumerCognitionEngine:
         )
         perception_state = self.perception.build_perception_state(
             agent, social_input=social_input, media_input=media_input,
+            persona=persona,
         )
 
         # --- Decision ---
-        decision = self.decision.make_decision(agent, perception_state)
+        decision = self.decision.make_decision(agent, perception_state, persona=persona)
 
         # --- Expression ---
         opinion = self.expression.generate_opinion(agent, decision)
@@ -65,6 +73,14 @@ class ConsumerCognitionEngine:
         formatted_opinion = self.expression.format_response(agent, opinion)
         formatted_post = self.expression.format_response(agent, social_post)
 
+        # --- Reasoning Trace ---
+        reasoning_trace = {
+            "perception_summary": str(perception_state),
+            "decision_reasoning": decision.get("reasoning", ""),
+            "confidence": decision.get("confidence", 0.0),
+            "persona_id": persona.persona_id if persona else None,
+        }
+
         return {
             "perception_state": perception_state,
             "decision": decision,
@@ -72,6 +88,7 @@ class ConsumerCognitionEngine:
                 "opinion": formatted_opinion,
                 "social_post": formatted_post,
             },
+            "reasoning_trace": reasoning_trace,
         }
 
 
