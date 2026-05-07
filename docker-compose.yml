@@ -1,6 +1,6 @@
 services:
   miroconsumer:
-    image: ${MIROCONSUMER_IMAGE:-ghcr.io/xiangxi011/miroconsumer:latest}
+    build: .
     container_name: miroconsumer
     env_file:
       - .env

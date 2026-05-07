@@ -21,6 +21,13 @@ def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
     
+    # SECRET_KEY 校验（非 DEBUG 模式必须配置）
+    if not app.debug and not app.config.get('SECRET_KEY'):
+        raise RuntimeError('SECRET_KEY is required in production. Set SECRET_KEY in .env')
+    
+    # 请求体大小限制
+    app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB
+    
     # 设置JSON编码：确保中文直接显示（而不是 \uXXXX 格式）
     # Flask >= 2.3 使用 app.json.ensure_ascii，旧版本使用 JSON_AS_ASCII 配置
     if hasattr(app, 'json') and hasattr(app.json, 'ensure_ascii'):
@@ -61,6 +68,12 @@ def create_app(config_class=Config):
     def log_response(response):
         logger = get_logger('miroconsumer.request')
         logger.debug(f"响应: {response.status_code}")
+        # 安全响应头
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        response.headers['X-Frame-Options'] = 'DENY'
+        response.headers['X-XSS-Protection'] = '1; mode=block'
+        response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+        response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
         return response
     
     # 注册蓝图
@@ -73,7 +86,7 @@ def create_app(config_class=Config):
     # 健康检查
     @app.route('/health')
     def health():
-        return {'status': 'ok', 'service': 'MiroConsumer Backend'}
+        return {'status': 'ok'}
 
     if should_log_startup:
         logger.info("MiroConsumer Backend 启动完成")
