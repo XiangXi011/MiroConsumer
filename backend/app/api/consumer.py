@@ -25,6 +25,7 @@ from ..contracts.errors import ConcurrencyConflictError
 from ..utils.logger import get_logger
 from ..utils.disclaimer import SIMULATION_DISCLAIMER
 from ..auth.middleware import require_permission
+from ..middleware.rate_limiter import export_rate_limit
 
 logger = get_logger("miroconsumer.api.consumer")
 
@@ -301,6 +302,7 @@ def get_comparison_snapshot(comparison_id: str):
 
 @consumer_bp.route("/research-assets/export", methods=["POST"])
 @require_permission('asset.export')
+@export_rate_limit
 def export_research_asset():
     """Export a research asset pack from a consumer simulation."""
     try:

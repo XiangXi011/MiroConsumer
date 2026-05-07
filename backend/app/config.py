@@ -29,7 +29,7 @@ class _ClassProperty:
         return self.fget(cls)
 
 
-WEAK_SECRET_KEYS = {'dev-only-change-me', 'dev-secret', 'secret', 'change-me', 'miroconsumer'}
+WEAK_SECRET_KEYS = {'dev-only-change-me', 'dev-secret', 'secret', 'change-me', 'miroconsumer', 'miro-secret-key-change-in-production'}
 
 
 class Config:

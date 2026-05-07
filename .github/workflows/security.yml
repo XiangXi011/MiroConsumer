@@ -1,0 +1,43 @@
+name: Security Scan
+
+on:
+  pull_request:
+    branches: [main, codex/*]
+  push:
+    branches: [main]
+
+jobs:
+  dependency-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pip-audit
+        run: pip install pip-audit
+      - name: Run dependency audit
+        run: pip-audit
+
+  sast:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install bandit
+        run: pip install bandit
+      - name: Run SAST scan
+        run: bandit -r backend/app/ -ll --skip B101
+
+  secrets-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check for hardcoded secrets
+        run: |
+          echo "Scanning for potential secrets..."
+          ! grep -rn "SECRET_KEY=dev" backend/ --include="*.py" || (echo "Default secret key found!" && exit 1)
+          ! grep -rn "password=" backend/ --include="*.py" | grep -v "test" | grep -v "#" || (echo "Hardcoded password found!" && exit 1)
+          echo "No secrets found."

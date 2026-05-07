@@ -20,6 +20,7 @@ from ..services.application.comparison_app_service import ComparisonAppService
 from ..contracts.errors import ConcurrencyConflictError
 from ..utils.pagination import paginate_query
 from ..auth.middleware import require_permission
+from ..middleware.rate_limiter import export_rate_limit
 from ..repositories import SimulationRepository
 from ..repositories.factory import create_repository_bundle
 
@@ -302,6 +303,7 @@ def list_reports():
 
 @report_bp.route('/<report_id>/download', methods=['GET'])
 @require_permission('report.export')
+@export_rate_limit
 def download_report(report_id: str):
     """
     下载报告（Markdown格式）
@@ -829,6 +831,7 @@ def get_graph_statistics_tool():
 
 @report_bp.route('/research-assets/export', methods=['POST'])
 @require_permission('asset.export')
+@export_rate_limit
 def export_research_asset():
     """
     Export a research asset pack from a consumer simulation.

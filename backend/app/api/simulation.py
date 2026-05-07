@@ -24,6 +24,7 @@ from ..services.application.branch_app_service import BranchAppService
 from ..services.application.consumer_app_service import ConsumerAppService
 from ..contracts.errors import ConcurrencyConflictError
 from ..auth.middleware import require_permission
+from ..middleware.rate_limiter import export_rate_limit
 
 logger = get_logger('miroconsumer.api.simulation')
 
@@ -371,6 +372,7 @@ def get_simulation(simulation_id: str):
 
 @simulation_bp.route('/<simulation_id>/export', methods=['GET'])
 @require_permission('report.export')
+@export_rate_limit
 def export_simulation(simulation_id):
     """导出仿真结果"""
     format_type = request.args.get('format', 'json')  # json/csv
@@ -1029,6 +1031,7 @@ def get_simulation_config(simulation_id: str):
 
 
 @simulation_bp.route('/<simulation_id>/config/download', methods=['GET'])
+@export_rate_limit
 def download_simulation_config(simulation_id: str):
     """下载模拟配置文件"""
     try:
@@ -1054,6 +1057,7 @@ def download_simulation_config(simulation_id: str):
 
 
 @simulation_bp.route('/script/<script_name>/download', methods=['GET'])
+@export_rate_limit
 def download_simulation_script(script_name: str):
     """
     下载模拟运行脚本文件（通用脚本，位于 backend/scripts/）

@@ -73,6 +73,10 @@ def create_app(config_class=Config):
     origins = [o.strip() for o in config_class.CORS_ALLOWED_ORIGINS.split(",") if o.strip()]
     CORS(app, resources={r"/api/*": {"origins": origins}})
 
+    # CORS 通配符校验（生产环境禁止 *）
+    if '*' in origins and not app.debug:
+        raise RuntimeError("CORS wildcard '*' is not allowed in production. Set CORS_ALLOWED_ORIGINS in .env")
+
     # 初始化认证授权系统
     from .auth.middleware import init_auth
     init_auth(app)
