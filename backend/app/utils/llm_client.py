@@ -4,11 +4,15 @@ LLM客户端封装
 """
 
 import json
+import logging
 import re
 from typing import Optional, Dict, Any, List
 from openai import OpenAI
 
 from ..config import Config
+from .llm_governance import validate_llm_output
+
+logger = logging.getLogger(__name__)
 
 
 class LLMClient:
@@ -71,6 +75,12 @@ class LLMClient:
         content = response.choices[0].message.content
         # 部分模型（如MiniMax M2.5）会在content中包含<think>思考内容，需要移除
         content = re.sub(r'<think>[\s\S]*?</think>', '', content).strip()
+
+        # LLM 输出治理校验
+        validation = validate_llm_output(content, context="llm_client.chat")
+        if not validation["valid"]:
+            logger.warning("LLM输出治理发现问题: %s", validation["issues"])
+
         return content
     
     def chat_with_finish_reason(
