@@ -38,11 +38,15 @@ def create_app(config_class=Config):
     """Flask应用工厂函数"""
     app = Flask(__name__)
     app.config.from_object(config_class)
-    
-    # SECRET_KEY 校验（非 DEBUG 模式必须配置）
-    if not app.debug and not app.config.get('SECRET_KEY'):
-        raise RuntimeError('SECRET_KEY is required in production. Set SECRET_KEY in .env')
-    
+
+    # 运行配置校验（SECRET_KEY弱值/长度、DB_URL格式等）
+    config_errors = config_class.validate()
+    if config_errors:
+        logger = setup_logger('miroconsumer')
+        for err in config_errors:
+            logger.error(f"配置错误: {err}")
+        raise RuntimeError(f"Configuration errors: {'; '.join(config_errors)}")
+
     # 请求体大小限制
     app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB
     

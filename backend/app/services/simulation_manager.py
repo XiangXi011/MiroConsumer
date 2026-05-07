@@ -104,6 +104,8 @@ class SimulationState:
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
     updated_at: str = field(default_factory=lambda: datetime.now().isoformat())
 
+    tenant_id: str = ""
+
     error: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
@@ -129,6 +131,7 @@ class SimulationState:
             "reddit_status": self.reddit_status,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
+            "tenant_id": self.tenant_id,
             "error": self.error,
         }
 
