@@ -15,6 +15,7 @@ from ..services.simulation_runner import SimulationRunner
 from ..services.consumer.society.state_store import SocietyStateStore
 from ..utils.logger import get_logger
 from ..utils.locale import t
+from ..utils.validators import validate_simulation_params
 from ..models.project import ProjectManager
 from ..services.application.simulation_app_service import SimulationAppService
 from ..services.application.branch_app_service import BranchAppService
@@ -219,6 +220,15 @@ def create_simulation():
     """
     try:
         data = request.get_json() or {}
+
+        errors = validate_simulation_params(data)
+        if errors:
+            return jsonify({
+                "success": False,
+                "error": "参数校验失败",
+                "details": errors
+            }), 400
+
         result = SimulationAppService.create_simulation(data)
         return jsonify({
             "success": True,

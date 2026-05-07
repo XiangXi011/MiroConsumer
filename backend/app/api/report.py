@@ -12,6 +12,7 @@ from ..config import Config
 from ..services.report_agent import ReportManager
 from ..utils.logger import get_logger
 from ..utils.locale import t
+from ..utils.disclaimer import REPORT_DISCLAIMER
 from ..services.application.report_app_service import ReportAppService
 from ..services.application.benchmark_app_service import BenchmarkAppService
 from ..services.application.research_asset_app_service import ResearchAssetAppService
@@ -87,7 +88,8 @@ def generate_report():
         result = ReportAppService.generate_report(simulation_id, force_regenerate=force_regenerate)
         return jsonify({
             "success": True,
-            "data": result
+            "data": result,
+            "disclaimer": REPORT_DISCLAIMER
         })
 
     except ValueError as e:
@@ -181,7 +183,8 @@ def get_report(report_id: str):
 
         return jsonify({
             "success": True,
-            "data": report.to_dict()
+            "data": report.to_dict(),
+            "disclaimer": REPORT_DISCLAIMER
         })
 
     except Exception as e:
@@ -216,7 +219,8 @@ def get_report_by_simulation(simulation_id: str):
         return jsonify({
             "success": True,
             "data": report.to_dict(),
-            "has_report": True
+            "has_report": True,
+            "disclaimer": REPORT_DISCLAIMER
         })
 
     except Exception as e:
@@ -252,7 +256,8 @@ def list_reports():
         return jsonify({
             "success": True,
             "data": [r.to_dict() for r in reports],
-            "count": len(reports)
+            "count": len(reports),
+            "disclaimer": REPORT_DISCLAIMER
         })
 
     except Exception as e:
