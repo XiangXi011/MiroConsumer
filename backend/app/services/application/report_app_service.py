@@ -307,6 +307,55 @@ class ReportAppService:
         }
 
     @classmethod
+    def _build_methodology_page(cls, simulation_id: str, report=None) -> str:
+        """Build methodology page markdown for injection into report downloads."""
+        from ...utils.disclaimer import get_methodology_limits
+
+        agent_count, run_count, mode = 0, 1, "quick"
+        random_seed, evidence_support = None, "none"
+
+        try:
+            config = cls._simulation_repo.get_simulation_config(simulation_id)
+            if config:
+                agent_count = config.get("core_persona_count", 8) + config.get("expanded_persona_count", 0)
+                run_count = config.get("max_rounds", 1)
+                mode = config.get("mode", "quick")
+                random_seed = config.get("random_seed")
+                evidence_support = config.get("evidence_support", "none")
+        except Exception:
+            pass
+
+        methodology = get_methodology_limits(
+            agent_count=agent_count,
+            run_count=run_count,
+            mode=mode,
+            random_seed=random_seed,
+            evidence_support=evidence_support,
+        )
+
+        limits_text = "\n".join("- " + l for l in methodology["limits"]) if methodology["limits"] else "- 无特殊限制"
+
+        return f"""
+---
+
+## 方法论说明 / Methodology Statement
+
+| 项目 | 值 |
+|------|-----|
+| 样本量 (agent_count) | {methodology['agent_count']} |
+| 重复运行次数 (run_count) | {methodology['run_count']} |
+| 仿真模式 (simulation_mode) | {methodology['simulation_mode']} |
+| 置信水平 (confidence_level) | {methodology['confidence_level']} |
+| 可做统计推断 | {'是' if methodology['can_do_statistical_inference'] else '否'} |
+| 研究边界 | {methodology['display_label']} |
+
+**限制说明：**
+{limits_text}
+
+> ⚠️ 本报告由 AI 消费者仿真系统生成。所有结论基于 LLM 推演，不代表真实市场数据。
+"""
+
+    @classmethod
     def get_report_download_info(cls, report_id: str) -> dict:
         """
         Return download file path/info for a report.
@@ -323,19 +372,23 @@ class ReportAppService:
         if not report:
             raise NotFoundError(t("api.reportNotFound", id=report_id))
 
+        methodology_page = cls._build_methodology_page(report.simulation_id, report)
+
         md_path = ReportManager._get_report_markdown_path(report_id)
 
         if os.path.exists(md_path):
+            with open(md_path, 'r', encoding='utf-8') as f:
+                content_with_methodology = f.read() + methodology_page
             return {
-                "path": md_path,
-                "is_temp": False,
+                "path": None,
+                "is_temp": True,
                 "download_name": f"{report_id}.md",
-                "content": None,
+                "content": content_with_methodology,
             }
 
         return {
             "path": None,
             "is_temp": True,
             "download_name": f"{report_id}.md",
-            "content": report.markdown_content,
+            "content": (report.markdown_content or "") + methodology_page,
         }

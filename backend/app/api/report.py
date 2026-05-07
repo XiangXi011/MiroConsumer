@@ -40,7 +40,11 @@ def _build_methodology_limits(simulation_id: str) -> dict:
         agent_count = config.get("core_persona_count", 8) + config.get("expanded_persona_count", 0)
         run_count = config.get("max_rounds", 1)
         mode = config.get("mode", "quick")
-        return get_methodology_limits(agent_count, run_count, mode)
+        random_seed = config.get("random_seed")
+        evidence_support = config.get("evidence_support", "none")
+        return get_methodology_limits(agent_count, run_count, mode,
+                                      random_seed=random_seed,
+                                      evidence_support=evidence_support)
     except Exception:
         return get_methodology_limits(8, 1, "quick")
 
@@ -113,7 +117,8 @@ def generate_report():
         return jsonify({
             "success": True,
             "data": result,
-            "disclaimer": REPORT_DISCLAIMER
+            "disclaimer": REPORT_DISCLAIMER,
+            "methodology_limits": _build_methodology_limits(simulation_id),
         })
 
     except ValueError as e:
@@ -247,7 +252,8 @@ def get_report_by_simulation(simulation_id: str):
             "success": True,
             "data": report.to_dict(),
             "has_report": True,
-            "disclaimer": REPORT_DISCLAIMER
+            "disclaimer": REPORT_DISCLAIMER,
+            "methodology_limits": _build_methodology_limits(simulation_id),
         })
 
     except Exception as e:
@@ -285,7 +291,11 @@ def list_reports():
             limit=limit
         )
 
-        report_dicts = [r.to_dict() for r in reports]
+        report_dicts = []
+        for r in reports:
+            d = r.to_dict()
+            d["methodology_limits"] = _build_methodology_limits(r.simulation_id)
+            report_dicts.append(d)
         result = paginate_query(report_dicts, page=page, per_page=per_page)
 
         return jsonify({
