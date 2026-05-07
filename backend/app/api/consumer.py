@@ -8,6 +8,9 @@ thin compatibility shims that delegate to the same consumer app service.
 New canonical consumer URLs are prefixed with /api/consumer/.
 """
 
+import json
+import secrets
+from pathlib import Path
 from flask import jsonify, request, g
 
 from . import consumer_bp, api_error_payload
@@ -583,4 +586,59 @@ def get_task_queue_dead_letters():
         return jsonify({"success": False, "error": str(e)}), 400
     except Exception as e:
         logger.error(f"获取死信列表失败: {str(e)}")
+        return jsonify(api_error_payload(str(e))), 500
+
+
+# ── P1-2.4: 画像导入/导出 API ──────────────────────────
+
+@consumer_bp.route("/personas/export", methods=["POST"])
+def export_personas():
+    """导出画像为 JSON。"""
+    try:
+        data = safe_get_json(required=False)
+        if isinstance(data, tuple):
+            return data
+        simulation_id = data.get("simulation_id")
+        if not simulation_id:
+            return jsonify({"success": False, "error": "VALIDATION_ERROR", "message": "simulation_id required"}), 400
+        from ..services.consumer.demographics.population import PopulationGenerator
+        store_path = Path(Config.PROJECT_STORE_PATH) / simulation_id / "personas"
+        if not store_path.exists():
+            return jsonify({"success": False, "error": "NOT_FOUND", "message": "No personas found"}), 404
+        personas = []
+        for f in sorted(store_path.glob("*.json")):
+            with open(f, "r", encoding="utf-8") as fh:
+                personas.append(json.load(fh))
+        return jsonify({"success": True, "data": {"personas": personas, "count": len(personas)}})
+    except Exception as e:
+        logger.error(f"导出画像失败: {str(e)}")
+        return jsonify(api_error_payload(str(e))), 500
+
+
+@consumer_bp.route("/personas/import", methods=["POST"])
+def import_personas():
+    """导入画像 JSON。"""
+    try:
+        data = safe_get_json()
+        if isinstance(data, tuple):
+            return data
+        simulation_id = data.get("simulation_id")
+        personas = data.get("personas", [])
+        if not simulation_id:
+            return jsonify({"success": False, "error": "VALIDATION_ERROR", "message": "simulation_id required"}), 400
+        if not personas:
+            return jsonify({"success": False, "error": "VALIDATION_ERROR", "message": "personas list required"}), 400
+        store_path = Path(Config.PROJECT_STORE_PATH) / simulation_id / "personas"
+        store_path.mkdir(parents=True, exist_ok=True)
+        imported = 0
+        for p in personas:
+            pid = p.get("persona_id", f"imported_{secrets.token_hex(4)}")
+            p["persona_id"] = pid
+            p["source_basis"] = p.get("source_basis", "imported")
+            with open(store_path / f"{pid}.json", "w", encoding="utf-8") as fh:
+                json.dump(p, fh, ensure_ascii=False, indent=2)
+            imported += 1
+        return jsonify({"success": True, "data": {"imported": imported}})
+    except Exception as e:
+        logger.error(f"导入画像失败: {str(e)}")
         return jsonify(api_error_payload(str(e))), 500

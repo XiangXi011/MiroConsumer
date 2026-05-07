@@ -63,3 +63,90 @@ def export_simulation_manifest(simulation_data: dict, methodology: dict) -> str:
         "event_sequence": simulation_data.get("event_sequence", []),
     }
     return json.dumps(manifest, ensure_ascii=False, indent=2)
+
+
+# ── P3-6: PDF/Word/PPT 导出 ──────────────────────────
+
+def export_to_pdf(title: str, content: str, output_path: str) -> str:
+    """导出报告为 PDF。"""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+    from reportlab.lib.units import cm
+
+    doc = SimpleDocTemplate(output_path, pagesize=A4)
+    styles = getSampleStyleSheet()
+    story = []
+
+    story.append(Paragraph(title, styles["Title"]))
+    story.append(Spacer(1, 1 * cm))
+
+    for line in content.split("\n"):
+        line = line.strip()
+        if not line:
+            story.append(Spacer(1, 0.3 * cm))
+        elif line.startswith("# "):
+            story.append(Paragraph(line[2:], styles["Heading1"]))
+        elif line.startswith("## "):
+            story.append(Paragraph(line[3:], styles["Heading2"]))
+        elif line.startswith("- "):
+            story.append(Paragraph(f"• {line[2:]}", styles["BodyText"]))
+        else:
+            story.append(Paragraph(line, styles["BodyText"]))
+
+    doc.build(story)
+    return output_path
+
+
+def export_to_docx(title: str, content: str, output_path: str) -> str:
+    """导出报告为 Word (.docx)。"""
+    from docx import Document
+    from docx.shared import Pt, Inches
+
+    doc = Document()
+    doc.add_heading(title, level=0)
+
+    for line in content.split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith("# "):
+            doc.add_heading(line[2:], level=1)
+        elif line.startswith("## "):
+            doc.add_heading(line[3:], level=2)
+        elif line.startswith("- "):
+            doc.add_paragraph(line[2:], style="List Bullet")
+        else:
+            doc.add_paragraph(line)
+
+    doc.save(output_path)
+    return output_path
+
+
+def export_to_pptx(title: str, content: str, output_path: str) -> str:
+    """导出报告为 PowerPoint (.pptx)。"""
+    from pptx import Presentation
+    from pptx.util import Inches, Pt
+
+    prs = Presentation()
+
+    # Title slide
+    slide_layout = prs.slide_layouts[0]
+    slide = prs.slides.add_slide(slide_layout)
+    slide.shapes.title.text = title
+
+    # Content slides — split by ## headings
+    sections = content.split("## ")
+    for section in sections[1:]:  # skip first (before first heading)
+        lines = section.strip().split("\n")
+        heading = lines[0].strip()
+        body = "\n".join(lines[1:]).strip()
+
+        slide_layout = prs.slide_layouts[1]
+        slide = prs.slides.add_slide(slide_layout)
+        slide.shapes.title.text = heading
+        if body:
+            slide.placeholders[1].text = body[:500]  # PPT placeholder limit
+
+    prs.save(output_path)
+    return output_path

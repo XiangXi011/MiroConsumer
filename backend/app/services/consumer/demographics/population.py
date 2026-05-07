@@ -8,12 +8,34 @@ import uuid
 
 @dataclass
 class ShadowPersona:
-    """影子Agent — 概率参与"""
+    """影子Agent — 动态概率参与"""
     base_persona: ConsumerPersona
-    activation_probability: float = 0.3  # 每轮参与概率
+    activation_probability: float = 0.3  # 基础参与概率
 
-    def should_activate(self, rng: random.Random) -> bool:
-        return rng.random() < self.activation_probability
+    def should_activate(
+        self,
+        rng: random.Random,
+        round_index: int = 0,
+        agent_state: dict = None,
+        social_pressure: float = 0.0,
+    ) -> bool:
+        """动态参与概率：基于轮次、Agent状态、社交压力调整。"""
+        prob = self.activation_probability
+
+        # 轮次效应：后期轮次参与度递减（疲劳）
+        fatigue = max(0.0, 1.0 - round_index * 0.02)
+        prob *= fatigue
+
+        # 社交压力效应：高压下参与概率提升
+        if social_pressure > 0.5:
+            prob = min(1.0, prob * (1.0 + social_pressure))
+
+        # Agent 状态效应：高关注度更易参与
+        if agent_state:
+            awareness = agent_state.get("awareness", 0.5)
+            prob = min(1.0, prob * (0.5 + awareness))
+
+        return rng.random() < max(0.01, min(1.0, prob))
 
 # 预设人群模板
 PERSONA_TEMPLATES = {

@@ -38,13 +38,10 @@ class ReportConfidence(BaseModel):
 
 
 def _label_from_score(score: float) -> str:
-    if score >= 0.75:
-        return "high"
-    if score >= 0.5:
-        return "medium"
-    if score >= 0.25:
-        return "low"
-    return "unknown"
+    """Map score to label. Uses calibrated thresholds if available, else defaults."""
+    from .confidence_calibrator import get_thresholds
+    t = get_thresholds()
+    return t.label_for_score(score)
 
 
 def _source_quality_score(finding: Any, source: Optional[Any]) -> float:

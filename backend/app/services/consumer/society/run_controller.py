@@ -283,6 +283,23 @@ class RunController:
         )
 
         set_active_runs(0)
+
+        # P1-7.7: Run drift detection against baseline metrics if available
+        drift_report = None
+        try:
+            from ..drift_detector import DriftDetector
+            baseline_path = self.store.society_dir(simulation_id) / "baseline_metrics.json"
+            if baseline_path.exists():
+                import json
+                with open(baseline_path, "r", encoding="utf-8") as f:
+                    baseline_metrics = json.load(f)
+                detector = DriftDetector()
+                drift_report = detector.generate_drift_report(baseline_metrics, final_metrics)
+                drift_path = self.store.society_dir(simulation_id) / "drift_report.json"
+                atomic_write_json(drift_path, drift_report.to_dict())
+        except Exception:
+            pass  # non-critical — drift report is advisory
+
         return SocietyReportAdapter(base_dir=self.store.base_dir).build_report_context(simulation_id)
 
     def _dry_run_preview(

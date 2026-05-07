@@ -335,6 +335,11 @@ class ReportAppService:
 
         limits_text = "\n".join("- " + l for l in methodology["limits"]) if methodology["limits"] else "- 无特殊限制"
 
+        # Filter forbidden language from methodology page text
+        from ...utils.disclaimer import filter_forbidden_language
+        display_label, _ = filter_forbidden_language(methodology['display_label'], agent_count)
+        limits_text, _ = filter_forbidden_language(limits_text, agent_count)
+
         return f"""
 ---
 
@@ -347,7 +352,7 @@ class ReportAppService:
 | 仿真模式 (simulation_mode) | {methodology['simulation_mode']} |
 | 置信水平 (confidence_level) | {methodology['confidence_level']} |
 | 可做统计推断 | {'是' if methodology['can_do_statistical_inference'] else '否'} |
-| 研究边界 | {methodology['display_label']} |
+| 研究边界 | {display_label} |
 
 **限制说明：**
 {limits_text}
@@ -374,11 +379,23 @@ class ReportAppService:
 
         methodology_page = cls._build_methodology_page(report.simulation_id, report)
 
+        # P0-5.2: filter forbidden language on report content
+        from ...utils.disclaimer import filter_forbidden_language
+        agent_count_for_filter = cls._get_agent_count(report.simulation_id)
+
         md_path = ReportManager._get_report_markdown_path(report_id)
 
         if os.path.exists(md_path):
             with open(md_path, 'r', encoding='utf-8') as f:
                 content_with_methodology = f.read() + methodology_page
+            content_with_methodology, violations = filter_forbidden_language(
+                content_with_methodology, agent_count_for_filter
+            )
+            if violations:
+                logger.warning(
+                    "Forbidden language filtered in report %s: %s",
+                    report_id, violations,
+                )
             return {
                 "path": None,
                 "is_temp": True,
@@ -386,9 +403,29 @@ class ReportAppService:
                 "content": content_with_methodology,
             }
 
+        full_content = (report.markdown_content or "") + methodology_page
+        full_content, violations = filter_forbidden_language(
+            full_content, agent_count_for_filter
+        )
+        if violations:
+            logger.warning(
+                "Forbidden language filtered in report %s: %s",
+                report_id, violations,
+            )
         return {
             "path": None,
             "is_temp": True,
             "download_name": f"{report_id}.md",
-            "content": (report.markdown_content or "") + methodology_page,
+            "content": full_content,
         }
+
+    @classmethod
+    def _get_agent_count(cls, simulation_id: str) -> int:
+        """Extract agent_count from simulation config for forbidden-language filtering."""
+        try:
+            config = cls._simulation_repo.get_simulation_config(simulation_id)
+            if config:
+                return config.get("core_persona_count", 8) + config.get("expanded_persona_count", 0)
+        except Exception:
+            pass
+        return 8  # conservative default — triggers filtering
