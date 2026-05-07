@@ -442,12 +442,12 @@ def test_write_and_read_phase6j_calibration_artifact(tmp_path):
     assert loaded["phase7_entry_decision"] == "PASS"
 
 
-def test_check_phase6j_gate_no_artifact():
+def test_check_phase6j_gate_missing_artifact():
     from app.services.consumer.phase6j_calibration import check_phase6j_gate
 
     result = check_phase6j_gate("/nonexistent/sim")
-    assert result["blocked"] is False
-    assert result["reason"] == ""
+    assert result["blocked"] is True
+    assert "calibration artifact is missing" in result["reason"]
     assert result["details"]["artifact_present"] is False
 
 

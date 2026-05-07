@@ -270,6 +270,20 @@ def test_consumer_concept_test_golden_flow_is_structurally_complete(tmp_path, mo
     SimulationManager().save_simulation(state)
     _write_rounds(simulations_dir, simulation_id)
     _write_society(simulations_dir, simulation_id)
+    (simulations_dir / simulation_id / "phase6j_calibration_artifact.json").write_text(
+        json.dumps(
+            {
+                "phase7_entry_decision": "PASS",
+                "golden_flow_result": "PASS",
+                "evidence_gatekeeping_result": "PASS",
+                "reasoning_backend_coverage": 0.8,
+                "template_fallback_coverage": 0.1,
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
 
     summary_resp = client.get(f"/api/consumer/simulation/{simulation_id}/consumer-summary")
     assert summary_resp.status_code == 200

@@ -839,6 +839,22 @@ def test_consumer_summary_route_returns_voc_and_shift(tmp_path, monkeypatch):
         project_type="consumer_test",
     )
     _write_consumer_rounds(simulations_dir, state.simulation_id)
+    sim_dir = simulations_dir / state.simulation_id
+    sim_dir.mkdir(parents=True, exist_ok=True)
+    (sim_dir / "phase6j_calibration_artifact.json").write_text(
+        json.dumps(
+            {
+                "phase7_entry_decision": "PASS",
+                "golden_flow_result": "PASS",
+                "evidence_gatekeeping_result": "PASS",
+                "reasoning_backend_coverage": 0.8,
+                "template_fallback_coverage": 0.1,
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
 
     app = _create_test_app()
     client = app.test_client()
@@ -1027,6 +1043,22 @@ def test_generate_consumer_report_includes_voc_quotes(tmp_path, monkeypatch):
         project_type="consumer_test",
     )
     _write_consumer_rounds(simulations_dir, state.simulation_id)
+    sim_dir = simulations_dir / state.simulation_id
+    sim_dir.mkdir(parents=True, exist_ok=True)
+    (sim_dir / "phase6j_calibration_artifact.json").write_text(
+        json.dumps(
+            {
+                "phase7_entry_decision": "PASS",
+                "golden_flow_result": "PASS",
+                "evidence_gatekeeping_result": "PASS",
+                "reasoning_backend_coverage": 0.8,
+                "template_fallback_coverage": 0.1,
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
 
     app = _create_test_app()
     client = app.test_client()

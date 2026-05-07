@@ -293,10 +293,12 @@ class TestReportAppServiceGetReportDownloadInfo:
 
 
 class TestReportAppServicePhase6JHardGate:
-    def test_blocks_report_when_phase6j_artifact_blocks_entry(self, monkeypatch, tmp_path):
+    def test_blocks_consumer_report_when_phase6j_artifact_blocks_entry(self, monkeypatch, tmp_path):
         fake_state = MagicMock()
         fake_state.project_id = "proj_123"
         fake_state.simulation_id = "sim_123"
+        fake_state.consumer_mode = True
+        fake_state.project_type = "consumer_test"
 
         monkeypatch.setattr(
             "app.services.application.report_app_service.ReportAppService._simulation_repo.get_simulation",
@@ -305,6 +307,14 @@ class TestReportAppServicePhase6JHardGate:
         monkeypatch.setattr(
             "app.services.application.report_app_service.Config.OASIS_SIMULATION_DATA_DIR",
             str(tmp_path),
+        )
+        monkeypatch.setattr(
+            "app.services.application.report_app_service.ReportAppService.get_existing_report_for_simulation",
+            lambda sim_id: None,
+        )
+        monkeypatch.setattr(
+            "app.services.application.report_app_service.ReportAppService._project_repo.get_project",
+            lambda pid: MagicMock(graph_id="g1", simulation_requirement="test", project_type="consumer_test", project_id=pid),
         )
 
         # Write a blocking Phase 6J calibration artifact
@@ -328,10 +338,12 @@ class TestReportAppServicePhase6JHardGate:
         assert "Phase 6J calibration blocks entry" in str(exc_info.value)
         assert exc_info.value.details["phase7_entry_decision"] == "BLOCKED"
 
-    def test_allows_report_when_phase6j_artifact_passes(self, monkeypatch, tmp_path):
+    def test_allows_consumer_report_when_phase6j_artifact_passes(self, monkeypatch, tmp_path):
         fake_state = MagicMock()
         fake_state.project_id = "proj_123"
         fake_state.simulation_id = "sim_123"
+        fake_state.consumer_mode = True
+        fake_state.project_type = "consumer_test"
 
         monkeypatch.setattr(
             "app.services.application.report_app_service.ReportAppService._simulation_repo.get_simulation",
@@ -347,7 +359,7 @@ class TestReportAppServicePhase6JHardGate:
         )
         monkeypatch.setattr(
             "app.services.application.report_app_service.ReportAppService._project_repo.get_project",
-            lambda pid: MagicMock(graph_id="g1", simulation_requirement="test", project_type="default", project_id=pid),
+            lambda pid: MagicMock(graph_id="g1", simulation_requirement="test", project_type="consumer_test", project_id=pid),
         )
         monkeypatch.setattr(
             "app.services.application.report_app_service.create_task_executor",
@@ -376,10 +388,12 @@ class TestReportAppServicePhase6JHardGate:
         result = ReportAppService.generate_report("sim_123", force_regenerate=False)
         assert result["status"] == "generating"
 
-    def test_allows_report_when_no_phase6j_artifact(self, monkeypatch, tmp_path):
+    def test_allows_legacy_report_when_no_phase6j_artifact(self, monkeypatch, tmp_path):
         fake_state = MagicMock()
         fake_state.project_id = "proj_123"
         fake_state.simulation_id = "sim_123"
+        fake_state.consumer_mode = False
+        fake_state.project_type = "default"
 
         monkeypatch.setattr(
             "app.services.application.report_app_service.ReportAppService._simulation_repo.get_simulation",
@@ -406,6 +420,66 @@ class TestReportAppServicePhase6JHardGate:
             lambda *a, **k: "task_123",
         )
 
-        # No Phase 6J artifact at all
+        # No Phase 6J artifact at all — legacy report should still proceed
         result = ReportAppService.generate_report("sim_123", force_regenerate=False)
         assert result["status"] == "generating"
+
+    def test_blocks_consumer_report_when_phase6j_artifact_missing(self, monkeypatch, tmp_path):
+        fake_state = MagicMock()
+        fake_state.project_id = "proj_123"
+        fake_state.simulation_id = "sim_123"
+        fake_state.consumer_mode = True
+        fake_state.project_type = "consumer_test"
+
+        monkeypatch.setattr(
+            "app.services.application.report_app_service.ReportAppService._simulation_repo.get_simulation",
+            lambda sim_id: fake_state,
+        )
+        monkeypatch.setattr(
+            "app.services.application.report_app_service.Config.OASIS_SIMULATION_DATA_DIR",
+            str(tmp_path),
+        )
+        monkeypatch.setattr(
+            "app.services.application.report_app_service.ReportAppService.get_existing_report_for_simulation",
+            lambda sim_id: None,
+        )
+        monkeypatch.setattr(
+            "app.services.application.report_app_service.ReportAppService._project_repo.get_project",
+            lambda pid: MagicMock(graph_id="g1", simulation_requirement="test", project_type="consumer_test", project_id=pid),
+        )
+
+        with pytest.raises(ValidationError) as exc_info:
+            ReportAppService.generate_report("sim_123", force_regenerate=False)
+
+        assert "calibration artifact is missing" in str(exc_info.value)
+        assert exc_info.value.details["artifact_present"] is False
+
+    def test_blocks_existing_consumer_report_when_phase6j_artifact_missing(self, monkeypatch, tmp_path):
+        fake_state = MagicMock()
+        fake_state.project_id = "proj_123"
+        fake_state.simulation_id = "sim_123"
+        fake_state.consumer_mode = True
+        fake_state.project_type = "consumer_test"
+
+        monkeypatch.setattr(
+            "app.services.application.report_app_service.ReportAppService._simulation_repo.get_simulation",
+            lambda sim_id: fake_state,
+        )
+        monkeypatch.setattr(
+            "app.services.application.report_app_service.Config.OASIS_SIMULATION_DATA_DIR",
+            str(tmp_path),
+        )
+        monkeypatch.setattr(
+            "app.services.application.report_app_service.ReportAppService._project_repo.get_project",
+            lambda pid: MagicMock(graph_id="g1", simulation_requirement="test", project_type="consumer_test", project_id=pid),
+        )
+        monkeypatch.setattr(
+            "app.services.application.report_app_service.ReportAppService.get_existing_report_for_simulation",
+            lambda sim_id: {"status": "completed", "report_id": "report_existing"},
+        )
+
+        with pytest.raises(ValidationError) as exc_info:
+            ReportAppService.generate_report("sim_123", force_regenerate=False)
+
+        assert "calibration artifact is missing" in str(exc_info.value)
+        assert exc_info.value.details["artifact_present"] is False

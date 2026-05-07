@@ -95,6 +95,8 @@ class TestThreadTaskExecutorObservability:
         fake_state = MagicMock()
         fake_state.project_id = "proj_1"
         fake_state.graph_id = "g1"
+        fake_state.consumer_mode = False
+        fake_state.project_type = "default"
 
         fake_project = MagicMock()
         fake_project.graph_id = "g1"

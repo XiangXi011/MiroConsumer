@@ -337,31 +337,61 @@ def test_start_large_society_allowed_when_phase6j_artifact_passes(monkeypatch, t
     assert resp.status_code == 200
 
 
-def test_start_standard_plus_allowed_when_no_phase6j_artifact(monkeypatch, tmp_path):
+def test_start_standard_plus_blocked_when_phase6j_artifact_missing(monkeypatch, tmp_path):
     app = create_app()
     app.config["TESTING"] = True
-    sim_dir = tmp_path / "simulations" / "sim-no-artifact"
+    sim_dir = tmp_path / "simulations" / "sim-no-artifact-sp"
     sim_dir.mkdir(parents=True, exist_ok=True)
     monkeypatch.setattr(
         "app.services.application.simulation_app_service.Config.OASIS_SIMULATION_DATA_DIR",
         str(tmp_path / "simulations"),
     )
     with app.test_client() as client:
-        with patch("app.services.application.simulation_app_service.SimulationAppService._simulation_repo") as repo, patch(
-            "app.services.application.simulation_app_service.SimulationRunner.start_simulation"
-        ) as start:
+        with patch("app.services.application.simulation_app_service.SimulationAppService._simulation_repo") as repo:
             state = type("State", (), {
                 "status": SimulationStatus.READY,
                 "project_id": "p1",
                 "graph_id": "g1",
                 "project_type": "consumer_test",
-                "simulation_id": "sim-no-artifact",
+                "simulation_id": "sim-no-artifact-sp",
             })()
             repo.get_simulation.return_value = state
-            start.return_value.to_dict.return_value = {"simulation_id": "sim-no-artifact", "runner_status": "running"}
             resp = client.post(
                 "/api/simulation/start",
-                json={"simulation_id": "sim-no-artifact", "society_mode": "standard_plus"},
+                json={"simulation_id": "sim-no-artifact-sp", "society_mode": "standard_plus"},
             )
 
-    assert resp.status_code == 200
+    assert resp.status_code == 400
+    data = resp.get_json()
+    assert "calibration artifact is missing" in data["error"]
+    assert data["details"]["artifact_present"] is False
+
+
+def test_start_large_society_blocked_when_phase6j_artifact_missing(monkeypatch, tmp_path):
+    app = create_app()
+    app.config["TESTING"] = True
+    sim_dir = tmp_path / "simulations" / "sim-no-artifact-ls"
+    sim_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(
+        "app.services.application.simulation_app_service.Config.OASIS_SIMULATION_DATA_DIR",
+        str(tmp_path / "simulations"),
+    )
+    with app.test_client() as client:
+        with patch("app.services.application.simulation_app_service.SimulationAppService._simulation_repo") as repo:
+            state = type("State", (), {
+                "status": SimulationStatus.READY,
+                "project_id": "p1",
+                "graph_id": "g1",
+                "project_type": "consumer_test",
+                "simulation_id": "sim-no-artifact-ls",
+            })()
+            repo.get_simulation.return_value = state
+            resp = client.post(
+                "/api/simulation/start",
+                json={"simulation_id": "sim-no-artifact-ls", "society_mode": "large_society", "max_rounds": 1},
+            )
+
+    assert resp.status_code == 400
+    data = resp.get_json()
+    assert "calibration artifact is missing" in data["error"]
+    assert data["details"]["artifact_present"] is False

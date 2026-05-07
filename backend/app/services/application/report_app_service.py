@@ -72,21 +72,6 @@ class ReportAppService:
         if not state:
             raise NotFoundError(t("api.simulationNotFound", id=simulation_id))
 
-        # Phase 6J hard gate: block report generation when calibration artifact blocks entry
-        simulation_dir = os.path.join(Config.OASIS_SIMULATION_DATA_DIR, simulation_id)
-        from ...services.consumer.phase6j_calibration import check_phase6j_gate
-        gate = check_phase6j_gate(simulation_dir)
-        if gate["blocked"]:
-            raise ValidationError(
-                gate["reason"],
-                details=gate["details"],
-            )
-
-        if not force_regenerate:
-            existing = cls.get_existing_report_for_simulation(simulation_id)
-            if existing:
-                return existing
-
         project = cls._project_repo.get_project(state.project_id)
         if not project:
             raise NotFoundError(t("api.projectNotFound", id=state.project_id))
@@ -96,6 +81,22 @@ class ReportAppService:
             raise ValidationError(t("api.missingGraphIdEnsure"))
 
         consumer_mode = ConsumerApiGuard.is_consumer_context(state=state, project=project)
+
+        # Phase 6J hard gate: only block consumer report generation when calibration artifact is missing/blocked
+        if consumer_mode:
+            simulation_dir = os.path.join(Config.OASIS_SIMULATION_DATA_DIR, simulation_id)
+            from ...services.consumer.phase6j_calibration import check_phase6j_gate
+            gate = check_phase6j_gate(simulation_dir)
+            if gate["blocked"]:
+                raise ValidationError(
+                    gate["reason"],
+                    details=gate["details"],
+                )
+
+        if not force_regenerate:
+            existing = cls.get_existing_report_for_simulation(simulation_id)
+            if existing:
+                return existing
 
         simulation_requirement = project.simulation_requirement or ""
         if not consumer_mode and not simulation_requirement:

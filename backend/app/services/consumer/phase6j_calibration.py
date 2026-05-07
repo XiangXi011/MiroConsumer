@@ -208,8 +208,8 @@ def check_phase6j_gate(simulation_dir: str) -> dict:
     artifact = read_phase6j_calibration_artifact(simulation_dir)
     if artifact is None:
         return {
-            "blocked": False,
-            "reason": "",
+            "blocked": True,
+            "reason": "Phase 6J calibration blocks entry: calibration artifact is missing",
             "details": {"artifact_present": False},
         }
     decision = artifact.get("phase7_entry_decision", "BLOCKED")
