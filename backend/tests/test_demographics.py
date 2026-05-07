@@ -55,27 +55,37 @@ class TestConsumerPersona:
             name="test",
             price_sensitivity=0.75,
             brand_loyalty=0.60,
-            innovation_adoption=0.40,
+            claim_skepticism=0.40,
+            evidence_sensitivity=0.80,
         )
         desc = p.to_prompt_description()
         assert "75%" in desc
         assert "60%" in desc
         assert "40%" in desc
+        assert "80%" in desc
 
-    def test_prompt_contains_screen_hours(self):
-        p = ConsumerPersona(persona_id="t6", name="test", daily_screen_hours=5.0)
+    def test_prompt_contains_expression_style(self):
+        p = ConsumerPersona(persona_id="t6", name="test", expression_style="outspoken")
         desc = p.to_prompt_description()
-        assert "5.0小时" in desc
+        assert "outspoken" in desc
 
-    def test_prompt_contains_platforms(self):
+    def test_prompt_contains_channel_preference(self):
+        p = ConsumerPersona(persona_id="t7", name="test", channel_preference="douyin")
+        desc = p.to_prompt_description()
+        assert "douyin" in desc
+
+    def test_prompt_contains_occupation_and_region(self):
         p = ConsumerPersona(
-            persona_id="t7",
+            persona_id="t8",
             name="test",
-            social_platforms=["weixin", "douyin"],
+            occupation="student",
+            region="south",
+            family_structure="couple",
         )
         desc = p.to_prompt_description()
-        assert "weixin" in desc
-        assert "douyin" in desc
+        assert "student" in desc
+        assert "south" in desc
+        assert "couple" in desc
 
 
 class TestPopulationGenerator:
@@ -223,3 +233,165 @@ class TestPopulationStats:
 
         assert stats["total"] == 10
         assert "avg_price_sensitivity" in stats
+
+
+class TestConsumerPersonaNewFields:
+    """Test new fields and defaults on ConsumerPersona."""
+
+    def test_new_field_defaults(self):
+        p = ConsumerPersona(persona_id="n1", name="test")
+        assert p.gender == "any"
+        assert p.region == "east"
+        assert p.family_structure == "single"
+        assert p.occupation == "white_collar"
+        assert p.purchase_channel == "online"
+        assert p.category_usage_frequency == "weekly"
+        assert p.claim_skepticism == 0.5
+        assert p.evidence_sensitivity == 0.5
+        assert p.novelty_seeking == 0.5
+        assert p.risk_aversion == 0.5
+        assert p.sharing_propensity == 0.5
+        assert p.expression_style == "moderate"
+        assert p.channel_preference == "weixin"
+        assert p.category_pain_points == []
+        assert p.decision_heuristics == []
+        assert p.forbidden_assumptions == []
+        assert p.source_basis == "template"
+        assert p.quality_score == 0.5
+
+    def test_source_basis_can_be_set(self):
+        p = ConsumerPersona(persona_id="n2", name="test", source_basis="manual", quality_score=0.9)
+        assert p.source_basis == "manual"
+        assert p.quality_score == 0.9
+
+
+class TestSourceBasisInGenerationModes:
+    """Test source_basis is correctly set in each generation mode."""
+
+    def test_template_mode_sets_source_basis(self):
+        gen = PopulationGenerator(seed=42)
+        persona = gen.generate_from_template("urban_professional")
+        assert persona.source_basis == "template"
+
+    def test_brief_mode_sets_source_basis(self):
+        gen = PopulationGenerator(seed=42)
+        brief = {"target_age": (20, 30), "target_income": "high"}
+        personas = gen.generate_from_brief(brief, count=3)
+        assert len(personas) == 3
+        for p in personas:
+            assert p.source_basis == "brief"
+
+    def test_calibrated_mode_sets_source_basis(self):
+        gen = PopulationGenerator(seed=42)
+        cal_data = {
+            "age_ranges": [(18, 25), (25, 35), (35, 50)],
+            "income_level_distribution": {"low": 0.3, "middle": 0.5, "high": 0.2},
+            "price_sensitivity": (0.6, 0.1),
+        }
+        personas = gen.generate_calibrated(cal_data, count=5)
+        assert len(personas) == 5
+        for p in personas:
+            assert p.source_basis == "data_calibrated"
+
+
+class TestPopulationCoverage:
+    """Test population_coverage in stats."""
+
+    def test_population_coverage_present(self):
+        gen = PopulationGenerator(seed=42)
+        pop = gen.generate_diverse_population(20)
+        stats = gen.get_population_stats(pop)
+        assert "population_coverage" in stats
+        cov = stats["population_coverage"]
+        assert "age_coverage" in cov
+        assert "income_coverage" in cov
+        assert "city_tier_coverage" in cov
+        assert "source_basis_distribution" in cov
+
+    def test_source_basis_distribution_in_coverage(self):
+        gen = PopulationGenerator(seed=42)
+        pop = gen.generate_diverse_population(8)
+        stats = gen.get_population_stats(pop)
+        sbd = stats["population_coverage"]["source_basis_distribution"]
+        assert "template" in sbd
+        assert sbd["template"] == 8
+
+    def test_mixed_source_basis_coverage(self):
+        gen = PopulationGenerator(seed=42)
+        templates = gen.generate_diverse_population(4)
+        brief = gen.generate_from_brief({"target_income": "low"}, count=2)
+        mixed = templates + brief
+        stats = gen.get_population_stats(mixed)
+        sbd = stats["population_coverage"]["source_basis_distribution"]
+        assert sbd["template"] == 4
+        assert sbd["brief"] == 2
+
+
+class TestGenerateFromBrief:
+    """Test generate_from_brief method."""
+
+    def test_brief_applies_age_range(self):
+        gen = PopulationGenerator(seed=42)
+        brief = {"target_age": (25, 35)}
+        personas = gen.generate_from_brief(brief, count=2)
+        for p in personas:
+            assert p.age_range == (25, 35)
+
+    def test_brief_applies_income_level(self):
+        gen = PopulationGenerator(seed=42)
+        brief = {"target_income": "high"}
+        personas = gen.generate_from_brief(brief, count=3)
+        for p in personas:
+            assert p.income_level == "high"
+
+    def test_brief_applies_city_tier(self):
+        gen = PopulationGenerator(seed=42)
+        brief = {"target_city_tier": 1}
+        personas = gen.generate_from_brief(brief, count=2)
+        for p in personas:
+            assert p.city_tier == 1
+
+    def test_brief_applies_all_params(self):
+        gen = PopulationGenerator(seed=42)
+        brief = {
+            "target_age": (20, 30),
+            "target_gender": "female",
+            "target_income": "high",
+            "target_education": "graduate",
+            "target_city_tier": 1,
+            "target_region": "south",
+            "target_family_structure": "couple",
+            "target_occupation": "freelance",
+            "price_sensitivity": 0.8,
+            "brand_loyalty": 0.3,
+            "claim_skepticism": 0.9,
+            "expression_style": "outspoken",
+            "category_pain_points": ["too expensive", "poor quality"],
+        }
+        personas = gen.generate_from_brief(brief, count=1)
+        p = personas[0]
+        assert p.age_range == (20, 30)
+        assert p.gender == "female"
+        assert p.income_level == "high"
+        assert p.education == "graduate"
+        assert p.city_tier == 1
+        assert p.region == "south"
+        assert p.family_structure == "couple"
+        assert p.occupation == "freelance"
+        assert p.expression_style == "outspoken"
+        assert p.category_pain_points == ["too expensive", "poor quality"]
+
+    def test_brief_defaults_when_empty(self):
+        gen = PopulationGenerator(seed=42)
+        personas = gen.generate_from_brief({}, count=2)
+        p = personas[0]
+        assert p.age_range == (18, 65)
+        assert p.income_level == "middle"
+        assert p.source_basis == "brief"
+
+    def test_brief_adds_diversity_via_perturbation(self):
+        gen = PopulationGenerator(seed=42)
+        brief = {"price_sensitivity": 0.5, "brand_loyalty": 0.5}
+        personas = gen.generate_from_brief(brief, count=10)
+        sensitivities = [p.price_sensitivity for p in personas]
+        assert len(set(sensitivities)) > 1

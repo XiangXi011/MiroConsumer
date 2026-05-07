@@ -91,12 +91,103 @@ class PopulationGenerator:
         self.rng = random.Random(seed)
 
     def generate_from_template(self, template_name: str) -> ConsumerPersona:
-        """从模板生成消费者"""
+        """Template Pack 模式：从模板生成消费者"""
         template = PERSONA_TEMPLATES[template_name]
         return ConsumerPersona(
             persona_id=str(uuid.uuid4())[:8],
+            source_basis="template",
             **template
         )
+
+    def generate_from_brief(self, brief: dict, count: int) -> list:
+        """Brief-driven Generation 模式：从简报生成消费者"""
+        personas = []
+        for i in range(count):
+            persona = ConsumerPersona(
+                persona_id=str(uuid.uuid4())[:8],
+                name=f"Brief Agent {i+1}",
+                source_basis="brief",
+                age_range=brief.get("target_age", (18, 65)),
+                gender=brief.get("target_gender", "any"),
+                income_level=brief.get("target_income", "middle"),
+                education=brief.get("target_education", "college"),
+                city_tier=brief.get("target_city_tier", 2),
+                region=brief.get("target_region", "east"),
+                family_structure=brief.get("target_family_structure", "single"),
+                occupation=brief.get("target_occupation", "white_collar"),
+                price_sensitivity=brief.get("price_sensitivity", 0.5),
+                brand_loyalty=brief.get("brand_loyalty", 0.5),
+                innovation_adoption=brief.get("innovation_adoption", 0.5),
+                social_influence_weight=brief.get("social_influence_weight", 0.5),
+                purchase_channel=brief.get("purchase_channel", "online"),
+                category_usage_frequency=brief.get("category_usage_frequency", "weekly"),
+                claim_skepticism=brief.get("claim_skepticism", 0.5),
+                evidence_sensitivity=brief.get("evidence_sensitivity", 0.5),
+                novelty_seeking=brief.get("novelty_seeking", 0.5),
+                risk_aversion=brief.get("risk_aversion", 0.5),
+                risk_tolerance=brief.get("risk_tolerance", 0.5),
+                conformity_tendency=brief.get("conformity_tendency", 0.5),
+                sharing_propensity=brief.get("sharing_propensity", 0.5),
+                expression_style=brief.get("expression_style", "moderate"),
+                channel_preference=brief.get("channel_preference", "weixin"),
+                category_pain_points=brief.get("category_pain_points", []),
+                decision_heuristics=brief.get("decision_heuristics", []),
+                forbidden_assumptions=brief.get("forbidden_assumptions", []),
+                quality_score=brief.get("quality_score", 0.6),
+            )
+            # Add random perturbation for diversity
+            persona.price_sensitivity = max(0, min(1, persona.price_sensitivity + self.rng.gauss(0, 0.05)))
+            persona.brand_loyalty = max(0, min(1, persona.brand_loyalty + self.rng.gauss(0, 0.05)))
+            personas.append(persona)
+        return personas
+
+    def generate_calibrated(self, calibration_data: dict, count: int) -> list:
+        """Data-calibrated Population 模式：从校准数据生成消费者"""
+        personas = []
+        for i in range(count):
+            sampled = self._sample_from_calibration(calibration_data)
+            persona = ConsumerPersona(
+                persona_id=str(uuid.uuid4())[:8],
+                name=f"Calibrated Agent {i+1}",
+                source_basis="data_calibrated",
+                **sampled,
+            )
+            personas.append(persona)
+        return personas
+
+    def _sample_from_calibration(self, calibration_data: dict) -> dict:
+        """从校准数据中采样一个消费者参数集"""
+        result = {}
+        # Sample age_range from distribution
+        if "age_ranges" in calibration_data:
+            ages = calibration_data["age_ranges"]
+            result["age_range"] = tuple(self.rng.choice(ages)) if ages else (18, 65)
+        # Sample categorical fields from weighted distributions
+        for field_name in ["income_level", "education", "region", "family_structure",
+                           "occupation", "purchase_channel", "expression_style"]:
+            dist_key = f"{field_name}_distribution"
+            if dist_key in calibration_data:
+                dist = calibration_data[dist_key]
+                if isinstance(dist, dict) and dist:
+                    choices = list(dist.keys())
+                    weights = list(dist.values())
+                    result[field_name] = self.rng.choices(choices, weights=weights, k=1)[0]
+        # Sample numeric fields from (mean, std) pairs
+        for field_name in ["price_sensitivity", "brand_loyalty", "innovation_adoption",
+                           "social_influence_weight", "claim_skepticism", "evidence_sensitivity",
+                           "novelty_seeking", "risk_aversion", "risk_tolerance",
+                           "conformity_tendency", "sharing_propensity"]:
+            if field_name in calibration_data:
+                mean, std = calibration_data[field_name]
+                result[field_name] = max(0, min(1, self.rng.gauss(mean, std)))
+        # Sample city_tier
+        if "city_tier_distribution" in calibration_data:
+            dist = calibration_data["city_tier_distribution"]
+            if isinstance(dist, dict) and dist:
+                choices = [int(k) for k in dist.keys()]
+                weights = list(dist.values())
+                result["city_tier"] = self.rng.choices(choices, weights=weights, k=1)[0]
+        return result
 
     def generate_diverse_population(self, n: int) -> list:
         """生成多样化人群（自动分配模板比例）"""
@@ -145,6 +236,12 @@ class PopulationGenerator:
         for p in personas:
             template_counts[p.name] = template_counts.get(p.name, 0) + 1
 
+        # Population coverage statistics
+        source_basis_distribution: dict = {}
+        for p in personas:
+            basis = p.source_basis
+            source_basis_distribution[basis] = source_basis_distribution.get(basis, 0) + 1
+
         return {
             "total": total,
             "avg_price_sensitivity": sum(p.price_sensitivity for p in personas) / total,
@@ -152,4 +249,10 @@ class PopulationGenerator:
             "city_tier_distribution": {t: sum(1 for p in personas if p.city_tier == t) for t in range(1, 6)},
             "income_distribution": {l: sum(1 for p in personas if p.income_level == l) for l in ["low", "middle", "high"]},
             "template_distribution": template_counts,
+            "population_coverage": {
+                "age_coverage": len(set(p.age_range for p in personas)),
+                "income_coverage": len(set(p.income_level for p in personas)),
+                "city_tier_coverage": len(set(p.city_tier for p in personas)),
+                "source_basis_distribution": source_basis_distribution,
+            },
         }
