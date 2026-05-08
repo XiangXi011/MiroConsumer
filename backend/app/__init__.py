@@ -84,7 +84,10 @@ def create_app(config_class=Config):
 
     # 初始化认证授权系统
     from .auth.middleware import init_auth
-    init_auth(app)
+    from .auth.repository import create_auth_repository_from_config
+    auth_repository, auth_engine = create_auth_repository_from_config(config_class)
+    app.extensions['auth_engine'] = auth_engine
+    init_auth(app, auth_repository=auth_repository)
 
     # 注册模拟进程清理函数（确保服务器关闭时终止所有模拟进程）
     from .services.simulation_runner import SimulationRunner
@@ -128,10 +131,10 @@ def create_app(config_class=Config):
     app.register_blueprint(consumer_bp, url_prefix='/api/consumer')
 
     # P2-2: API v1 version prefix — same blueprints, dual paths
-    app.register_blueprint(graph_bp, url_prefix='/api/v1/graph')
-    app.register_blueprint(simulation_bp, url_prefix='/api/v1/simulation')
-    app.register_blueprint(report_bp, url_prefix='/api/v1/report')
-    app.register_blueprint(consumer_bp, url_prefix='/api/v1/consumer')
+    app.register_blueprint(graph_bp, url_prefix='/api/v1/graph', name='graph_v1')
+    app.register_blueprint(simulation_bp, url_prefix='/api/v1/simulation', name='simulation_v1')
+    app.register_blueprint(report_bp, url_prefix='/api/v1/report', name='report_v1')
+    app.register_blueprint(consumer_bp, url_prefix='/api/v1/consumer', name='consumer_v1')
     
     # Sentry error tracking (configurable)
     sentry_dsn = os.environ.get('SENTRY_DSN')
@@ -171,23 +174,23 @@ def create_app(config_class=Config):
         return {
             "openapi": "3.0.3",
             "info": {"title": "MiroConsumer API", "version": "0.7.0"},
-            "servers": [{"url": "/api/v1", "description": "v1 API"}],
+            "servers": [{"url": "/", "description": "Current host"}],
             "paths": {
                 "/health": {"get": {"summary": "Health check", "responses": {"200": {"description": "OK"}}}},
                 "/api/auth/register": {"post": {"summary": "Register user", "requestBody": {"content": {"application/json": {"schema": {"type": "object", "properties": {"username": {"type": "string"}, "email": {"type": "string"}, "role": {"type": "string"}}}}}}, "responses": {"201": {"description": "Created"}}}},
                 "/api/auth/login": {"post": {"summary": "Login", "responses": {"200": {"description": "Token returned"}}}},
                 "/api/auth/me": {"get": {"summary": "Current user info", "responses": {"200": {"description": "User info"}}}},
-                "/api/consumer/simulation/{simulation_id}/consumer-summary": {"get": {"summary": "Consumer propagation summary", "parameters": [{"name": "simulation_id", "in": "path", "required": true, "schema": {"type": "string"}}], "responses": {"200": {"description": "Summary data"}}}},
-                "/api/consumer/simulations/{simulation_id}/channel-summary": {"get": {"summary": "Channel metrics summary", "responses": {"200": {"description": "Channel data"}}}},
-                "/api/consumer/simulations/{simulation_id}/branches": {"get": {"summary": "List branches", "responses": {"200": {"description": "Branch list"}}, "post": {"summary": "Create branch", "responses": {"201": {"description": "Branch created"}}}}},
-                "/api/consumer/simulations/{simulation_id}/interventions": {"get": {"summary": "List interventions", "responses": {"200": {"description": "Intervention list"}}}},
-                "/api/consumer/comparisons": {"get": {"summary": "List comparisons", "responses": {"200": {"description": "Comparison list"}}, "post": {"summary": "Create comparison", "responses": {"201": {"description": "Comparison created"}}}}},
-                "/api/consumer/research-assets": {"get": {"summary": "List research assets", "responses": {"200": {"description": "Asset list"}}}},
-                "/api/consumer/simulations/{simulation_id}/interviews": {"post": {"summary": "Run consumer interview", "responses": {"200": {"description": "Interview result"}}}},
-                "/api/consumer/simulations/{simulation_id}/focus-groups": {"post": {"summary": "Run focus group", "responses": {"200": {"description": "Focus group result"}}}},
-                "/api/report/generate": {"post": {"summary": "Generate report", "responses": {"200": {"description": "Task ID returned"}}}},
-                "/api/simulation/entities/{graph_id}": {"get": {"summary": "Get graph entities", "responses": {"200": {"description": "Entity list"}}}},
-                "/api/graph/projects": {"get": {"summary": "List projects", "responses": {"200": {"description": "Project list"}}}}
+                "/api/v1/consumer/simulation/{simulation_id}/consumer-summary": {"get": {"summary": "Consumer propagation summary", "parameters": [{"name": "simulation_id", "in": "path", "required": True, "schema": {"type": "string"}}], "responses": {"200": {"description": "Summary data"}}}},
+                "/api/v1/consumer/simulations/{simulation_id}/channel-summary": {"get": {"summary": "Channel metrics summary", "responses": {"200": {"description": "Channel data"}}}},
+                "/api/v1/consumer/simulations/{simulation_id}/branches": {"get": {"summary": "List branches", "responses": {"200": {"description": "Branch list"}}, "post": {"summary": "Create branch", "responses": {"201": {"description": "Branch created"}}}}},
+                "/api/v1/consumer/simulations/{simulation_id}/interventions": {"get": {"summary": "List interventions", "responses": {"200": {"description": "Intervention list"}}}},
+                "/api/v1/consumer/comparisons": {"get": {"summary": "List comparisons", "responses": {"200": {"description": "Comparison list"}}, "post": {"summary": "Create comparison", "responses": {"201": {"description": "Comparison created"}}}}},
+                "/api/v1/consumer/research-assets": {"get": {"summary": "List research assets", "responses": {"200": {"description": "Asset list"}}}},
+                "/api/v1/consumer/simulations/{simulation_id}/interviews": {"post": {"summary": "Run consumer interview", "responses": {"200": {"description": "Interview result"}}}},
+                "/api/v1/consumer/simulations/{simulation_id}/focus-groups": {"post": {"summary": "Run focus group", "responses": {"200": {"description": "Focus group result"}}}},
+                "/api/v1/report/generate": {"post": {"summary": "Generate report", "responses": {"200": {"description": "Task ID returned"}}}},
+                "/api/v1/simulation/entities/{graph_id}": {"get": {"summary": "Get graph entities", "responses": {"200": {"description": "Entity list"}}}},
+                "/api/v1/graph/projects": {"get": {"summary": "List projects", "responses": {"200": {"description": "Project list"}}}}
             }
         }
 
