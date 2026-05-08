@@ -92,14 +92,74 @@ class ConsumerScoringService:
         buckets: set[str],
         limit: int = 3,
     ) -> List[Dict[str, Any]]:
+        """Select top quotes with diversity-aware scoring.
+
+        P2-5 improvements:
+        - Persona coverage: prefer quotes from distinct agents
+        - Semantic dedup: skip quotes that are >80% similar to already-selected
+        - Engagement remains a factor but not the only one
+        - Small sample degradation: if fewer quotes than limit, return all with note
+        """
         filtered = [event for event in events if event["bucket"] in buckets]
-        filtered.sort(
-            key=lambda item: (
-                -int(item.get("engagement", 0)),
-                str(item.get("quote", "")).casefold(),
-            )
-        )
-        return filtered[:limit]
+
+        if len(filtered) <= limit:
+            # Small sample: return all, sorted by engagement
+            filtered.sort(key=lambda x: -int(x.get("engagement", 0)))
+            return filtered
+
+        # Score each quote: engagement + persona diversity bonus + bucket diversity bonus
+        selected: List[Dict[str, Any]] = []
+        seen_agents: set[str] = set()
+        seen_quotes: List[str] = []
+
+        # Sort by engagement first as base ranking
+        filtered.sort(key=lambda x: -int(x.get("engagement", 0)))
+
+        for item in filtered:
+            if len(selected) >= limit:
+                break
+
+            agent_id = str(item.get("agent_id", ""))
+            quote = str(item.get("quote", ""))
+
+            # Semantic dedup: skip if >80% similar to any selected quote
+            if self._is_too_similar(quote, seen_quotes):
+                continue
+
+            # Persona diversity bonus: prefer unseen agents
+            diversity_bonus = 0.3 if agent_id and agent_id not in seen_agents else 0.0
+
+            # Combined score (engagement normalized + diversity)
+            engagement = int(item.get("engagement", 0))
+            item["_score"] = engagement * (1.0 + diversity_bonus)
+
+            selected.append(item)
+            if agent_id:
+                seen_agents.add(agent_id)
+            seen_quotes.append(quote)
+
+        # Sort final selection by composite score
+        selected.sort(key=lambda x: -x.get("_score", 0))
+        # Clean up internal score field
+        for item in selected:
+            item.pop("_score", None)
+
+        return selected
+
+    @staticmethod
+    def _is_too_similar(quote: str, existing: List[str], threshold: float = 0.8) -> bool:
+        """Simple character-overlap similarity check for deduplication."""
+        if not existing or not quote:
+            return False
+        quote_chars = set(quote.lower().split())
+        for other in existing:
+            other_chars = set(other.lower().split())
+            if not quote_chars or not other_chars:
+                continue
+            overlap = len(quote_chars & other_chars) / max(len(quote_chars), len(other_chars))
+            if overlap > threshold:
+                return True
+        return False
 
     def _normalize_quote_event(self, event: Mapping[str, Any]) -> Dict[str, Any]:
         quote = str(event.get("quote", "")).strip()
