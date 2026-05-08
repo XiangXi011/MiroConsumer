@@ -369,3 +369,10 @@ P0 阶段额外准入测试：
 - 执行方式: Codex CLI (codex exec)
 - 文件: backend/app/services/application/redis_cache.py, backend/tests/test_redis_cache.py
 - 测试: 50 passed
+
+### P2-1 拆分过大的 consumer API 模块
+- 状态: DONE ✅
+- 提交: 6037192
+- 执行方式: Codex API 直调（gpt-5.4-mini）
+- 文件: consumer_utils.py, consumer_summary.py, consumer_branch.py, consumer_comparison.py, consumer_asset.py, consumer_interview.py, consumer_misc.py, consumer.py(registrar)
+- 测试: 50 passed
