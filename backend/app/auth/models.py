@@ -1,7 +1,7 @@
 """认证授权模型"""
 from dataclasses import dataclass, field
 from typing import Optional, Set
-import hashlib
+import bcrypt
 import secrets
 import time
 
@@ -21,7 +21,7 @@ class User:
 @dataclass
 class APIKey:
     key_id: str
-    key_hash: str  # sha256 of the actual key
+    key_hash: str  # bcrypt hash of the actual key
     user_id: str
     tenant_id: str
     scopes: Set[str] = field(default_factory=set)
@@ -57,14 +57,35 @@ ENDPOINT_PERMISSIONS = {
 }
 
 
+def hash_api_key(raw_key: str, rounds: int = 12) -> str:
+    """Hash an API key with bcrypt for storage."""
+    if not raw_key:
+        raise ValueError("raw_key is required")
+    salt = bcrypt.gensalt(rounds=rounds)
+    return bcrypt.hashpw(raw_key.encode("utf-8"), salt).decode("utf-8")
+
+
+def extract_api_key_id(raw_key: str) -> Optional[str]:
+    """Extract the embedded key id from a generated API key."""
+    if not raw_key or not raw_key.startswith("mk_") or "." not in raw_key:
+        return None
+    key_id, _secret = raw_key[3:].split(".", 1)
+    return key_id if key_id.startswith("key_") else None
+
+
 def generate_api_key() -> tuple:
     """生成 API Key，返回 (raw_key, key_id, key_hash)"""
-    raw_key = f"mk_{secrets.token_urlsafe(32)}"
     key_id = f"key_{secrets.token_hex(8)}"
-    key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
+    raw_key = f"mk_{key_id}.{secrets.token_urlsafe(32)}"
+    key_hash = hash_api_key(raw_key)
     return raw_key, key_id, key_hash
 
 
 def verify_api_key(raw_key: str, key_hash: str) -> bool:
     """验证 API Key"""
-    return hashlib.sha256(raw_key.encode()).hexdigest() == key_hash
+    if not raw_key or not key_hash:
+        return False
+    try:
+        return bcrypt.checkpw(raw_key.encode("utf-8"), key_hash.encode("utf-8"))
+    except ValueError:
+        return False

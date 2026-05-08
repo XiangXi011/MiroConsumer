@@ -1,12 +1,12 @@
 """认证中间件"""
 from functools import wraps
 from flask import request, jsonify, g, current_app
-from .models import ROLE_PERMISSIONS, ENDPOINT_PERMISSIONS
+from .models import ROLE_PERMISSIONS, ENDPOINT_PERMISSIONS, extract_api_key_id, verify_api_key
 import jwt
 import time
 
 # 临时内存存储（生产应换成数据库）
-_api_keys = {}  # key_hash -> APIKey
+_api_keys = {}  # key_id -> APIKey
 _users = {}  # user_id -> User
 _jwt_secret = None
 
@@ -39,12 +39,16 @@ def init_auth(app):
         # 1. API Key 认证
         api_key = request.headers.get('X-API-Key')
         if api_key:
-            import hashlib
-            key_hash = hashlib.sha256(api_key.encode()).hexdigest()
-            if key_hash in _api_keys:
-                ak = _api_keys[key_hash]
-                if ak.is_active and (ak.expires_at is None or ak.expires_at > time.time()):
+            key_id = extract_api_key_id(api_key)
+            candidates = [_api_keys[key_id]] if key_id in _api_keys else _api_keys.values()
+            for ak in candidates:
+                if (
+                    verify_api_key(api_key, ak.key_hash)
+                    and ak.is_active
+                    and (ak.expires_at is None or ak.expires_at > time.time())
+                ):
                     user = _users.get(ak.user_id)
+                    break
 
         # 2. JWT 认证
         if not user:
@@ -98,7 +102,7 @@ def register_user(user):
 
 def register_api_key(api_key):
     """注册 API Key"""
-    _api_keys[api_key.key_hash] = api_key
+    _api_keys[api_key.key_id] = api_key
 
 
 def create_jwt_token(user, expires_in: int = 3600) -> str:

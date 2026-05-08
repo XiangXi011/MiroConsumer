@@ -4,7 +4,10 @@ import time
 import jwt
 from flask import Flask, jsonify
 
-from app.auth.models import User, APIKey, generate_api_key, verify_api_key, ROLE_PERMISSIONS
+from app.auth.models import (
+    User, APIKey, extract_api_key_id, generate_api_key, hash_api_key,
+    verify_api_key, ROLE_PERMISSIONS
+)
 from app.auth.middleware import (
     init_auth, register_user, register_api_key, create_jwt_token,
     get_jwt_secret, clear_auth_state, require_permission
@@ -278,13 +281,24 @@ class TestModels:
         raw_key, key_id, key_hash = generate_api_key()
         assert raw_key.startswith('mk_')
         assert key_id.startswith('key_')
-        assert len(key_hash) == 64  # sha256 hex
+        assert extract_api_key_id(raw_key) == key_id
+        assert key_hash.startswith(('$2a$', '$2b$', '$2y$'))
+        assert len(key_hash) > 64
 
     def test_verify_api_key(self):
         """API Key 验证正确"""
         raw_key, key_id, key_hash = generate_api_key()
         assert verify_api_key(raw_key, key_hash) is True
         assert verify_api_key('wrong-key', key_hash) is False
+
+    def test_hash_api_key_uses_salt(self):
+        """API Key hashes are salted and not deterministic."""
+        raw_key = 'mk_key_test.example-secret'
+        first_hash = hash_api_key(raw_key)
+        second_hash = hash_api_key(raw_key)
+        assert first_hash != second_hash
+        assert verify_api_key(raw_key, first_hash) is True
+        assert verify_api_key(raw_key, second_hash) is True
 
 
 # ============== 注册验证测试 ==============
