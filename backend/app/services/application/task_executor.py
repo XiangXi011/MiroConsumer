@@ -188,5 +188,11 @@ def create_task_executor(config: Any = None) -> TaskExecutor:
         from .queue_task_executor import QueueTaskExecutor
         from .rq_queue import RQQueueBackend
 
-        return QueueTaskExecutor(backend_name="rq", backend=RQQueueBackend(redis_url=config.REDIS_URL))
+        return QueueTaskExecutor(
+            backend_name="rq",
+            backend=RQQueueBackend(
+                redis_url=config.REDIS_URL,
+                queue_name=getattr(config, "RQ_QUEUE_NAME", "default"),
+            ),
+        )
     raise ValueError(f"Unsupported QUEUE_BACKEND: {backend}")

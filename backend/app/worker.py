@@ -1,9 +1,13 @@
 """Background worker entry point for durable queue backends."""
 
 import json
+import os
 import time
 import signal
 from typing import Any, Dict, Optional
+
+import redis
+import rq
 
 from app.utils.logger import get_logger
 
@@ -53,13 +57,24 @@ def recover_stale_tasks(config: Any = None, now: Any = None) -> Dict[str, Any]:
                 engine.dispose()
 
     if backend == "rq":
-        # RQ workers are started separately via `rq worker` command
-        return {"backend": "rq", "recovered": False, "status": "use_rq_worker_cli"}
+        conn = _create_rq_connection(config)
+        conn.ping()
+        return {
+            "backend": "rq",
+            "recovered": False,
+            "status": "ready",
+            "queue": _rq_queue_name(config),
+        }
 
     raise ValueError(f"Unsupported QUEUE_BACKEND for worker: {backend}")
 
 
-def run_worker(config: Any = None, once: bool = True, poll_interval: float = 5.0) -> Dict[str, Any]:
+def run_worker(
+    config: Any = None,
+    once: bool = True,
+    poll_interval: float = 5.0,
+    burst: bool = False,
+) -> Dict[str, Any]:
     """Start the background worker process.
 
     When once=True, performs startup recovery and returns.
@@ -73,6 +88,9 @@ def run_worker(config: Any = None, once: bool = True, poll_interval: float = 5.0
 
     if once:
         return recover_stale_tasks(config=config)
+
+    if config.QUEUE_BACKEND == "rq":
+        return run_rq_worker(config=config, burst=burst)
 
     # Continuous mode
     signal.signal(signal.SIGTERM, _handle_signal)
@@ -99,7 +117,39 @@ def run_worker(config: Any = None, once: bool = True, poll_interval: float = 5.0
     return {"status": "stopped"}
 
 
+def run_rq_worker(config: Any = None, burst: bool = False) -> Dict[str, Any]:
+    """Run an RQ worker that consumes jobs from Redis."""
+    if config is None:
+        from app.config import Config as _Config
+        config = _Config
+
+    queue_name = _rq_queue_name(config)
+    conn = _create_rq_connection(config)
+    conn.ping()
+
+    logger.info("RQ worker started (queue=%s, burst=%s)", queue_name, burst)
+    worker = rq.Worker([queue_name], connection=conn)
+    worker.work(burst=burst)
+    logger.info("RQ worker stopped (queue=%s)", queue_name)
+    return {"backend": "rq", "status": "stopped", "queue": queue_name}
+
+
+def _rq_queue_name(config: Any) -> str:
+    return str(getattr(config, "RQ_QUEUE_NAME", None) or os.environ.get("RQ_QUEUE_NAME", "default"))
+
+
+def _create_rq_connection(config: Any) -> redis.Redis:
+    redis_url = getattr(config, "REDIS_URL", "") or ""
+    if not redis_url:
+        raise ValueError("REDIS_URL is required when QUEUE_BACKEND=rq")
+    try:
+        return redis.Redis.from_url(redis_url)
+    except ValueError as exc:
+        raise ConnectionError(f"Invalid Redis URL for RQ worker: {redis_url}") from exc
+
+
 if __name__ == "__main__":
     import sys
     once = "--once" in sys.argv
-    print(json.dumps(run_worker(once=once), ensure_ascii=False))
+    burst = "--burst" in sys.argv
+    print(json.dumps(run_worker(once=once, burst=burst), ensure_ascii=False))

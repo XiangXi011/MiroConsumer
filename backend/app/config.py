@@ -93,6 +93,7 @@ class Config:
     # Queue configuration
     _queue_backend_cache = None
     _redis_url_cache = None
+    _rq_queue_name_cache = None
     _queue_retry_limit_cache = None
     _queue_visibility_timeout_cache = None
 
@@ -126,6 +127,12 @@ class Config:
         if cls._redis_url_cache is not None:
             return cls._redis_url_cache
         return os.environ.get('REDIS_URL', '')
+
+    @_ClassProperty
+    def RQ_QUEUE_NAME(cls):
+        if cls._rq_queue_name_cache is not None:
+            return cls._rq_queue_name_cache
+        return os.environ.get('RQ_QUEUE_NAME', 'default')
 
     @_ClassProperty
     def QUEUE_RETRY_LIMIT(cls):

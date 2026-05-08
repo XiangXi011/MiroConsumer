@@ -6,6 +6,7 @@ status checks, agent chat, and downloads.
 """
 
 import os
+import inspect
 import tempfile
 import traceback
 import uuid
@@ -26,6 +27,84 @@ from .concurrency import create_lock_manager, report_generation_lock
 from .task_executor import TaskExecutor, create_task_executor
 
 logger = get_logger("miroconsumer.app_service.report")
+
+
+def _call_class_hook(cls: type, name: str, *args):
+    hook = getattr(cls, name)
+    signature = inspect.signature(hook)
+    parameters = list(signature.parameters)
+    if len(parameters) == len(args) + 1 and parameters[0] in {"cls", "self"}:
+        return hook(cls, *args)
+    return hook(*args)
+
+
+def run_generate_report_task(
+    simulation_id: str,
+    report_id: str,
+    task_id: str,
+    graph_id: str,
+    simulation_requirement: str,
+    project_type: str,
+    project_id: str,
+    locale: str,
+) -> None:
+    """Importable RQ target for report generation."""
+    set_locale(locale)
+    task_manager = TaskManager()
+    report_repo = ReportAppService._report_repo
+    lock_manager = create_lock_manager()
+
+    try:
+        with lock_manager.acquire(
+            report_generation_lock,
+            simulation_id,
+            timeout_seconds=0,
+        ):
+            task_manager.update_task(
+                task_id,
+                status=TaskStatus.PROCESSING,
+                progress=0,
+                message=t("api.initReportAgent"),
+            )
+
+            agent = ReportAgent(
+                graph_id=graph_id,
+                simulation_id=simulation_id,
+                simulation_requirement=simulation_requirement,
+                project_type=project_type,
+                project_id=project_id,
+            )
+
+            def progress_callback(stage, progress, message):
+                task_manager.update_task(
+                    task_id,
+                    progress=progress,
+                    message=f"[{stage}] {message}",
+                )
+
+            report = agent.generate_report(
+                progress_callback=progress_callback,
+                report_id=report_id,
+            )
+
+            report_repo.save_report(report)
+
+            if report.status == ReportStatus.COMPLETED:
+                task_manager.complete_task(
+                    task_id,
+                    result={
+                        "report_id": report.report_id,
+                        "simulation_id": simulation_id,
+                        "status": "completed",
+                    },
+                )
+            else:
+                task_manager.fail_task(task_id, report.error or t("api.reportGenerateFailed"))
+
+    except Exception as e:
+        logger.error(f"Report generation failed: {str(e)}")
+        task_manager.fail_task(task_id, str(e))
+        raise
 
 
 class ReportAppService:
@@ -122,61 +201,16 @@ class ReportAppService:
 
         current_locale = get_locale()
 
-        def run_generate():
-            set_locale(current_locale)
-            try:
-                with cls._lock_manager.acquire(
-                    report_generation_lock,
-                    simulation_id,
-                    timeout_seconds=0,
-                ):
-                    task_manager.update_task(
-                        task_id,
-                        status=TaskStatus.PROCESSING,
-                        progress=0,
-                        message=t("api.initReportAgent"),
-                    )
-
-                    agent = ReportAgent(
-                        graph_id=graph_id,
-                        simulation_id=simulation_id,
-                        simulation_requirement=simulation_requirement,
-                        project_type=project.project_type or state.project_type or "default",
-                        project_id=project.project_id,
-                    )
-
-                    def progress_callback(stage, progress, message):
-                        task_manager.update_task(
-                            task_id,
-                            progress=progress,
-                            message=f"[{stage}] {message}",
-                        )
-
-                    report = agent.generate_report(
-                        progress_callback=progress_callback,
-                        report_id=report_id,
-                    )
-
-                    cls._report_repo.save_report(report)
-
-                    if report.status == ReportStatus.COMPLETED:
-                        task_manager.complete_task(
-                            task_id,
-                            result={
-                                "report_id": report.report_id,
-                                "simulation_id": simulation_id,
-                                "status": "completed",
-                            },
-                        )
-                    else:
-                        task_manager.fail_task(task_id, report.error or t("api.reportGenerateFailed"))
-
-            except Exception as e:
-                logger.error(f"Report generation failed: {str(e)}")
-                task_manager.fail_task(task_id, str(e))
-
         trace_id = cls._executor.submit(
-            run_generate,
+            run_generate_report_task,
+            simulation_id,
+            report_id,
+            task_id,
+            graph_id,
+            simulation_requirement,
+            project.project_type or state.project_type or "default",
+            project.project_id,
+            current_locale,
             task_type="generate_report",
             idempotency_key=f"{simulation_id}:report",
             simulation_id=simulation_id,
@@ -377,11 +411,18 @@ class ReportAppService:
         if not report:
             raise NotFoundError(t("api.reportNotFound", id=report_id))
 
-        methodology_page = cls._build_methodology_page(report.simulation_id, report)
+        report_simulation_id = getattr(report, "simulation_id", "")
+        methodology_page = ""
+        if isinstance(report_simulation_id, str) and report_simulation_id:
+            methodology_page = _call_class_hook(cls, "_build_methodology_page", report_simulation_id, report)
 
         # P0-5.2: filter forbidden language on report content
         from ...utils.disclaimer import filter_forbidden_language
-        agent_count_for_filter = cls._get_agent_count(report.simulation_id)
+        agent_count_for_filter = (
+            _call_class_hook(cls, "_get_agent_count", report_simulation_id)
+            if isinstance(report_simulation_id, str) and report_simulation_id
+            else 8
+        )
 
         md_path = ReportManager._get_report_markdown_path(report_id)
 
@@ -396,6 +437,13 @@ class ReportAppService:
                     "Forbidden language filtered in report %s: %s",
                     report_id, violations,
                 )
+            if not methodology_page and not violations:
+                return {
+                    "path": md_path,
+                    "is_temp": False,
+                    "download_name": f"{report_id}.md",
+                    "content": None,
+                }
             return {
                 "path": None,
                 "is_temp": True,
