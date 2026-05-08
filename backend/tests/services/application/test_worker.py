@@ -3,6 +3,7 @@
 import os
 import tempfile
 from datetime import datetime, timezone, timedelta
+from unittest.mock import MagicMock, patch
 
 import pytest
 from sqlalchemy import create_engine, insert, select
@@ -256,12 +257,60 @@ class TestRunWorkerThread:
 
 
 class TestRunWorkerContinuous:
-    def test_once_false_raises_not_implemented(self, monkeypatch):
-        from app.worker import run_worker
+    def test_once_false_returns_when_shutdown_already_requested(self, monkeypatch):
+        import app.worker as worker_mod
 
         monkeypatch.setenv("QUEUE_BACKEND", "thread")
         monkeypatch.setattr(Config, "_queue_backend_cache", None)
+        monkeypatch.setattr(worker_mod, "_shutdown_requested", True)
 
-        with pytest.raises(NotImplementedError) as exc_info:
-            run_worker(config=Config, once=False)
-        assert "continuous" in str(exc_info.value).lower() or "not implemented" in str(exc_info.value).lower()
+        result = worker_mod.run_worker(config=Config, once=False)
+
+        assert result["status"] == "stopped"
+
+
+class TestRunWorkerRQ:
+    def test_recover_stale_tasks_validates_rq_connection(self, monkeypatch):
+        from app.worker import recover_stale_tasks
+
+        redis_conn = MagicMock()
+        monkeypatch.setenv("QUEUE_BACKEND", "rq")
+        monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
+        monkeypatch.setattr(Config, "_queue_backend_cache", None)
+        monkeypatch.setattr(Config, "_redis_url_cache", None)
+        monkeypatch.setattr(Config, "_rq_queue_name_cache", None)
+
+        with patch("app.worker.redis.Redis.from_url", return_value=redis_conn) as from_url:
+            result = recover_stale_tasks(config=Config)
+
+        from_url.assert_called_once_with("redis://localhost:6379/0")
+        redis_conn.ping.assert_called_once()
+        assert result == {
+            "backend": "rq",
+            "recovered": False,
+            "status": "ready",
+            "queue": "default",
+        }
+
+    def test_run_worker_starts_rq_worker(self, monkeypatch):
+        from app.worker import run_worker
+
+        redis_conn = MagicMock()
+        worker = MagicMock()
+        monkeypatch.setenv("QUEUE_BACKEND", "rq")
+        monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
+        monkeypatch.setenv("RQ_QUEUE_NAME", "critical")
+        monkeypatch.setattr(Config, "_queue_backend_cache", None)
+        monkeypatch.setattr(Config, "_redis_url_cache", None)
+        monkeypatch.setattr(Config, "_rq_queue_name_cache", None)
+
+        with patch("app.worker.redis.Redis.from_url", return_value=redis_conn), patch(
+            "app.worker.rq.Worker",
+            return_value=worker,
+        ) as worker_cls:
+            result = run_worker(config=Config, once=False, burst=True)
+
+        redis_conn.ping.assert_called_once()
+        worker_cls.assert_called_once_with(["critical"], connection=redis_conn)
+        worker.work.assert_called_once_with(burst=True)
+        assert result == {"backend": "rq", "status": "stopped", "queue": "critical"}

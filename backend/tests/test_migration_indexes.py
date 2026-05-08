@@ -1,4 +1,4 @@
-"""Tests for the auth session performance index migration."""
+"""Tests for the application performance index migration."""
 
 import importlib.util
 from pathlib import Path
@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
-from sqlalchemy import Column, Float, MetaData, String, Table, create_engine, inspect as sa_inspect
+from sqlalchemy import Column, DateTime, Integer, MetaData, String, Table, create_engine, inspect as sa_inspect
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 MIGRATION_PATH = BACKEND_DIR / "alembic" / "versions" / "20260508_0003_add_performance_indexes.py"
@@ -28,33 +28,77 @@ def sqlite_connection():
         yield connection
 
 
-def _create_auth_sessions_table(connection):
+def _create_indexed_tables(connection):
     metadata = MetaData()
-    Table(
-        "auth_sessions",
-        metadata,
-        Column("session_id", String(64), primary_key=True),
-        Column("user_id", String(64), nullable=False),
-        Column("expires_at", Float(), nullable=False),
-    )
+    table_columns = {
+        "projects": [
+            Column("id", String(36), primary_key=True),
+            Column("created_at", DateTime()),
+            Column("project_type", String(50)),
+        ],
+        "simulations": [
+            Column("id", String(36), primary_key=True),
+            Column("project_id", String(36)),
+            Column("status", String(50)),
+            Column("created_at", DateTime()),
+        ],
+        "simulation_runs": [
+            Column("id", String(36), primary_key=True),
+            Column("simulation_id", String(36)),
+            Column("run_id", String(36)),
+        ],
+        "branches": [
+            Column("id", String(36), primary_key=True),
+            Column("simulation_id", String(36)),
+            Column("status", String(50)),
+            Column("created_at", DateTime()),
+        ],
+        "reports": [
+            Column("id", String(36), primary_key=True),
+            Column("simulation_id", String(36)),
+            Column("status", String(50)),
+            Column("created_at", DateTime()),
+        ],
+        "tasks": [
+            Column("id", String(36), primary_key=True),
+            Column("simulation_id", String(36)),
+            Column("status", String(50)),
+            Column("updated_at", DateTime()),
+        ],
+        "task_attempts": [
+            Column("id", String(36), primary_key=True),
+            Column("task_id", String(36)),
+            Column("attempt_number", Integer()),
+        ],
+    }
+    for table_name, columns in table_columns.items():
+        Table(table_name, metadata, *columns)
     metadata.create_all(connection)
 
 
-def test_auth_session_indexes_upgrade_and_downgrade(sqlite_connection, migration_module):
-    _create_auth_sessions_table(sqlite_connection)
+def test_performance_indexes_upgrade_and_downgrade(sqlite_connection, migration_module):
+    _create_indexed_tables(sqlite_connection)
 
     context = MigrationContext.configure(sqlite_connection)
     with Operations.context(context):
         migration_module.upgrade()
 
     inspector = sa_inspect(sqlite_connection)
-    indexes_after_upgrade = {index["name"] for index in inspector.get_indexes("auth_sessions")}
-    assert indexes_after_upgrade == {"ix_auth_sessions_user_id", "ix_auth_sessions_expires_at"}
+    expected_by_table = {}
+    for index_name, table_name, _columns in migration_module.INDEXES:
+        expected_by_table.setdefault(table_name, set()).add(index_name)
+
+    for table_name, expected_indexes in expected_by_table.items():
+        indexes_after_upgrade = {index["name"] for index in inspector.get_indexes(table_name)}
+        assert indexes_after_upgrade == expected_indexes
+
+    assert "auth_sessions" not in inspector.get_table_names()
 
     context = MigrationContext.configure(sqlite_connection)
     with Operations.context(context):
         migration_module.downgrade()
 
     inspector = sa_inspect(sqlite_connection)
-    indexes_after_downgrade = {index["name"] for index in inspector.get_indexes("auth_sessions")}
-    assert indexes_after_downgrade == set()
+    for table_name in expected_by_table:
+        indexes_after_downgrade = {index["name"] for index in inspector.get_indexes(table_name)}
+        assert indexes_after_downgrade == set()

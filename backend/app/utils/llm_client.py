@@ -23,6 +23,14 @@ logger = logging.getLogger(__name__)
 LLM_LOG_DIR = os.path.join(os.path.dirname(__file__), '../../logs/llm')
 
 
+def _usage_token_counts(usage: Any) -> Optional[tuple[int, int]]:
+    prompt_tokens = getattr(usage, "prompt_tokens", None)
+    completion_tokens = getattr(usage, "completion_tokens", None)
+    if isinstance(prompt_tokens, int) and isinstance(completion_tokens, int):
+        return prompt_tokens, completion_tokens
+    return None
+
+
 class LLMClient:
     """LLM客户端"""
     
@@ -123,14 +131,16 @@ class LLMClient:
         # Governor: 记录成功
         governor.record_circuit_success(service)
         usage = response.usage
-        if usage:
-            total_tokens = usage.prompt_tokens + usage.completion_tokens
+        token_counts = _usage_token_counts(usage)
+        if token_counts:
+            prompt_tokens, completion_tokens = token_counts
+            total_tokens = prompt_tokens + completion_tokens
             # 粗略成本估算: $0.002 / 1K tokens
             cost = total_tokens * 0.002 / 1000
             governor.record_cost(tenant_id, user_id, project_id, total_tokens, cost)
 
         # 记录LLM调用详情
-        tokens_str = f"prompt={usage.prompt_tokens},completion={usage.completion_tokens}" if usage else "N/A"
+        tokens_str = f"prompt={prompt_tokens},completion={completion_tokens}" if token_counts else "N/A"
         logger.info(
             "LLM调用: model=%s, prompt_hash=%s, tokens=%s, elapsed=%.2fs",
             self.model,
@@ -215,13 +225,15 @@ class LLMClient:
         # Governor: 记录成功
         governor.record_circuit_success(service)
         usage = response.usage
-        if usage:
-            total_tokens = usage.prompt_tokens + usage.completion_tokens
+        token_counts = _usage_token_counts(usage)
+        if token_counts:
+            prompt_tokens, completion_tokens = token_counts
+            total_tokens = prompt_tokens + completion_tokens
             cost = total_tokens * 0.002 / 1000
             governor.record_cost(tenant_id, user_id, project_id, total_tokens, cost)
 
         # 记录LLM调用详情
-        tokens_str = f"prompt={usage.prompt_tokens},completion={usage.completion_tokens}" if usage else "N/A"
+        tokens_str = f"prompt={prompt_tokens},completion={completion_tokens}" if token_counts else "N/A"
         logger.info(
             "LLM调用(finish_reason): model=%s, prompt_hash=%s, tokens=%s, elapsed=%.2fs",
             self.model, prompt_hash, tokens_str, elapsed,

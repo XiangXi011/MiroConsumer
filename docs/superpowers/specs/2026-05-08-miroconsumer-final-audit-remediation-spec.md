@@ -402,3 +402,16 @@ P0 阶段额外准入测试：
 - 执行方式: Codex API 直调
 - 文件: backend/app/services/consumer/scoring.py
 - 测试: 39 passed
+
+### Audit Correction 2026-05-08
+- `P2-1`: remote `DONE` marker rejected. The split placed `consumer_*.py` files at repository root and those modules imported nonexistent `services.*` paths, while `backend/app/api/consumer.py` imported package-local modules. This breaks backend startup. The broken split has been reverted to the monolithic `backend/app/api/consumer.py`; status remains `TODO` until a package-local split with route parity tests is implemented.
+- `P2-2`: duplicate v1 blueprint registration needed unique Flask endpoint namespaces. The `/api/v1/*` registrations now reuse the same blueprints with explicit names: `graph_v1`, `simulation_v1`, `report_v1`, and `consumer_v1`.
+
+### Convergence Pass 2026-05-08
+- `P0-1`: RQ worker entry now starts a real `rq.Worker` from `python -m app.worker`; queue name is shared through `RQ_QUEUE_NAME`; RQ-submitted business tasks use importable module-level functions instead of nested closures.
+- `P0-3`: `create_app()` now builds auth persistence from `DB_URL`; SQLAlchemy auth storage is used for configured databases, with memory storage only for filesystem/no-DB mode.
+- `P1-6`: performance index migration no longer references nonexistent `auth_sessions`; it targets real high-frequency tables (`projects`, `simulations`, `simulation_runs`, `branches`, `reports`, `tasks`, `task_attempts`).
+- `P1-2`: `RedisCache` is wired into `ConsumerAppService.get_consumer_summary()` as a cache-aside read path when `REDIS_URL` is configured.
+- `P1-3`: stale tests that still expected 8 default personas were updated to the expanded 16-persona pack.
+- `P2-3`: OpenAPI paths now document actual `/api/v1/*` resource endpoints instead of combining `servers=/api/v1` with stale `/api/*` paths.
+- Local verification: `git diff --check` passed. Python/uv/pytest are unavailable on this machine, so runtime tests still need to be executed in a Python-capable environment.

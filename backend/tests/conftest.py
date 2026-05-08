@@ -1,4 +1,5 @@
 import sys
+import os
 from pathlib import Path
 
 import pytest
@@ -8,6 +9,10 @@ from flask import Flask
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
+
+os.environ.setdefault("LLM_API_KEY", "test-llm-key")
+os.environ.setdefault("ZEP_API_KEY", "test-zep-key")
+os.environ.setdefault("SECRET_KEY", "test-secret-key-for-pytest-suite-123456")
 
 
 def create_test_app():
