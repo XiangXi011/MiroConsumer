@@ -104,7 +104,7 @@ P0 内推荐顺序：先做 `P0-2` API Key bcrypt（范围小、立刻降低安�
 |---|---|
 | 任务ID | `P1-2` |
 | 优先级 | P1，production 前置建议 |
-| 状态 | `TODO` |
+| 状态 | `DONE` |
 | 目标 | 为报告数据、模拟配置、画像包等热点读取增加统一缓存策略 |
 | 触发原因 | 当前项目缺少缓存层，热点数据每次请求都访问底层存储 |
 | 主要改动方向 | 增加 cache abstraction；Redis 可用时启用；定义 TTL、命名空间、失效策略；缓存命中/未命中写入指标或日志 |
@@ -152,7 +152,7 @@ P0 内推荐顺序：先做 `P0-2` API Key bcrypt（范围小、立刻降低安�
 |---|---|
 | 任务ID | `P1-5` |
 | 优先级 | P1 |
-| 状态 | `TODO` |
+| 状态 | `DONE` |
 | 目标 | 仿真不只依赖固定 `max_rounds`，能在态度变化率或事件分布稳定时提前停止 |
 | 触发原因 | 固定轮数可能造成过度传播或传播不足，影响仿真可信度 |
 | 主要改动方向 | 定义收敛指标：态度变化率、事件类型分布稳定性、活跃 agent 比例；增加可配置阈值和停止原因记录 |
@@ -168,7 +168,7 @@ P0 内推荐顺序：先做 `P0-2` API Key bcrypt（范围小、立刻降低安�
 |---|---|
 | 任务ID | `P1-6` |
 | 优先级 | P1，production 前置建议 |
-| 状态 | `TODO` |
+| 状态 | `DONE` |
 | 目标 | 为 `simulation_id`、`project_id`、`run_id`、`tenant_id`、`status`、`created_at` 等高频查询字段增加索引 |
 | 触发原因 | 最终评审指出数据库外键和常用查询字段缺少显式索引，数据量增长后会全表扫描 |
 | 主要改动方向 | 在 SQLAlchemy/Alembic schema 中增加 B-tree 索引；PostgreSQL JSONB 高频路径视情况增加 GIN 索引 |
@@ -184,7 +184,7 @@ P0 内推荐顺序：先做 `P0-2` API Key bcrypt（范围小、立刻降低安�
 |---|---|
 | 任务ID | `P2-1` |
 | 优先级 | P2 |
-| 状态 | `TODO` |
+| 状态 | `DONE` |
 | 目标 | 将 `backend/app/api/consumer.py` 按职责拆分，降低维护和合并冲突风险 |
 | 触发原因 | 文件约 644 行，承担 summary、society、focus group、drift、asset、export 等多个职责 |
 | 主要改动方向 | 按子域拆分 Blueprint 或 handler 模块；共享校验和响应工具集中复用；保持路由兼容 |
@@ -200,7 +200,7 @@ P0 内推荐顺序：先做 `P0-2` API Key bcrypt（范围小、立刻降低安�
 |---|---|
 | 任务ID | `P2-2` |
 | 优先级 | P2 |
-| 状态 | `TODO` |
+| 状态 | `DONE` |
 | 目标 | 为公共 API 增加 `/api/v1/` 版本层，为未来 v2 留出兼容空间 |
 | 触发原因 | 当前端点直接暴露在 `/api/` 下，未来变更缺少版本隔离 |
 | 主要改动方向 | 新增 v1 blueprint 前缀；旧路径保留兼容或重定向策略；文档明确迁移窗口 |
@@ -216,7 +216,7 @@ P0 内推荐顺序：先做 `P0-2` API Key bcrypt（范围小、立刻降低安�
 |---|---|
 | 任务ID | `P2-3` |
 | 优先级 | P2 |
-| 状态 | `TODO` |
+| 状态 | `DONE` |
 | 目标 | `/api/openapi.json` 返回可用 paths，而不是空 schema |
 | 触发原因 | 最终评审指出当前 OpenAPI schema 为空，文档与代码无法同步 |
 | 主要改动方向 | 使用现有契约模型生成或手动维护 OpenAPI paths；覆盖核心 consumer/report/auth/health API |
@@ -232,7 +232,7 @@ P0 内推荐顺序：先做 `P0-2` API Key bcrypt（范围小、立刻降低安�
 |---|---|
 | 任务ID | `P2-4` |
 | 优先级 | P2 |
-| 状态 | `TODO` |
+| 状态 | `DONE` |
 | 目标 | 将纯文本 `reasoning_summary` 扩展为可查询、可关联的结构化推理链 |
 | 触发原因 | 当前推理链缺少感知、决策、表达分解，也缺少 finding/event/agent/round 关联 |
 | 主要改动方向 | 增加 `perception_reasoning`、`decision_reasoning`、`expression_reasoning`；增加 `related_finding_id`、`related_event_id`、`agent_id`、`round_index` |
@@ -248,7 +248,7 @@ P0 内推荐顺序：先做 `P0-2` API Key bcrypt（范围小、立刻降低安�
 |---|---|
 | 任务ID | `P2-5` |
 | 优先级 | P2 |
-| 状态 | `TODO` |
+| 状态 | `DONE` |
 | 目标 | VOC 不再只按互动量取 top 3，而要体现画像多样性和语义代表性 |
 | 触发原因 | 当前 `backend/app/services/consumer/scoring.py` 的 `_top_quotes()` 逻辑简单，可能丢失关键少数意见 |
 | 主要改动方向 | 引入画像覆盖约束、语义去重、观点类别覆盖；保留 engagement 作为排序因子之一 |
@@ -264,7 +264,7 @@ P0 内推荐顺序：先做 `P0-2` API Key bcrypt（范围小、立刻降低安�
 |---|---|
 | 任务ID | `P3-1` |
 | 优先级 | P3 |
-| 状态 | `TODO` |
+| 状态 | `DONE` |
 | 目标 | 在安全响应头中补充完整 CSP 策略 |
 | 触发原因 | 当前安全头基础存在，但 CSP 未完整定义 |
 | 主要改动方向 | 定义 `default-src`、`script-src`、`style-src`、`img-src`、`connect-src` 等策略；开发和生产可分环境配置 |
@@ -280,7 +280,7 @@ P0 内推荐顺序：先做 `P0-2` API Key bcrypt（范围小、立刻降低安�
 |---|---|
 | 任务ID | `P3-2` |
 | 优先级 | P3 |
-| 状态 | `TODO` |
+| 状态 | `DONE` |
 | 目标 | 从原生 `node --test` 升级到 Vitest 或等价框架，并输出覆盖率报告 |
 | 触发原因 | 当前前端测试缺少覆盖率统计和质量门禁 |
 | 主要改动方向 | 引入 Vitest；迁移现有测试；CI 增加覆盖率报告和阈值 |
@@ -354,7 +354,7 @@ P0 阶段额外准入测试：
 
 ## 7. 当前下一步
 
-当前 `P0-2` 已进入 `IN_PROGRESS`：代码修复已完成，但本机缺少 Python/uv/pytest，尚未完成测试验收。下一步应先在可运行 Python/uv 的环境中刷新 `backend/uv.lock` 并运行 `backend/tests/test_auth.py`；通过后将 `P0-2` 改为 `DONE`，再启动 `P0-3` 认证持久化或 `P0-1` RQ 联调。
+Current P0, P1, P2-1 through P2-5, P3-1, and P3-2 are DONE with local verification evidence. Next highest-priority TODO is `P3-3` distributed lock and Gunicorn worker configuration.
 
 ### P1-6 数据库索引优化
 - 状态: DONE ✅
@@ -404,7 +404,7 @@ P0 阶段额外准入测试：
 - 测试: 39 passed
 
 ### Audit Correction 2026-05-08
-- `P2-1`: remote `DONE` marker rejected. The split placed `consumer_*.py` files at repository root and those modules imported nonexistent `services.*` paths, while `backend/app/api/consumer.py` imported package-local modules. This breaks backend startup. The broken split has been reverted to the monolithic `backend/app/api/consumer.py`; status remains `TODO` until a package-local split with route parity tests is implemented.
+- `P2-1`: remote `DONE` marker was originally rejected because the first split placed `consumer_*.py` files at repository root and broke imports. Current pass implements package-local modules under `backend/app/api/consumer_*.py`, keeps `backend/app/api/consumer.py` as a registrar, and adds route parity coverage; status is now `DONE`.
 - `P2-2`: duplicate v1 blueprint registration needed unique Flask endpoint namespaces. The `/api/v1/*` registrations now reuse the same blueprints with explicit names: `graph_v1`, `simulation_v1`, `report_v1`, and `consumer_v1`.
 
 ### Convergence Pass 2026-05-08
@@ -415,3 +415,30 @@ P0 阶段额外准入测试：
 - `P1-3`: stale tests that still expected 8 default personas were updated to the expanded 16-persona pack.
 - `P2-3`: OpenAPI paths now document actual `/api/v1/*` resource endpoints instead of combining `servers=/api/v1` with stale `/api/*` paths.
 - Local verification: `git diff --check` passed. Python/uv/pytest are unavailable on this machine, so runtime tests still need to be executed in a Python-capable environment.
+
+### P2-1 Package-local Split Pass 2026-05-08
+- 状态: DONE
+- 提交: 待提交（当前本地工作区）
+- 执行方式: Codex
+- 文件: backend/app/api/consumer.py, backend/app/api/consumer_utils.py, backend/app/api/consumer_summary.py, backend/app/api/consumer_branches.py, backend/app/api/consumer_comparisons.py, backend/app/api/consumer_assets.py, backend/app/api/consumer_research.py, backend/app/api/consumer_operations.py, backend/tests/api/test_consumer_api_modularization.py
+- 兼容修复: backend/app/contracts/simulation_contracts.py 和 backend/app/utils/validators.py 保留 `/api/simulation/create` 只传 `project_id` 的旧调用方式。
+- 验证: modularization + canonical routes + consumer routes + OpenAPI 组合测试 55 passed；consumer_routes 38 passed；canonical_routes 14 passed；concurrency mapping 4 passed；queue dead letters 4 passed；OpenAPI 1 passed。
+- 遗留风险: 未运行全量后端测试；pytest 默认 addopts 依赖 pytest-cov，当前命令使用 `-o addopts=` 绕过本机 coverage 插件缺失。
+
+### P3-1 Content Security Policy Pass 2026-05-08
+- Status: DONE
+- Commit: pending local workspace commit
+- Execution: Codex
+- Files: backend/app/utils/security_headers.py, backend/app/__init__.py, backend/app/config.py, backend/tests/test_security_headers.py
+- Verification: `python -m pytest -o addopts= backend\tests\test_security_headers.py -q` -> 2 passed; combined security header suite -> 5 passed.
+- Notes: Production CSP now includes default-src/script-src/style-src/img-src/font-src/connect-src/object-src/base-uri/frame-ancestors/form-action, avoids unsafe-inline/unsafe-eval by default, and supports explicit `CSP_POLICY` override.
+
+### P3-2 Frontend Test Framework Upgrade Pass 2026-05-08
+- Status: DONE
+- Commit: pending local workspace commit
+- Execution: Codex
+- Files: frontend/package.json, frontend/package-lock.json, frontend/vitest.config.js, frontend/vite.config.js, frontend/.gitignore, frontend/tests/*.test.js, frontend/tests/composables/*.test.js, frontend/tests/vitestConfig.test.js
+- Migration: Existing frontend tests now import Vitest test lifecycle helpers instead of `node:test`; `npm test`, `npm run test:watch`, and `npm run test:coverage` are defined in the frontend package.
+- Coverage gate: `vitest.config.js` uses v8 coverage with text/lcov/json-summary output under `frontend/coverage` and thresholds of statements 70%, lines 70%, functions 70%, branches 60%.
+- Verification: `npm test` -> 23 test files passed, 280 tests passed; `npm run test:coverage` -> 23 test files passed, 280 tests passed, coverage summary statements 90.18%, branches 77.03%, functions 97.5%, lines 90.38%; `npm run build` -> Vite production build completed.
+- Notes: `frontend/coverage/` remains a generated ignored artifact; `npm audit --audit-level=moderate` reports 0 vulnerabilities after lockfile updates to safe transitive/direct versions.

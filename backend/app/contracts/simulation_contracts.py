@@ -6,7 +6,7 @@ from typing import Optional
 
 class CreateSimulationRequest(BaseModel):
     project_id: str
-    name: str = Field(min_length=1, max_length=200)
+    name: Optional[str] = Field(default=None, min_length=1, max_length=200)
     mode: str = Field(default="quick", pattern="^(quick|research|enterprise)$")
     max_agents: int = Field(default=10, ge=1, le=1000)
     max_rounds: int = Field(default=5, ge=1, le=100)

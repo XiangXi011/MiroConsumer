@@ -108,12 +108,9 @@ def create_app(config_class=Config):
     def log_response(response):
         logger = get_logger('miroconsumer.request')
         logger.debug(f"响应: {response.status_code}")
-        # 安全响应头
-        response.headers['X-Content-Type-Options'] = 'nosniff'
-        response.headers['X-Frame-Options'] = 'DENY'
-        response.headers['X-XSS-Protection'] = '1; mode=block'
-        response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
-        response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
+        # Security response headers
+        from .utils.security_headers import apply_security_headers
+        apply_security_headers(response, config_class)
         # Inject request_id into response
         response.headers['X-Request-ID'] = getattr(g, 'request_id', 'unknown')
         # Record metrics

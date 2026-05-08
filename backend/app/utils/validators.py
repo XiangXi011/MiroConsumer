@@ -10,7 +10,7 @@ def validate_simulation_params(data: dict) -> list[str]:
     校验规则：
     - max_agents: 1-1000 之间（可选）
     - max_rounds: 1-100 之间（可选）
-    - mode: 必须是 'standard' 或 'advanced'（可选）
+    - mode: accepts current simulation modes and legacy modes.
 
     Returns:
         错误消息列表，空列表表示校验通过。
@@ -33,8 +33,8 @@ def validate_simulation_params(data: dict) -> list[str]:
 
     mode = data.get('mode')
     if mode is not None:
-        if mode not in ('standard', 'advanced'):
-            errors.append("mode 必须是 standard 或 advanced")
+        if mode not in ('quick', 'research', 'enterprise', 'standard', 'advanced'):
+            errors.append("mode must be one of quick, research, enterprise, standard, advanced")
 
     return errors
 
