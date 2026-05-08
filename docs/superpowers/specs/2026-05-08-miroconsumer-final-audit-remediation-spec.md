@@ -355,3 +355,17 @@ P0 阶段额外准入测试：
 ## 7. 当前下一步
 
 当前 `P0-2` 已进入 `IN_PROGRESS`：代码修复已完成，但本机缺少 Python/uv/pytest，尚未完成测试验收。下一步应先在可运行 Python/uv 的环境中刷新 `backend/uv.lock` 并运行 `backend/tests/test_auth.py`；通过后将 `P0-2` 改为 `DONE`，再启动 `P0-3` 认证持久化或 `P0-1` RQ 联调。
+
+### P1-6 数据库索引优化
+- 状态: DONE ✅
+- 提交: 3e8335b
+- 执行方式: Codex CLI (codex exec)
+- 文件: backend/alembic/versions/20260508_0003_add_performance_indexes.py, backend/tests/test_migration_indexes.py
+- 测试: 40 passed
+
+### P1-2 Redis缓存层
+- 状态: DONE ✅
+- 提交: 9f3724f
+- 执行方式: Codex CLI (codex exec)
+- 文件: backend/app/services/application/redis_cache.py, backend/tests/test_redis_cache.py
+- 测试: 50 passed
