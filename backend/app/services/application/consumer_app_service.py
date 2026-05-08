@@ -8,6 +8,7 @@ own orchestration instead of leaking logic into general API routes.
 
 from typing import Any, Dict, List, Optional
 
+from ...config import Config
 from ...repositories import (
     ConsumerProjectResearchProvider,
     ConsumerStateRepository,
@@ -25,6 +26,7 @@ from ...services.consumer.scoring import build_consumer_summary
 from ...services.simulation_manager import SimulationManager
 from ...utils.locale import t
 from ...utils.logger import get_logger
+from .redis_cache import RedisCache
 
 logger = get_logger("miroconsumer.app_service.consumer")
 
@@ -38,6 +40,23 @@ class ConsumerAppService:
     _project_research_provider: ConsumerProjectResearchProvider = (
         _repository_bundle.consumer_research_provider
     )
+    _cache: Optional[RedisCache] = None
+    _cache_url: Optional[str] = None
+    _summary_cache_ttl_seconds = 120
+
+    @classmethod
+    def _get_cache(cls) -> Optional[RedisCache]:
+        redis_url = Config.REDIS_URL
+        if not redis_url:
+            return None
+        if cls._cache is None or cls._cache_url != redis_url:
+            cls._cache = RedisCache(redis_url=redis_url)
+            cls._cache_url = redis_url
+        return cls._cache
+
+    @classmethod
+    def _summary_cache_key(cls, simulation_id: str) -> str:
+        return f"consumer_summary:v1:{simulation_id}"
 
     @classmethod
     def _require_consumer_simulation(cls, simulation_id: str) -> Any:
@@ -57,7 +76,18 @@ class ConsumerAppService:
         Raises ValueError on validation failure or missing data.
         """
         state = cls._require_consumer_simulation(simulation_id)
+        cache = cls._get_cache()
+        if cache is not None:
+            return cache.get_or_set(
+                cls._summary_cache_key(simulation_id),
+                lambda: cls._build_consumer_summary(simulation_id, state),
+                ttl=cls._summary_cache_ttl_seconds,
+            )
 
+        return cls._build_consumer_summary(simulation_id, state)
+
+    @classmethod
+    def _build_consumer_summary(cls, simulation_id: str, state: Any) -> Dict[str, Any]:
         accessor = cls._consumer_state_repo
         builder = ConsumerReportContextBuilder()
         snapshots = accessor.load_consumer_rounds(simulation_id)

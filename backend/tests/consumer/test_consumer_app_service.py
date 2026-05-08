@@ -1,6 +1,8 @@
 """Tests for ConsumerAppService — consumer bounded-context orchestration."""
 
 import json
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -151,6 +153,30 @@ def test_get_consumer_summary_builds_phase1_context(monkeypatch_config_upload_fo
     assert "summary" in data
     assert data["summary"]["attitude_shift_rate"] > 0
     assert data["representative_voc_quotes"]["risk"][0]["quote"].startswith("Low sugar")
+
+
+def test_get_consumer_summary_uses_redis_cache_when_configured(monkeypatch):
+    cache = MagicMock()
+    cache.get_or_set.return_value = {"cached": True}
+
+    monkeypatch.setattr(
+        ConsumerAppService,
+        "_require_consumer_simulation",
+        classmethod(lambda cls, simulation_id: SimpleNamespace(project_id="project_cache")),
+    )
+    monkeypatch.setattr(
+        ConsumerAppService,
+        "_get_cache",
+        classmethod(lambda cls: cache),
+    )
+
+    data = ConsumerAppService.get_consumer_summary("sim_cache")
+
+    assert data == {"cached": True}
+    cache.get_or_set.assert_called_once()
+    args, kwargs = cache.get_or_set.call_args
+    assert args[0] == "consumer_summary:v1:sim_cache"
+    assert kwargs["ttl"] == ConsumerAppService._summary_cache_ttl_seconds
 
 
 def test_get_consumer_summary_builds_phase2_fields(monkeypatch_config_upload_folder, tmp_path):

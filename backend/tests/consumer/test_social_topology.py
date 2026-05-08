@@ -3,6 +3,7 @@ from app.services.consumer.social_topology import (
     build_social_topology,
     select_topology_aware_targets,
 )
+from app.services.consumer.persona_pack import load_default_persona_pack
 
 
 def test_topology_yields_multiple_communities_and_roles():
@@ -12,7 +13,7 @@ def test_topology_yields_multiple_communities_and_roles():
     all_personas = set()
     for members in topology.communities.values():
         all_personas.update(members)
-    assert len(all_personas) == 8
+    assert len(all_personas) == len(load_default_persona_pack())
 
     expected_roles = {"bridge", "amplifier", "skeptic", "lurker", "regular"}
     actual_roles = set(topology.persona_role.values())
