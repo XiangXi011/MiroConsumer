@@ -36,8 +36,19 @@ class ReasoningTrace:
     latency_ms: float = 0.0
     reasoning_summary: str = ""
 
+    # P2-4: Structured reasoning decomposition
+    perception_reasoning: str = ""
+    decision_reasoning: str = ""
+    expression_reasoning: str = ""
+
+    # P2-4: Trace-to-entity linkage
+    related_finding_id: str = ""
+    related_event_id: str = ""
+    agent_id: str = ""
+    round_index: int = -1
+
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        d = {
             "reasoning_backend": self.reasoning_backend,
             "llm_invoked": self.llm_invoked,
             "source": self.source,
@@ -46,6 +57,22 @@ class ReasoningTrace:
             "latency_ms": self.latency_ms,
             "reasoning_summary": self.reasoning_summary,
         }
+        # P2-4: Include structured fields if non-empty
+        if self.perception_reasoning:
+            d["perception_reasoning"] = self.perception_reasoning
+        if self.decision_reasoning:
+            d["decision_reasoning"] = self.decision_reasoning
+        if self.expression_reasoning:
+            d["expression_reasoning"] = self.expression_reasoning
+        if self.related_finding_id:
+            d["related_finding_id"] = self.related_finding_id
+        if self.related_event_id:
+            d["related_event_id"] = self.related_event_id
+        if self.agent_id:
+            d["agent_id"] = self.agent_id
+        if self.round_index >= 0:
+            d["round_index"] = self.round_index
+        return d
 
     @classmethod
     def from_dict(cls, d: Mapping[str, Any]) -> "ReasoningTrace":
@@ -62,6 +89,13 @@ class ReasoningTrace:
             model=str(d.get("model", "")),
             latency_ms=float(d.get("latency_ms", 0.0)) if d.get("latency_ms") is not None else 0.0,
             reasoning_summary=str(d.get("reasoning_summary", "")),
+            perception_reasoning=str(d.get("perception_reasoning", "")),
+            decision_reasoning=str(d.get("decision_reasoning", "")),
+            expression_reasoning=str(d.get("expression_reasoning", "")),
+            related_finding_id=str(d.get("related_finding_id", "")),
+            related_event_id=str(d.get("related_event_id", "")),
+            agent_id=str(d.get("agent_id", "")),
+            round_index=int(d.get("round_index", -1)),
         )
 
 
