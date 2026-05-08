@@ -152,6 +152,117 @@ def _check_simulation_prepared(simulation_id: str) -> Tuple[bool, dict]:
         return False, {"reason": f"读取状态文件失败: {str(e)}"}
 
 
+def run_prepare_simulation_task(
+    simulation_id: str,
+    task_id: str,
+    simulation_requirement: str,
+    document_text: str,
+    entity_types_list: List[str],
+    use_llm_for_profiles: bool,
+    parallel_profile_count: int,
+    locale: str,
+) -> None:
+    """Importable RQ target for simulation preparation."""
+    from ...services.simulation_manager import SimulationManager
+
+    set_locale(locale)
+    task_manager = TaskManager()
+    repository_bundle = create_repository_bundle()
+    simulation_repo = repository_bundle.simulation_repo
+
+    try:
+        task_manager.update_task(
+            task_id,
+            status=TaskStatus.PROCESSING,
+            progress=0,
+            message=t("progress.startPreparingEnv"),
+        )
+
+        stage_details: Dict[str, Dict[str, Any]] = {}
+
+        def progress_callback(stage, progress, message, **kwargs):
+            stage_weights = {
+                "reading": (0, 20),
+                "generating_profiles": (20, 70),
+                "generating_config": (70, 90),
+                "copying_scripts": (90, 100),
+            }
+            start, end = stage_weights.get(stage, (0, 100))
+            current_progress = int(start + (end - start) * progress / 100)
+
+            stage_names = {
+                "reading": t("progress.readingGraphEntities"),
+                "generating_profiles": t("progress.generatingProfiles"),
+                "generating_config": t("progress.generatingSimConfig"),
+                "copying_scripts": t("progress.preparingScripts"),
+            }
+
+            stage_index = list(stage_weights.keys()).index(stage) + 1 if stage in stage_weights else 1
+            total_stages = len(stage_weights)
+
+            stage_details[stage] = {
+                "stage_name": stage_names.get(stage, stage),
+                "stage_progress": progress,
+                "current": kwargs.get("current", 0),
+                "total": kwargs.get("total", 0),
+                "item_name": kwargs.get("item_name", ""),
+            }
+
+            detail = stage_details[stage]
+            progress_detail_data = {
+                "current_stage": stage,
+                "current_stage_name": stage_names.get(stage, stage),
+                "stage_index": stage_index,
+                "total_stages": total_stages,
+                "stage_progress": progress,
+                "current_item": detail["current"],
+                "total_items": detail["total"],
+                "item_description": message,
+            }
+
+            if detail["total"] > 0:
+                detailed_message = (
+                    f"[{stage_index}/{total_stages}] {stage_names.get(stage, stage)}: "
+                    f"{detail['current']}/{detail['total']} - {message}"
+                )
+            else:
+                detailed_message = f"[{stage_index}/{total_stages}] {stage_names.get(stage, stage)}: {message}"
+
+            task_manager.update_task(
+                task_id,
+                progress=current_progress,
+                message=detailed_message,
+                progress_detail=progress_detail_data,
+            )
+
+        domain_manager = SimulationManager()
+        result_state = domain_manager.prepare_simulation(
+            simulation_id=simulation_id,
+            simulation_requirement=simulation_requirement,
+            document_text=document_text,
+            defined_entity_types=entity_types_list,
+            use_llm_for_profiles=use_llm_for_profiles,
+            progress_callback=progress_callback,
+            parallel_profile_count=parallel_profile_count,
+        )
+
+        task_manager.complete_task(
+            task_id,
+            result=result_state.to_simple_dict(),
+        )
+
+    except Exception as e:
+        logger.error(f"Prepare simulation failed: {str(e)}")
+        task_manager.fail_task(task_id, str(e))
+
+        state = simulation_repo.get_simulation(simulation_id)
+        if state:
+            state.status = SimulationStatus.FAILED
+            state.error = str(e)
+            simulation_repo.save_simulation(state)
+        raise
+
+
 class SimulationAppService:
     """Application service for simulation lifecycle orchestration."""
 
@@ -284,103 +395,16 @@ class SimulationAppService:
 
         current_locale = get_locale()
 
-        def run_prepare():
-            from ...services.simulation_manager import SimulationManager
-            set_locale(current_locale)
-            try:
-                task_manager.update_task(
-                    task_id,
-                    status=TaskStatus.PROCESSING,
-                    progress=0,
-                    message=t("progress.startPreparingEnv"),
-                )
-
-                stage_details = {}
-
-                def progress_callback(stage, progress, message, **kwargs):
-                    stage_weights = {
-                        "reading": (0, 20),
-                        "generating_profiles": (20, 70),
-                        "generating_config": (70, 90),
-                        "copying_scripts": (90, 100),
-                    }
-                    start, end = stage_weights.get(stage, (0, 100))
-                    current_progress = int(start + (end - start) * progress / 100)
-
-                    stage_names = {
-                        "reading": t("progress.readingGraphEntities"),
-                        "generating_profiles": t("progress.generatingProfiles"),
-                        "generating_config": t("progress.generatingSimConfig"),
-                        "copying_scripts": t("progress.preparingScripts"),
-                    }
-
-                    stage_index = list(stage_weights.keys()).index(stage) + 1 if stage in stage_weights else 1
-                    total_stages = len(stage_weights)
-
-                    stage_details[stage] = {
-                        "stage_name": stage_names.get(stage, stage),
-                        "stage_progress": progress,
-                        "current": kwargs.get("current", 0),
-                        "total": kwargs.get("total", 0),
-                        "item_name": kwargs.get("item_name", ""),
-                    }
-
-                    detail = stage_details[stage]
-                    progress_detail_data = {
-                        "current_stage": stage,
-                        "current_stage_name": stage_names.get(stage, stage),
-                        "stage_index": stage_index,
-                        "total_stages": total_stages,
-                        "stage_progress": progress,
-                        "current_item": detail["current"],
-                        "total_items": detail["total"],
-                        "item_description": message,
-                    }
-
-                    if detail["total"] > 0:
-                        detailed_message = (
-                            f"[{stage_index}/{total_stages}] {stage_names.get(stage, stage)}: "
-                            f"{detail['current']}/{detail['total']} - {message}"
-                        )
-                    else:
-                        detailed_message = f"[{stage_index}/{total_stages}] {stage_names.get(stage, stage)}: {message}"
-
-                    task_manager.update_task(
-                        task_id,
-                        progress=current_progress,
-                        message=detailed_message,
-                        progress_detail=progress_detail_data,
-                    )
-
-                # prepare_simulation is domain logic; delegate to SimulationManager
-                domain_manager = SimulationManager()
-                result_state = domain_manager.prepare_simulation(
-                    simulation_id=simulation_id,
-                    simulation_requirement=simulation_requirement,
-                    document_text=document_text,
-                    defined_entity_types=entity_types_list,
-                    use_llm_for_profiles=use_llm_for_profiles,
-                    progress_callback=progress_callback,
-                    parallel_profile_count=parallel_profile_count,
-                )
-
-                task_manager.complete_task(
-                    task_id,
-                    result=result_state.to_simple_dict(),
-                )
-
-            except Exception as e:
-                logger.error(f"Prepare simulation failed: {str(e)}")
-                task_manager.fail_task(task_id, str(e))
-
-                state = cls._simulation_repo.get_simulation(simulation_id)
-                if state:
-                    state.status = SimulationStatus.FAILED
-                    state.error = str(e)
-                    cls._simulation_repo.save_simulation(state)
-
         cls._executor.submit(
-            run_prepare,
+            run_prepare_simulation_task,
+            simulation_id,
+            task_id,
+            simulation_requirement,
+            document_text,
+            entity_types_list,
+            use_llm_for_profiles,
+            parallel_profile_count,
+            current_locale,
             task_type="prepare_simulation",
             idempotency_key=f"{simulation_id}:prepare",
             simulation_id=simulation_id,

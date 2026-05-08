@@ -269,3 +269,18 @@ class SqlAlchemyAuthRepository(AuthRepository):
             created_at=float(row["created_at"]),
             expires_at=row["expires_at"],
         )
+
+
+def create_auth_repository_from_config(config, create_schema: bool = True):
+    """Create the configured auth repository and its owned DB engine."""
+    from ..repositories.session import create_engine_from_config, create_session_factory
+
+    engine = create_engine_from_config(config)
+    if engine is None:
+        return MemoryAuthRepository(), None
+
+    if create_schema:
+        auth_metadata.create_all(engine)
+
+    session_factory = create_session_factory(engine)
+    return SqlAlchemyAuthRepository(session_factory), engine

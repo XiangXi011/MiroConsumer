@@ -10,6 +10,7 @@ from app.auth.repository import (
     MemoryAuthRepository,
     SqlAlchemyAuthRepository,
     auth_metadata,
+    create_auth_repository_from_config,
 )
 
 
@@ -158,3 +159,35 @@ class TestSqlAlchemyAuthRepository:
         assert restarted_repo.get_user(user.user_id) == user
         assert restarted_repo.get_api_key_by_id(api_key.key_id) == api_key
         assert restarted_repo.get_api_keys_by_user(user.user_id) == [api_key]
+
+
+class TestConfiguredAuthRepository:
+    def test_empty_db_url_uses_memory_repository(self):
+        class TestConfig:
+            DB_URL = ""
+
+        repo, engine = create_auth_repository_from_config(TestConfig)
+
+        assert isinstance(repo, MemoryAuthRepository)
+        assert engine is None
+
+    def test_db_url_uses_persistent_sqlalchemy_repository(self, tmp_path, user, api_key):
+        db_path = tmp_path / "auth.db"
+
+        class TestConfig:
+            DB_URL = f"sqlite:///{db_path}"
+
+        repo, engine = create_auth_repository_from_config(TestConfig)
+        try:
+            assert isinstance(repo, SqlAlchemyAuthRepository)
+            repo.save_user(user)
+            repo.save_api_key(api_key)
+        finally:
+            engine.dispose()
+
+        restarted_repo, restarted_engine = create_auth_repository_from_config(TestConfig)
+        try:
+            assert restarted_repo.get_user(user.user_id) == user
+            assert restarted_repo.get_api_key_by_id(api_key.key_id) == api_key
+        finally:
+            restarted_engine.dispose()
