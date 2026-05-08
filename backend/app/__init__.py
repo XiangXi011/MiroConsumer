@@ -126,6 +126,12 @@ def create_app(config_class=Config):
     app.register_blueprint(simulation_bp, url_prefix='/api/simulation')
     app.register_blueprint(report_bp, url_prefix='/api/report')
     app.register_blueprint(consumer_bp, url_prefix='/api/consumer')
+
+    # P2-2: API v1 version prefix — same blueprints, dual paths
+    app.register_blueprint(graph_bp, url_prefix='/api/v1/graph')
+    app.register_blueprint(simulation_bp, url_prefix='/api/v1/simulation')
+    app.register_blueprint(report_bp, url_prefix='/api/v1/report')
+    app.register_blueprint(consumer_bp, url_prefix='/api/v1/consumer')
     
     # Sentry error tracking (configurable)
     sentry_dsn = os.environ.get('SENTRY_DSN')
