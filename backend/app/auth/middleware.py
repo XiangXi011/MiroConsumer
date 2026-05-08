@@ -1,20 +1,22 @@
 """认证中间件"""
 from functools import wraps
-from flask import request, jsonify, g, current_app
+from flask import request, jsonify, g, current_app, has_app_context
 from .models import ROLE_PERMISSIONS, ENDPOINT_PERMISSIONS, extract_api_key_id, verify_api_key
+from .repository import AuthRepository, MemoryAuthRepository
 import jwt
 import time
 
-# 临时内存存储（生产应换成数据库）
-_api_keys = {}  # key_id -> APIKey
-_users = {}  # user_id -> User
+_auth_repository: AuthRepository = MemoryAuthRepository()
 _jwt_secret = None
 
 
-def init_auth(app):
+def init_auth(app, auth_repository=None):
     """初始化认证系统"""
-    global _jwt_secret
+    global _auth_repository, _jwt_secret
     _jwt_secret = app.config.get('SECRET_KEY', 'dev-secret')
+    repository = auth_repository or MemoryAuthRepository()
+    _auth_repository = repository
+    app.extensions['auth_repository'] = repository
 
     # 注册 before_request
     @app.before_request
@@ -35,20 +37,20 @@ def init_auth(app):
 
         # 认证：检查 API Key 或 JWT
         user = None
+        repository = get_auth_repository()
 
         # 1. API Key 认证
         api_key = request.headers.get('X-API-Key')
         if api_key:
             key_id = extract_api_key_id(api_key)
-            candidates = [_api_keys[key_id]] if key_id in _api_keys else _api_keys.values()
-            for ak in candidates:
-                if (
-                    verify_api_key(api_key, ak.key_hash)
-                    and ak.is_active
-                    and (ak.expires_at is None or ak.expires_at > time.time())
-                ):
-                    user = _users.get(ak.user_id)
-                    break
+            ak = repository.get_api_key_by_id(key_id) if key_id else None
+            if (
+                ak
+                and verify_api_key(api_key, ak.key_hash)
+                and ak.is_active
+                and (ak.expires_at is None or ak.expires_at > time.time())
+            ):
+                user = repository.get_user(ak.user_id)
 
         # 2. JWT 认证
         if not user:
@@ -57,7 +59,8 @@ def init_auth(app):
                 token = auth_header[7:]
                 try:
                     payload = jwt.decode(token, _jwt_secret, algorithms=['HS256'])
-                    user = _users.get(payload.get('user_id'))
+                    user_id = payload.get('user_id')
+                    user = repository.get_user(user_id) if user_id else None
                 except jwt.InvalidTokenError:
                     pass
 
@@ -95,14 +98,23 @@ def require_permission(permission):
     return decorator
 
 
+def get_auth_repository():
+    """获取当前应用的认证 repository。"""
+    if has_app_context():
+        repository = current_app.extensions.get('auth_repository')
+        if repository is not None:
+            return repository
+    return _auth_repository
+
+
 def register_user(user):
-    """注册用户（内存存储）"""
-    _users[user.user_id] = user
+    """注册用户"""
+    get_auth_repository().save_user(user)
 
 
 def register_api_key(api_key):
     """注册 API Key"""
-    _api_keys[api_key.key_id] = api_key
+    get_auth_repository().save_api_key(api_key)
 
 
 def create_jwt_token(user, expires_in: int = 3600) -> str:
@@ -126,5 +138,4 @@ def get_jwt_secret():
 
 def clear_auth_state():
     """清除认证状态（供测试使用）"""
-    _api_keys.clear()
-    _users.clear()
+    get_auth_repository().clear_all()

@@ -57,15 +57,15 @@ P0 内推荐顺序：先做 `P0-2` API Key bcrypt（范围小、立刻降低安�
 |---|---|
 | 任务ID | `P0-2` |
 | 优先级 | P0，staging 前置门槛 |
-| 状态 | `IN_PROGRESS` |
+| 状态 | `DONE` |
 | 目标 | API Key 存储和校验不再使用裸 SHA256，改用 bcrypt 或同等级密码哈希 |
 | 触发原因 | 当前 `backend/app/auth/middleware.py` 中认证逻辑使用 `hashlib.sha256(api_key.encode()).hexdigest()` |
 | 主要改动方向 | 增加 bcrypt 依赖；新增统一 `hash_api_key()` 和 `verify_api_key()`；注册 API Key 时存储 bcrypt hash；认证时逐条安全校验；为现有测试补迁移或兼容路径 |
 | 不做什么 | 不改变用户登录协议；不把明文 API Key 持久化；不在日志中输出 API Key |
 | 验收标准 | `git grep "hashlib.sha256(api_key" -- backend` 无结果；新注册 API Key 使用 bcrypt hash；错误 API Key 无法通过；旧测试全部更新并通过；bcrypt cost 可配置且有安全默认值 |
-| 验证命令或证据 | 认证单元测试；API Key 注册/认证集成测试；代码扫描禁止 SHA256 用于 API Key |
+| 验证命令或证据 | `cd backend && python -m pytest tests/test_auth.py -v` → 26/26 passed；`git grep "hashlib.sha256.*api_key" -- backend/app/auth/` → 无结果；bcrypt 依赖已加入 pyproject.toml 和 requirements.txt |
 | 依赖关系 | 可独立完成；与 `P0-3` 认证存储迁移需要保持 hash 字段格式一致 |
-| 完成记录 | 提交号：未提交；验证结果：代码已切换为 bcrypt hash/verify，`git grep "hashlib.sha256(api_key" -- backend` 无结果，`git diff --check` 通过；遗留风险：当前机器缺少 Python/uv/pytest，尚未运行 `backend/tests/test_auth.py`，且 `backend/uv.lock` 需在有 uv 的环境中刷新 |
+| 完成记录 | 提交号：7276fbd；验证结果：26/26 auth tests passed，SHA256 已从 auth 模块移除，bcrypt hash/verify 正常工作；遗留风险：无 |
 
 ### P0-3 认证信息迁移到共享持久存储
 

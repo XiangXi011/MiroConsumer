@@ -283,7 +283,7 @@ class TestModels:
         assert key_id.startswith('key_')
         assert extract_api_key_id(raw_key) == key_id
         assert key_hash.startswith(('$2a$', '$2b$', '$2y$'))
-        assert len(key_hash) > 64
+        assert len(key_hash) == 60  # bcrypt standard output length
 
     def test_verify_api_key(self):
         """API Key 验证正确"""
