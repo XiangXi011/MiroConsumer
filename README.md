@@ -243,10 +243,24 @@ cp .env.example .env
 docker compose up -d
 ```
 
+This starts the full development stack: frontend, backend, PostgreSQL, Redis, and MinIO.
+
 Default ports:
 
-- `3000` for frontend
-- `5001` for backend
+- Frontend: `http://localhost:3000`
+- Backend API: `http://localhost:5001`
+- PostgreSQL: `localhost:5432`
+- Redis: `localhost:6379`
+- MinIO API: `http://localhost:9000`
+- MinIO Console: `http://localhost:9001`
+
+Development defaults use the service names inside Compose:
+
+- `DB_URL=postgresql+psycopg://miroconsumer:miroconsumer@postgres:5432/miroconsumer`
+- `REDIS_URL=redis://redis:6379/0`
+- `S3_ENDPOINT=http://minio:9000`
+
+Override them in your shell or `.env` only when needed; the compose file uses `${VAR:-default}` fallbacks.
 
 ## Technical Foundation
 
