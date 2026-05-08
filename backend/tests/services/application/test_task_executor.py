@@ -2,6 +2,7 @@
 
 import threading
 import time
+from unittest.mock import patch
 
 import pytest
 
@@ -189,7 +190,11 @@ class TestCreateTaskExecutor:
         monkeypatch.setattr(Config, "_redis_url_cache", None)
         from app.services.application.queue_task_executor import QueueTaskExecutor
 
-        executor = create_task_executor()
+        with patch("app.services.application.rq_queue.redis.Redis.from_url") as from_url, patch(
+            "app.services.application.rq_queue.rq.Queue"
+        ):
+            from_url.return_value.ping.return_value = True
+            executor = create_task_executor()
         assert isinstance(executor, QueueTaskExecutor)
 
     def test_invalid_backend_fails_via_config_validate(self, monkeypatch):
@@ -323,17 +328,21 @@ class TestQueueTaskExecutorContract:
 
 
 class TestRQQueueBackendContract:
-    def test_enqueue_returns_trace_id(self):
+    def _make_backend(self):
         from app.services.application.rq_queue import RQQueueBackend
 
-        backend = RQQueueBackend(redis_url="redis://localhost:6379/0")
+        return RQQueueBackend(
+            redis_url="redis://localhost:6379/0",
+            allow_memory_fallback=True,
+        )
+
+    def test_enqueue_returns_trace_id(self):
+        backend = self._make_backend()
         result = backend.enqueue("rq_task_1", lambda: None)
         assert result == "rq_task_1"
 
     def test_get_status_returns_dict_for_known_task(self):
-        from app.services.application.rq_queue import RQQueueBackend
-
-        backend = RQQueueBackend(redis_url="redis://localhost:6379/0")
+        backend = self._make_backend()
         backend.enqueue("rq_task_2", lambda: None)
         status = backend.get_status("rq_task_2")
         assert isinstance(status, dict)
@@ -342,9 +351,7 @@ class TestRQQueueBackendContract:
         assert status["backend"] == "rq"
 
     def test_get_status_returns_failed_for_unknown(self):
-        from app.services.application.rq_queue import RQQueueBackend
-
-        backend = RQQueueBackend(redis_url="redis://localhost:6379/0")
+        backend = self._make_backend()
         status = backend.get_status("unknown")
         assert isinstance(status, dict)
         assert status["trace_id"] == "unknown"
@@ -353,9 +360,7 @@ class TestRQQueueBackendContract:
         assert status["backend"] == "rq"
 
     def test_cancel_returns_dict_with_cancelled_true_for_known(self):
-        from app.services.application.rq_queue import RQQueueBackend
-
-        backend = RQQueueBackend(redis_url="redis://localhost:6379/0")
+        backend = self._make_backend()
         backend.enqueue("rq_task_3", lambda: None)
         result = backend.cancel("rq_task_3")
         assert isinstance(result, dict)
@@ -365,9 +370,7 @@ class TestRQQueueBackendContract:
         assert result["backend"] == "rq"
 
     def test_cancel_returns_dict_with_cancelled_false_for_unknown(self):
-        from app.services.application.rq_queue import RQQueueBackend
-
-        backend = RQQueueBackend(redis_url="redis://localhost:6379/0")
+        backend = self._make_backend()
         result = backend.cancel("unknown")
         assert isinstance(result, dict)
         assert result["trace_id"] == "unknown"
@@ -377,9 +380,7 @@ class TestRQQueueBackendContract:
         assert result["backend"] == "rq"
 
     def test_stores_redis_url(self):
-        from app.services.application.rq_queue import RQQueueBackend
-
-        backend = RQQueueBackend(redis_url="redis://localhost:6379/0")
+        backend = self._make_backend()
         assert backend.redis_url == "redis://localhost:6379/0"
 
     def test_does_not_import_redis_at_import_time(self):
@@ -392,11 +393,18 @@ class TestRQQueueBackendContract:
 
 
 class TestQueueTaskExecutorWithRQBackend:
-    def test_get_status_returns_dict_not_none(self):
+    def _make_backend(self):
         from app.services.application.rq_queue import RQQueueBackend
+
+        return RQQueueBackend(
+            redis_url="redis://localhost:6379/0",
+            allow_memory_fallback=True,
+        )
+
+    def test_get_status_returns_dict_not_none(self):
         from app.services.application.queue_task_executor import QueueTaskExecutor
 
-        backend = RQQueueBackend(redis_url="redis://localhost:6379/0")
+        backend = self._make_backend()
         executor = QueueTaskExecutor(backend_name="rq", backend=backend)
         executor.submit(lambda: None, trace_id="rq_trace_1")
         status = executor.get_status("rq_trace_1")
@@ -405,10 +413,9 @@ class TestQueueTaskExecutorWithRQBackend:
         assert status["backend"] == "rq"
 
     def test_cancel_returns_dict_not_bool(self):
-        from app.services.application.rq_queue import RQQueueBackend
         from app.services.application.queue_task_executor import QueueTaskExecutor
 
-        backend = RQQueueBackend(redis_url="redis://localhost:6379/0")
+        backend = self._make_backend()
         executor = QueueTaskExecutor(backend_name="rq", backend=backend)
         executor.submit(lambda: None, trace_id="rq_trace_2")
         result = executor.cancel("rq_trace_2")

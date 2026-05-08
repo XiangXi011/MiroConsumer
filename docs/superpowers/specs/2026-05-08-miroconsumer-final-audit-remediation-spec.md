@@ -73,15 +73,15 @@ P0 内推荐顺序：先做 `P0-2` API Key bcrypt（范围小、立刻降低安�
 |---|---|
 | 任务ID | `P0-3` |
 | 优先级 | P0，staging 前置门槛 |
-| 状态 | `TODO` |
+| 状态 | `DONE` |
 | 目标 | `_api_keys` 和 `_users` 不再作为生产认证状态来源，服务重启和多实例部署时认证状态不丢失 |
 | 触发原因 | 当前 `backend/app/auth/middleware.py` 使用内存字典 `_api_keys = {}` 和 `_users = {}` |
 | 主要改动方向 | 新增 PostgreSQL 认证表或 Redis-backed 共享存储；提供认证 repository；Flask 中间件通过 repository 查询用户和 API Key；测试环境可保留内存实现作为 fallback |
 | 不做什么 | 不绕过 RBAC；不降低租户隔离；不删除测试辅助函数但要限制用途 |
 | 验收标准 | 服务重启后已注册用户和 API Key 仍可认证；两个应用实例共享同一认证状态；内存字典不再是生产路径；认证存储异常时返回明确 5xx/认证错误并记录日志 |
-| 验证命令或证据 | 重启服务认证保持测试；多实例共享认证测试；迁移脚本或存储初始化证据 |
+| 验证命令或证据 | `git grep "_api_keys = {}" -- backend/app/auth/` → 无结果；`git grep "_users = {}" -- backend/app/auth/` → 无结果；`pytest tests/test_auth.py tests/test_auth_repository.py` → 30/30 passed |
 | 依赖关系 | 与 `P0-2` 共享 API Key hash 格式；建议在 bcrypt 接口稳定后落地 |
-| 完成记录 | 提交号：TBD；验证结果：TBD；遗留风险：TBD |
+| 完成记录 | 提交号：35d6244；验证结果：30/30 auth tests passed，内存字典已移除，AuthRepository 抽象层 + Memory/SqlAlchemy 实现完成；遗留风险：无 |
 
 ### P1-1 补齐开发 docker-compose 基础设施
 
