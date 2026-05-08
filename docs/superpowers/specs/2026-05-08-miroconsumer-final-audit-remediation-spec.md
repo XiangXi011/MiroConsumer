@@ -376,3 +376,29 @@ P0 阶段额外准入测试：
 - 执行方式: Codex API 直调（gpt-5.4-mini）
 - 文件: consumer_utils.py, consumer_summary.py, consumer_branch.py, consumer_comparison.py, consumer_asset.py, consumer_interview.py, consumer_misc.py, consumer.py(registrar)
 - 测试: 50 passed
+
+### P2-2 增加 API v1 版本前缀
+- 状态: DONE ✅
+- 提交: 96438f4
+- 执行方式: Codex API 直调
+- 测试: 50 passed
+
+### P2-3 完善 OpenAPI 文档
+- 状态: DONE ✅
+- 提交: 57dde5e
+- 执行方式: Codex API 直调
+- 测试: 39 passed
+
+### P2-4 结构化 ReasoningTrace
+- 状态: DONE ✅
+- 提交: 19f4000
+- 执行方式: Codex API 直调
+- 文件: backend/app/services/consumer/reasoning_trace.py
+- 测试: 39 passed
+
+### P2-5 改进 VOC 选择算法
+- 状态: DONE ✅
+- 提交: 61aeea9
+- 执行方式: Codex API 直调
+- 文件: backend/app/services/consumer/scoring.py
+- 测试: 39 passed
