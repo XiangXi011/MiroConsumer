@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional
 
 from .access_policy import resolve_visible_findings
+from .convergence_detector import ConvergenceDetector
 from .event_engine import (
     build_propagation_event,
     classify_propagation_event,
@@ -33,10 +34,12 @@ class ConsumerSimulationOrchestrator:
         output_path: Optional[Path | str] = None,
         topology: Optional[SocialTopology] = None,
         kernel: Optional[SimulationKernelAdapter] = None,
+        convergence_detector: Optional[ConvergenceDetector] = None,
     ):
         self.output_path = Path(output_path) if output_path is not None else None
         self._topology = topology or build_social_topology()
         self._kernel = kernel or LegacySimulationKernel()
+        self._convergence_detector = convergence_detector or ConvergenceDetector()
 
     def build_round_prompt(
         self,
@@ -207,6 +210,19 @@ class ConsumerSimulationOrchestrator:
         with self.output_path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(dict(snapshot), ensure_ascii=False))
             f.write("\n")
+
+    def check_convergence(
+        self,
+        round_index: int,
+        current_state: Any,
+        previous_state: Any,
+    ) -> Dict[str, Any]:
+        """Check whether the just-completed round has converged."""
+        return self._convergence_detector.should_stop(
+            round_index=round_index,
+            current_state=current_state,
+            previous_state=previous_state,
+        )
 
     def build_propagation_events_for_transition(
         self,

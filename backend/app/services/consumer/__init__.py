@@ -42,6 +42,7 @@ from .confidence_scoring import (
 )
 from .phase6j_calibration import Phase6JCalibrationReport, Phase6JCalibrationService
 from .propagation_state import PropagationState, create_initial_state
+from .convergence_detector import ConvergenceConfig, ConvergenceDetector
 
 __all__ = [
     "ConsumerBusinessBrief",
@@ -84,4 +85,6 @@ __all__ = [
     "Phase6JCalibrationService",
     "PropagationState",
     "create_initial_state",
+    "ConvergenceConfig",
+    "ConvergenceDetector",
 ]
