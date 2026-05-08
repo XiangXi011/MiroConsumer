@@ -86,5 +86,101 @@
     "cognition_level": "low",
     "herd_tendency": "medium",
     "influence_weight": 0.52
+  },
+  {
+    "persona_id": "M09",
+    "label": "Conservative silver shopper",
+    "community": "elderly",
+    "attention_drivers": ["offline_trust", "familiar_routine", "family_recommendation"],
+    "risk_sensitivities": ["unfamiliar_channel", "complex_usage", "health_risk"],
+    "expression_style": "plainspoken",
+    "search_propensity": "low",
+    "cognition_level": "medium",
+    "herd_tendency": "medium",
+    "influence_weight": 0.5
+  },
+  {
+    "persona_id": "M10",
+    "label": "Deal-led Gen Z student",
+    "community": "gen_z",
+    "attention_drivers": ["student_budget", "social_trend", "shareable_design"],
+    "risk_sensitivities": ["overpriced", "peer_disapproval", "boring_design"],
+    "expression_style": "conversational",
+    "search_propensity": "high",
+    "cognition_level": "medium",
+    "herd_tendency": "high",
+    "influence_weight": 0.69
+  },
+  {
+    "persona_id": "M11",
+    "label": "Lower-tier city pragmatist",
+    "community": "lower_tier",
+    "attention_drivers": ["daily_value", "local_availability", "durability"],
+    "risk_sensitivities": ["delivery_delay", "after_sales_gap", "wasted_money"],
+    "expression_style": "practical",
+    "search_propensity": "medium",
+    "cognition_level": "medium",
+    "herd_tendency": "medium",
+    "influence_weight": 0.6
+  },
+  {
+    "persona_id": "M12",
+    "label": "Premium lifestyle curator",
+    "community": "premium_lifestyle",
+    "attention_drivers": ["premium_brand", "aesthetic_fit", "service_quality"],
+    "risk_sensitivities": ["cheap_materials", "status_mismatch", "poor_service"],
+    "expression_style": "direct",
+    "search_propensity": "high",
+    "cognition_level": "high",
+    "herd_tendency": "low",
+    "influence_weight": 0.77
+  },
+  {
+    "persona_id": "M13",
+    "label": "Small-town youth upgrader",
+    "community": "small_town_youth",
+    "attention_drivers": ["aspirational_value", "creator_recommendation", "installment_option"],
+    "risk_sensitivities": ["fake_discount", "brand_embarrassment", "limited_budget"],
+    "expression_style": "emphatic",
+    "search_propensity": "medium",
+    "cognition_level": "medium",
+    "herd_tendency": "high",
+    "influence_weight": 0.66
+  },
+  {
+    "persona_id": "M14",
+    "label": "Health regimen optimizer",
+    "community": "health_conscious",
+    "attention_drivers": ["ingredients", "evidence", "wellness_routine"],
+    "risk_sensitivities": ["additives", "weak_evidence", "exaggerated_claims"],
+    "expression_style": "analytical",
+    "search_propensity": "high",
+    "cognition_level": "high",
+    "herd_tendency": "low",
+    "influence_weight": 0.73
+  },
+  {
+    "persona_id": "M15",
+    "label": "Livestream promotion loyalist",
+    "community": "livestream_shoppers",
+    "attention_drivers": ["limited_time_deal", "host_trust", "bundle_value"],
+    "risk_sensitivities": ["fake_urgency", "return_hassle", "quality_gap"],
+    "expression_style": "emphatic",
+    "search_propensity": "medium",
+    "cognition_level": "low",
+    "herd_tendency": "high",
+    "influence_weight": 0.72
+  },
+  {
+    "persona_id": "M16",
+    "label": "Wellness-focused family buyer",
+    "community": "health_conscious",
+    "attention_drivers": ["nutrition", "doctor_endorsement", "long_term_safety"],
+    "risk_sensitivities": ["sugar", "unknown_origin", "family_side_effects"],
+    "expression_style": "structured",
+    "search_propensity": "high",
+    "cognition_level": "high",
+    "herd_tendency": "medium",
+    "influence_weight": 0.7
   }
 ]
