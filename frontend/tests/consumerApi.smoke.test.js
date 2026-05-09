@@ -125,6 +125,13 @@ test('consumer factory uses correct backend routes for research asset functions'
   )
 })
 
+test('consumer factory uses correct backend route for evidence graph', () => {
+  assert.ok(
+    factorySrc.includes('/api/consumer/reports/${reportId}/evidence-graph'),
+    'Expected getReportEvidenceGraph to use /api/consumer/reports/${reportId}/evidence-graph'
+  )
+})
+
 test('consumer.js exports all required consumer functions', () => {
   const expectedExports = [
     'getConsumerSummary',
@@ -149,6 +156,7 @@ test('consumer.js exports all required consumer functions', () => {
     'compareResearchSnapshots',
     'listComparisons',
     'getComparison',
+    'getReportEvidenceGraph',
   ]
   for (const name of expectedExports) {
     assert.ok(

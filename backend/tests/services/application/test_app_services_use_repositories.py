@@ -100,6 +100,7 @@ class StubSimulationRepository(SimulationRepository):
         project_type: str = "default",
         enable_twitter: bool = True,
         enable_reddit: bool = True,
+        tenant_id: str = "",
     ) -> Any:
         state = SimulationState(
             simulation_id=f"sim_{project_id}",
@@ -107,6 +108,7 @@ class StubSimulationRepository(SimulationRepository):
             graph_id=graph_id,
             project_type=project_type,
             consumer_mode=(project_type == "consumer_test"),
+            tenant_id=tenant_id,
         )
         self.simulations[state.simulation_id] = state
         return state
@@ -1181,13 +1183,17 @@ class TestPhase7CServiceLocks:
             ReportAppService._executor = executor
             ReportAppService._lock_manager = lock_manager
             monkeypatch.setattr(report_module, "ReportAgent", FakeReportAgent)
+            monkeypatch.setattr(report_module, "create_lock_manager", lambda: lock_manager)
 
             ReportAppService.generate_report("sim_report_lock")
             assert len(executor.submitted) == 1
 
             lock_manager.acquired.clear()
-            fn, _args, _kwargs, _trace_id = executor.submitted[0]
-            fn()
+            fn, args, kwargs, _trace_id = executor.submitted[0]
+            task_kwargs = dict(kwargs)
+            for metadata_key in ("task_type", "idempotency_key", "simulation_id", "run_id"):
+                task_kwargs.pop(metadata_key, None)
+            fn(*args, **task_kwargs)
             assert lock_manager.acquired == [
                 (report_generation_lock, "sim_report_lock", 0)
             ]

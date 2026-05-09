@@ -112,6 +112,31 @@ def test_get_or_set_calls_factory_and_stores_on_cache_miss():
     )
 
 
+def test_metrics_track_hits_misses_sets_and_errors():
+    redis_conn, from_url_patch = _cache_with_mocked_redis()
+    redis_conn.get.side_effect = [
+        json.dumps({"cached": True}),
+        None,
+        redis.exceptions.ConnectionError("redis down"),
+    ]
+
+    with from_url_patch:
+        cache = RedisCache(redis_url="redis://localhost:6379/0")
+
+    assert cache.get("hit") == {"cached": True}
+    assert cache.get("miss") is None
+    assert cache.get("error") is None
+    assert cache.set("offline", {"value": True}) is False
+
+    assert cache.metrics() == {
+        "hits": 1,
+        "misses": 1,
+        "sets": 0,
+        "errors": 1,
+        "available": False,
+    }
+
+
 def test_graceful_fallback_when_redis_connection_fails():
     redis_conn = MagicMock()
     redis_conn.ping.side_effect = redis.exceptions.ConnectionError("redis down")

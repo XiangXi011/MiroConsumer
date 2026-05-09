@@ -50,9 +50,9 @@ jobs:
         working-directory: frontend
         run: npm run build
 
-      - name: Run frontend node tests
+      - name: Run frontend tests
         working-directory: frontend
-        run: node --test tests/*.test.js tests/composables/*.test.js
+        run: npm test
 
   consumer-contract:
     name: Consumer API Contract

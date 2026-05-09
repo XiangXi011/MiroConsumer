@@ -1,0 +1,80 @@
+[
+  {
+    "persona_id": "T01",
+    "label": "Launch-Day Device Explorer",
+    "attention_drivers": ["novelty", "performance", "ecosystem"],
+    "risk_sensitivities": ["compatibility", "battery life"],
+    "expression_style": "analytical and comparison-heavy",
+    "search_propensity": "high",
+    "cognition_level": "high",
+    "herd_tendency": "medium",
+    "influence_weight": 0.82,
+    "source_trust": "high",
+    "skepticism": "medium"
+  },
+  {
+    "persona_id": "T02",
+    "label": "Productivity Stack Optimizer",
+    "attention_drivers": ["workflow fit", "automation", "time savings"],
+    "risk_sensitivities": ["switching cost", "data portability"],
+    "expression_style": "pragmatic and ROI-focused",
+    "search_propensity": "high",
+    "cognition_level": "high",
+    "herd_tendency": "low",
+    "influence_weight": 0.76,
+    "source_trust": "high",
+    "skepticism": "high"
+  },
+  {
+    "persona_id": "T03",
+    "label": "Creator Tool Trendspotter",
+    "attention_drivers": ["creative capability", "shareability", "speed"],
+    "risk_sensitivities": ["learning curve", "output quality"],
+    "expression_style": "visual, energetic, and example-led",
+    "search_propensity": "medium",
+    "cognition_level": "medium",
+    "herd_tendency": "high",
+    "influence_weight": 0.71,
+    "source_trust": "medium",
+    "skepticism": "medium"
+  },
+  {
+    "persona_id": "T04",
+    "label": "Privacy-Conscious Power User",
+    "attention_drivers": ["control", "transparency", "local processing"],
+    "risk_sensitivities": ["privacy", "vendor lock-in"],
+    "expression_style": "careful, evidence-seeking, and technical",
+    "search_propensity": "high",
+    "cognition_level": "high",
+    "herd_tendency": "low",
+    "influence_weight": 0.68,
+    "source_trust": "medium",
+    "skepticism": "high"
+  },
+  {
+    "persona_id": "T05",
+    "label": "Community Beta Advocate",
+    "attention_drivers": ["roadmap access", "community status", "feedback loops"],
+    "risk_sensitivities": ["stability", "support quality"],
+    "expression_style": "collaborative and forum-oriented",
+    "search_propensity": "high",
+    "cognition_level": "medium",
+    "herd_tendency": "medium",
+    "influence_weight": 0.74,
+    "source_trust": "medium",
+    "skepticism": "medium"
+  },
+  {
+    "persona_id": "T06",
+    "label": "Value-Sensitive Upgrade Planner",
+    "attention_drivers": ["durability", "discount timing", "real-world reviews"],
+    "risk_sensitivities": ["price", "support lifecycle"],
+    "expression_style": "deliberate and checklist-based",
+    "search_propensity": "medium",
+    "cognition_level": "high",
+    "herd_tendency": "medium",
+    "influence_weight": 0.63,
+    "source_trust": "high",
+    "skepticism": "high"
+  }
+]

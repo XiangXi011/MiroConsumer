@@ -110,6 +110,13 @@ class RunController:
         all_events: List[Dict[str, Any]] = []
         snapshots: List[ConsumerSocietySnapshot] = []
         reasoning_traces: List[ReasoningTrace] = []
+        previous_event_distribution: Dict[str, float] = {}
+        convergence_status: Dict[str, Any] = {
+            "stopped": False,
+            "round_index": -1,
+            "reason": "not_started",
+            "metrics": {},
+        }
         claims = brief_context.get("claims", []) if isinstance(brief_context, Mapping) else []
         if not isinstance(claims, list):
             claims = [str(claims)]
@@ -194,6 +201,17 @@ class RunController:
                 round_id=round_index,
                 current_metrics={"avg_attitude": avg_attitude, "new_events": len(round_events)},
             )
+            convergence_metrics = self._round_convergence_metrics(
+                round_events=round_events,
+                population=population,
+                previous_event_distribution=previous_event_distribution,
+            )
+            convergence_status = {
+                "stopped": bool(should_stop),
+                "round_index": round_index,
+                "reason": reason if should_stop else "not_converged",
+                "metrics": convergence_metrics,
+            }
 
             progress_buffer.round_completed(round_index)
 
@@ -216,6 +234,7 @@ class RunController:
                 import logging
                 logging.getLogger(__name__).info(f"Early stop triggered at round {round_index}: {reason}")
                 break
+            previous_event_distribution = convergence_metrics["current_event_type_distribution"]
 
         # Count backends from all events for config payload
         backend_counts: Dict[str, int] = {}
@@ -229,7 +248,20 @@ class RunController:
         template_fallback_count = sum(1 for e in all_events if e.get("reasoning_backend") == "template_fallback")
         failed_count = sum(1 for e in all_events if e.get("reasoning_backend") == "template_fallback" and "reasoning_error" in e)
 
-        final_metrics = snapshots[-1].metrics if snapshots else {}
+        final_metrics = dict(snapshots[-1].metrics if snapshots else {})
+        if convergence_status["reason"] == "not_started":
+            convergence_status = {
+                "stopped": False,
+                "round_index": -1,
+                "reason": "no_rounds_completed",
+                "metrics": {},
+            }
+        elif not convergence_status["stopped"]:
+            convergence_status = {
+                **convergence_status,
+                "reason": "max_rounds_completed",
+            }
+        final_metrics["convergence"] = convergence_status
         channel_result = self.channel_runtime.run(
             population=population,
             society_events=all_events,
@@ -338,6 +370,90 @@ class RunController:
         if cp:
             return {"resume_from": cp.round_id, "state": cp.agent_states}
         return None
+
+    @staticmethod
+    def _round_convergence_metrics(
+        *,
+        round_events: Iterable[Mapping[str, Any]],
+        population: Iterable[ConsumerSocietyAgent],
+        previous_event_distribution: Mapping[str, float],
+    ) -> Dict[str, Any]:
+        events = list(round_events)
+        event_distribution = RunController._event_type_distribution(events)
+        event_change_rate = RunController._distribution_difference(
+            event_distribution,
+            previous_event_distribution,
+        )
+        community_coverage = RunController._community_coverage(events, population)
+        return {
+            "event_type_distribution_change_rate": round(event_change_rate, 6),
+            "current_event_type_distribution": event_distribution,
+            "previous_event_type_distribution": dict(previous_event_distribution),
+            **community_coverage,
+        }
+
+    @staticmethod
+    def _event_type_distribution(events: Iterable[Mapping[str, Any]]) -> Dict[str, float]:
+        counts: Dict[str, int] = {}
+        total = 0
+        for event in events:
+            label = str(
+                event.get("consumer_event_type")
+                or event.get("event_type")
+                or event.get("type")
+                or ""
+            ).strip()
+            if not label:
+                continue
+            counts[label] = counts.get(label, 0) + 1
+            total += 1
+        if total == 0:
+            return {}
+        return {
+            label: round(count / total, 6)
+            for label, count in sorted(counts.items())
+        }
+
+    @staticmethod
+    def _distribution_difference(
+        current_distribution: Mapping[str, float],
+        previous_distribution: Mapping[str, float],
+    ) -> float:
+        labels = set(current_distribution) | set(previous_distribution)
+        if not labels:
+            return 0.0
+        return 0.5 * sum(
+            abs(current_distribution.get(label, 0.0) - previous_distribution.get(label, 0.0))
+            for label in labels
+        )
+
+    @staticmethod
+    def _community_coverage(
+        events: Iterable[Mapping[str, Any]],
+        population: Iterable[ConsumerSocietyAgent],
+    ) -> Dict[str, Any]:
+        all_communities = {
+            str(agent.segment).strip()
+            for agent in population
+            if str(agent.segment).strip()
+        }
+        active_communities = {
+            str(event.get("segment", "") or "").strip()
+            for event in events
+            if str(event.get("segment", "") or "").strip()
+        }
+        total_community_count = len(all_communities)
+        active_community_count = len(active_communities & all_communities)
+        ratio = (
+            active_community_count / total_community_count
+            if total_community_count > 0
+            else 0.0
+        )
+        return {
+            "community_coverage_ratio": round(ratio, 6),
+            "active_community_count": active_community_count,
+            "total_community_count": total_community_count,
+        }
 
     @staticmethod
     def _progress(

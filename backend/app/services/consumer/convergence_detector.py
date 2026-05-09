@@ -15,6 +15,8 @@ class ConvergenceConfig:
     min_rounds: int = 3
     attitude_change_threshold: float = 0.02
     active_agent_ratio_threshold: float = 0.05
+    event_distribution_change_threshold: float = 0.05
+    community_coverage_threshold: float = 0.8
 
 
 class ConvergenceDetector:
@@ -24,6 +26,8 @@ class ConvergenceDetector:
         self,
         attitude_change_threshold: float = 0.02,
         active_agent_ratio_threshold: float = 0.05,
+        event_distribution_change_threshold: float = 0.05,
+        community_coverage_threshold: float = 0.8,
         min_rounds: int = 3,
         enabled: bool = True,
     ):
@@ -32,6 +36,8 @@ class ConvergenceDetector:
             min_rounds=max(0, int(min_rounds)),
             attitude_change_threshold=max(0.0, float(attitude_change_threshold)),
             active_agent_ratio_threshold=max(0.0, float(active_agent_ratio_threshold)),
+            event_distribution_change_threshold=max(0.0, float(event_distribution_change_threshold)),
+            community_coverage_threshold=max(0.0, min(1.0, float(community_coverage_threshold))),
         )
 
     def should_stop(
@@ -52,6 +58,17 @@ class ConvergenceDetector:
         active_agent_ratio, active_agent_count, total_agent_count, event_count = (
             self._active_agent_metrics(current_snapshots)
         )
+        current_event_distribution = self._event_type_distribution(current_snapshots)
+        previous_event_distribution = self._event_type_distribution(previous_snapshots)
+        event_type_distribution_change_rate = self._distribution_difference(
+            current_event_distribution,
+            previous_event_distribution,
+        )
+        (
+            community_coverage_ratio,
+            active_community_count,
+            total_community_count,
+        ) = self._community_coverage_metrics(current_snapshots)
 
         metrics: Dict[str, Any] = {
             "attitude_change_rate": round(attitude_change_rate, 6),
@@ -61,6 +78,12 @@ class ConvergenceDetector:
             "propagation_event_count": event_count,
             "current_attitude_distribution": current_distribution,
             "previous_attitude_distribution": previous_distribution,
+            "event_type_distribution_change_rate": round(event_type_distribution_change_rate, 6),
+            "current_event_type_distribution": current_event_distribution,
+            "previous_event_type_distribution": previous_event_distribution,
+            "community_coverage_ratio": round(community_coverage_ratio, 6),
+            "active_community_count": active_community_count,
+            "total_community_count": total_community_count,
         }
 
         if not self.config.enabled:
@@ -82,6 +105,26 @@ class ConvergenceDetector:
                 "active_agent_ratio "
                 f"{metrics['active_agent_ratio']} <= "
                 f"{self.config.active_agent_ratio_threshold}"
+            )
+        if (
+            previous_event_distribution
+            and current_event_distribution
+            and event_type_distribution_change_rate
+            <= self.config.event_distribution_change_threshold
+            and total_community_count > 0
+            and community_coverage_ratio >= self.config.community_coverage_threshold
+            and (
+                not previous_snapshots
+                or attitude_change_rate <= self.config.attitude_change_threshold
+            )
+        ):
+            reasons.append(
+                "event_type_distribution_change_rate "
+                f"{metrics['event_type_distribution_change_rate']} <= "
+                f"{self.config.event_distribution_change_threshold}; "
+                "community_coverage_ratio "
+                f"{metrics['community_coverage_ratio']} >= "
+                f"{self.config.community_coverage_threshold}"
             )
 
         if reasons:
@@ -174,6 +217,72 @@ class ConvergenceDetector:
             abs(current_distribution.get(label, 0.0) - previous_distribution.get(label, 0.0))
             for label in labels
         )
+
+    def _event_type_distribution(
+        self,
+        snapshots: List[Mapping[str, Any]],
+    ) -> Dict[str, float]:
+        labels: List[str] = []
+        for snapshot in snapshots:
+            for event in self._extract_events(snapshot):
+                label = self._event_type_label(event)
+                if label:
+                    labels.append(label)
+
+        total = len(labels)
+        if total == 0:
+            return {}
+
+        counts: Dict[str, int] = {}
+        for label in labels:
+            counts[label] = counts.get(label, 0) + 1
+
+        return {
+            label: round(count / total, 6)
+            for label, count in sorted(counts.items())
+        }
+
+    def _event_type_label(self, event: Any) -> str:
+        if isinstance(event, Mapping):
+            for key in ("consumer_event_type", "event_type", "type"):
+                value = event.get(key)
+                if value is not None:
+                    label = str(value).strip()
+                    if label:
+                        return label
+            return ""
+        label = str(event or "").strip()
+        return label
+
+    def _community_coverage_metrics(
+        self,
+        snapshots: List[Mapping[str, Any]],
+    ) -> tuple[float, int, int]:
+        all_communities: set[str] = set()
+        active_communities: set[str] = set()
+
+        for snapshot in snapshots:
+            community = self._community_label(snapshot)
+            if not community:
+                continue
+            all_communities.add(community)
+            if self._extract_events(snapshot):
+                active_communities.add(community)
+
+        total_community_count = len(all_communities)
+        if total_community_count == 0:
+            return 0.0, 0, 0
+        ratio = len(active_communities) / total_community_count
+        return ratio, len(active_communities), total_community_count
+
+    def _community_label(self, snapshot: Mapping[str, Any]) -> str:
+        for key in ("community", "community_id", "segment", "group"):
+            value = snapshot.get(key)
+            if value is not None:
+                label = str(value).strip()
+                if label:
+                    return label
+        return ""
 
     def _active_agent_metrics(
         self,

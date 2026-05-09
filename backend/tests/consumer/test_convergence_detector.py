@@ -97,6 +97,62 @@ def test_should_not_stop_when_attitudes_shift_and_events_are_active():
     assert result["metrics"]["active_agent_ratio"] == 1.0
 
 
+def test_convergence_metrics_include_event_distribution_and_community_saturation():
+    detector = ConvergenceDetector(
+        attitude_change_threshold=0.0,
+        active_agent_ratio_threshold=0.0,
+        event_distribution_change_threshold=0.01,
+        community_coverage_threshold=0.75,
+        min_rounds=1,
+    )
+    previous = [
+        {
+            "agent_id": "a1",
+            "attitude_label": "positive",
+            "community": "core",
+            "propagation_events": [{"consumer_event_type": "ASK_PROOF"}],
+        },
+        {
+            "agent_id": "a2",
+            "attitude_label": "positive",
+            "community": "edge",
+            "propagation_events": [{"consumer_event_type": "SHARE_TO_CHANNEL"}],
+        },
+    ]
+    current = [
+        {
+            "agent_id": "a1",
+            "attitude_label": "positive",
+            "community": "core",
+            "propagation_events": [{"consumer_event_type": "ASK_PROOF"}],
+        },
+        {
+            "agent_id": "a2",
+            "attitude_label": "positive",
+            "community": "edge",
+            "propagation_events": [{"consumer_event_type": "SHARE_TO_CHANNEL"}],
+        },
+    ]
+
+    result = detector.should_stop(
+        round_index=1,
+        current_state=current,
+        previous_state=previous,
+    )
+
+    assert result["stop"] is True
+    assert "event_type_distribution_change_rate" in result["reason"]
+    assert "community_coverage_ratio" in result["reason"]
+    assert result["metrics"]["event_type_distribution_change_rate"] == 0.0
+    assert result["metrics"]["community_coverage_ratio"] == 1.0
+    assert result["metrics"]["current_event_type_distribution"] == {
+        "ASK_PROOF": 0.5,
+        "SHARE_TO_CHANNEL": 0.5,
+    }
+    assert result["metrics"]["active_community_count"] == 2
+    assert result["metrics"]["total_community_count"] == 2
+
+
 def test_orchestrator_convergence_check_surfaces_stop_reason():
     detector = ConvergenceDetector(
         attitude_change_threshold=0.01,

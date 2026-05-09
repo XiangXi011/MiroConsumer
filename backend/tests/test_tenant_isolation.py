@@ -10,6 +10,7 @@ class TestTenantIsolation:
         from app import create_app
         app = create_app()
         app.config['TESTING'] = True
+        app.config['AUTH_BYPASS_IN_TESTING'] = False
         return app
 
     @pytest.fixture

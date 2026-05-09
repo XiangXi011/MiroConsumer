@@ -20,6 +20,305 @@ SENSITIVE_FIELDS = {'api_key', 'token', 'secret', 'password', 'concept', 'price'
                     'claims', 'consumer_data', 'uploaded_text', 'LLM_API_KEY'}
 
 
+def _schema_ref(name: str) -> dict:
+    return {"$ref": f"#/components/schemas/{name}"}
+
+
+def _json_request(schema_name: str, required: bool = True) -> dict:
+    return {
+        "required": required,
+        "content": {
+            "application/json": {
+                "schema": _schema_ref(schema_name)
+            }
+        },
+    }
+
+
+def _json_response(description: str, schema_name: str | None = None) -> dict:
+    content = {}
+    if schema_name:
+        content = {
+            "application/json": {
+                "schema": _schema_ref(schema_name)
+            }
+        }
+    return {"description": description, **({"content": content} if content else {})}
+
+
+def _path_param(name: str) -> dict:
+    return {"name": name, "in": "path", "required": True, "schema": {"type": "string"}}
+
+
+def _openapi_components() -> dict:
+    success_response = {
+        "type": "object",
+        "properties": {
+            "success": {"type": "boolean"},
+            "data": {"type": "object", "additionalProperties": True},
+        },
+        "required": ["success"],
+    }
+    return {
+        "schemas": {
+            "SuccessResponse": success_response,
+            "ErrorResponse": {
+                "type": "object",
+                "properties": {
+                    "success": {"type": "boolean", "example": False},
+                    "error": {"type": "string"},
+                    "message": {"type": "string"},
+                },
+                "required": ["success", "error"],
+            },
+            "RegisterUserRequest": {
+                "type": "object",
+                "properties": {
+                    "username": {"type": "string"},
+                    "email": {"type": "string", "format": "email"},
+                    "role": {
+                        "type": "string",
+                        "enum": ["owner", "admin", "researcher", "viewer", "auditor", "service"],
+                        "default": "researcher",
+                    },
+                    "tenant_id": {"type": "string", "default": "default"},
+                },
+                "required": ["username", "email"],
+            },
+            "LoginRequest": {
+                "type": "object",
+                "properties": {"user_id": {"type": "string"}},
+                "required": ["user_id"],
+            },
+            "CreateApiKeyRequest": {
+                "type": "object",
+                "properties": {
+                    "user_id": {"type": "string"},
+                    "scopes": {"type": "array", "items": {"type": "string"}},
+                },
+            },
+            "GenerateReportRequest": {
+                "type": "object",
+                "properties": {
+                    "simulation_id": {"type": "string"},
+                    "force_regenerate": {"type": "boolean", "default": False},
+                },
+                "required": ["simulation_id"],
+            },
+            "GenerateReportStatusRequest": {
+                "type": "object",
+                "properties": {
+                    "task_id": {"type": "string"},
+                    "simulation_id": {"type": "string"},
+                },
+            },
+            "StartSimulationRequest": {
+                "type": "object",
+                "properties": {
+                    "project_id": {"type": "string"},
+                    "simulation_id": {"type": "string"},
+                    "society_mode": {"type": "string"},
+                    "society_seed": {"type": "integer"},
+                    "society_max_agents": {"type": "integer"},
+                    "society_audit_sample_size": {"type": "integer"},
+                    "advanced_society_mode": {"type": "boolean"},
+                    "enabled_channels": {"type": "array", "items": {"type": "string"}},
+                    "channel_seed": {"type": "integer"},
+                    "llm_budget_limit": {"type": "number"},
+                },
+            },
+            "DeadLetter": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"},
+                    "task_id": {"type": "string"},
+                    "reason": {"type": "string"},
+                    "error": {"type": "string"},
+                    "created_at": {"type": "string"},
+                },
+            },
+            "DeadLetterListResponse": {
+                "type": "object",
+                "properties": {
+                    "backend": {"type": "string"},
+                    "dead_letters": {
+                        "type": "array",
+                        "items": _schema_ref("DeadLetter"),
+                    },
+                },
+                "required": ["backend", "dead_letters"],
+            },
+            "EvidenceGraphNode": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"},
+                    "type": {"type": "string", "enum": ["finding", "evidence", "source"]},
+                    "label": {"type": "string"},
+                    "resource_id": {"type": "string"},
+                    "low_confidence": {"type": "boolean"},
+                    "traceable_fields": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["id", "type", "label"],
+            },
+            "EvidenceGraphEdge": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"},
+                    "source": {"type": "string"},
+                    "target": {"type": "string"},
+                    "type": {"type": "string", "enum": ["supported_by", "sourced_from"]},
+                    "traceable_fields": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["source", "target", "type"],
+            },
+            "EvidenceGraphResponse": {
+                "type": "object",
+                "properties": {
+                    "report_id": {"type": "string"},
+                    "complete": {"type": "boolean"},
+                    "nodes": {"type": "array", "items": _schema_ref("EvidenceGraphNode")},
+                    "edges": {"type": "array", "items": _schema_ref("EvidenceGraphEdge")},
+                    "node_count": {"type": "integer"},
+                    "edge_count": {"type": "integer"},
+                    "warnings": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["report_id", "nodes", "edges"],
+            },
+        }
+    }
+
+
+def _openapi_paths() -> dict:
+    return {
+        "/health": {"get": {"summary": "Health check", "responses": {"200": _json_response("OK", "SuccessResponse")}}},
+        "/api/v1/auth/register": {
+            "post": {
+                "summary": "Register user",
+                "requestBody": _json_request("RegisterUserRequest"),
+                "responses": {"201": _json_response("Created", "SuccessResponse"), "400": _json_response("Validation error", "ErrorResponse")},
+            }
+        },
+        "/api/v1/auth/login": {
+            "post": {
+                "summary": "Login",
+                "requestBody": _json_request("LoginRequest"),
+                "responses": {"200": _json_response("Token returned", "SuccessResponse"), "401": _json_response("Authentication failed", "ErrorResponse")},
+            }
+        },
+        "/api/v1/auth/me": {
+            "get": {
+                "summary": "Current user info",
+                "responses": {"200": _json_response("User info", "SuccessResponse"), "401": _json_response("Authentication required", "ErrorResponse")},
+            }
+        },
+        "/api/v1/auth/api-keys": {
+            "post": {
+                "summary": "Create API key",
+                "requestBody": _json_request("CreateApiKeyRequest", required=False),
+                "responses": {"201": _json_response("API key created", "SuccessResponse"), "403": _json_response("Forbidden", "ErrorResponse")},
+            }
+        },
+        "/api/v1/consumer/simulation/{simulation_id}/consumer-summary": {
+            "get": {
+                "summary": "Consumer propagation summary",
+                "parameters": [_path_param("simulation_id")],
+                "responses": {"200": _json_response("Summary data", "SuccessResponse")},
+            }
+        },
+        "/api/v1/consumer/simulations/{simulation_id}/channel-summary": {
+            "get": {
+                "summary": "Channel metrics summary",
+                "parameters": [_path_param("simulation_id")],
+                "responses": {"200": _json_response("Channel data", "SuccessResponse")},
+            }
+        },
+        "/api/v1/consumer/simulations/{simulation_id}/branches": {
+            "get": {
+                "summary": "List branches",
+                "parameters": [_path_param("simulation_id")],
+                "responses": {"200": _json_response("Branch list", "SuccessResponse")},
+            },
+            "post": {
+                "summary": "Create branch",
+                "parameters": [_path_param("simulation_id")],
+                "responses": {"201": _json_response("Branch created", "SuccessResponse")},
+            },
+        },
+        "/api/v1/consumer/simulations/{simulation_id}/interventions": {
+            "get": {
+                "summary": "List interventions",
+                "parameters": [_path_param("simulation_id")],
+                "responses": {"200": _json_response("Intervention list", "SuccessResponse")},
+            }
+        },
+        "/api/v1/consumer/comparisons": {
+            "get": {"summary": "List comparisons", "responses": {"200": _json_response("Comparison list", "SuccessResponse")}},
+            "post": {"summary": "Create comparison", "responses": {"201": _json_response("Comparison created", "SuccessResponse")}},
+        },
+        "/api/v1/consumer/research-assets": {
+            "get": {"summary": "List research assets", "responses": {"200": _json_response("Asset list", "SuccessResponse")}}
+        },
+        "/api/v1/consumer/simulations/{simulation_id}/interviews": {
+            "post": {
+                "summary": "Run consumer interview",
+                "parameters": [_path_param("simulation_id")],
+                "responses": {"200": _json_response("Interview result", "SuccessResponse")},
+            }
+        },
+        "/api/v1/consumer/simulations/{simulation_id}/focus-groups": {
+            "post": {
+                "summary": "Run focus group",
+                "parameters": [_path_param("simulation_id")],
+                "responses": {"200": _json_response("Focus group result", "SuccessResponse")},
+            }
+        },
+        "/api/v1/consumer/task-queue/dead-letters": {
+            "get": {
+                "summary": "List queue dead letters",
+                "responses": {"200": _json_response("Dead letters", "DeadLetterListResponse")},
+            }
+        },
+        "/api/v1/consumer/reports/{report_id}/evidence-graph": {
+            "get": {
+                "summary": "Report evidence graph",
+                "parameters": [_path_param("report_id")],
+                "responses": {"200": _json_response("Finding-evidence-source graph", "EvidenceGraphResponse")},
+            }
+        },
+        "/api/v1/report/generate": {
+            "post": {
+                "summary": "Generate report",
+                "requestBody": _json_request("GenerateReportRequest"),
+                "responses": {"200": _json_response("Task ID returned", "SuccessResponse")},
+            }
+        },
+        "/api/v1/report/generate/status": {
+            "post": {
+                "summary": "Get report generation status",
+                "requestBody": _json_request("GenerateReportStatusRequest", required=False),
+                "responses": {"200": _json_response("Task status", "SuccessResponse")},
+            }
+        },
+        "/api/v1/simulation/start": {
+            "post": {
+                "summary": "Start simulation",
+                "requestBody": _json_request("StartSimulationRequest"),
+                "responses": {"200": _json_response("Simulation started", "SuccessResponse")},
+            }
+        },
+        "/api/v1/simulation/entities/{graph_id}": {
+            "get": {
+                "summary": "Get graph entities",
+                "parameters": [_path_param("graph_id")],
+                "responses": {"200": _json_response("Entity list", "SuccessResponse")},
+            }
+        },
+        "/api/v1/graph/project/list": {
+            "get": {"summary": "List projects", "responses": {"200": _json_response("Project list", "SuccessResponse")}}
+        },
+    }
+
+
 def _sanitize_log_data(data, max_length=200):
     """脱敏日志数据"""
     if not isinstance(data, dict):
@@ -132,6 +431,7 @@ def create_app(config_class=Config):
     app.register_blueprint(simulation_bp, url_prefix='/api/v1/simulation', name='simulation_v1')
     app.register_blueprint(report_bp, url_prefix='/api/v1/report', name='report_v1')
     app.register_blueprint(consumer_bp, url_prefix='/api/v1/consumer', name='consumer_v1')
+    app.register_blueprint(auth_bp, url_prefix='/api/v1/auth', name='auth_v1')
     
     # Sentry error tracking (configurable)
     sentry_dsn = os.environ.get('SENTRY_DSN')
@@ -172,24 +472,8 @@ def create_app(config_class=Config):
             "openapi": "3.0.3",
             "info": {"title": "MiroConsumer API", "version": "0.7.0"},
             "servers": [{"url": "/", "description": "Current host"}],
-            "paths": {
-                "/health": {"get": {"summary": "Health check", "responses": {"200": {"description": "OK"}}}},
-                "/api/auth/register": {"post": {"summary": "Register user", "requestBody": {"content": {"application/json": {"schema": {"type": "object", "properties": {"username": {"type": "string"}, "email": {"type": "string"}, "role": {"type": "string"}}}}}}, "responses": {"201": {"description": "Created"}}}},
-                "/api/auth/login": {"post": {"summary": "Login", "responses": {"200": {"description": "Token returned"}}}},
-                "/api/auth/me": {"get": {"summary": "Current user info", "responses": {"200": {"description": "User info"}}}},
-                "/api/v1/consumer/simulation/{simulation_id}/consumer-summary": {"get": {"summary": "Consumer propagation summary", "parameters": [{"name": "simulation_id", "in": "path", "required": True, "schema": {"type": "string"}}], "responses": {"200": {"description": "Summary data"}}}},
-                "/api/v1/consumer/simulations/{simulation_id}/channel-summary": {"get": {"summary": "Channel metrics summary", "responses": {"200": {"description": "Channel data"}}}},
-                "/api/v1/consumer/simulations/{simulation_id}/branches": {"get": {"summary": "List branches", "responses": {"200": {"description": "Branch list"}}, "post": {"summary": "Create branch", "responses": {"201": {"description": "Branch created"}}}}},
-                "/api/v1/consumer/simulations/{simulation_id}/interventions": {"get": {"summary": "List interventions", "responses": {"200": {"description": "Intervention list"}}}},
-                "/api/v1/consumer/comparisons": {"get": {"summary": "List comparisons", "responses": {"200": {"description": "Comparison list"}}, "post": {"summary": "Create comparison", "responses": {"201": {"description": "Comparison created"}}}}},
-                "/api/v1/consumer/research-assets": {"get": {"summary": "List research assets", "responses": {"200": {"description": "Asset list"}}}},
-                "/api/v1/consumer/simulations/{simulation_id}/interviews": {"post": {"summary": "Run consumer interview", "responses": {"200": {"description": "Interview result"}}}},
-                "/api/v1/consumer/simulations/{simulation_id}/focus-groups": {"post": {"summary": "Run focus group", "responses": {"200": {"description": "Focus group result"}}}},
-                "/api/v1/consumer/reports/{report_id}/evidence-graph": {"get": {"summary": "Report evidence graph", "parameters": [{"name": "report_id", "in": "path", "required": True, "schema": {"type": "string"}}], "responses": {"200": {"description": "Finding-evidence-source graph"}}}},
-                "/api/v1/report/generate": {"post": {"summary": "Generate report", "responses": {"200": {"description": "Task ID returned"}}}},
-                "/api/v1/simulation/entities/{graph_id}": {"get": {"summary": "Get graph entities", "responses": {"200": {"description": "Entity list"}}}},
-                "/api/v1/graph/projects": {"get": {"summary": "List projects", "responses": {"200": {"description": "Project list"}}}}
-            }
+            "paths": _openapi_paths(),
+            "components": _openapi_components(),
         }
 
     # Swagger UI 文档页

@@ -72,6 +72,10 @@ export function createConsumerApi(service) {
       return service.get(`/api/consumer/comparisons/${comparisonId}`)
     },
 
+    getReportEvidenceGraph(reportId) {
+      return service.get(`/api/consumer/reports/${reportId}/evidence-graph`)
+    },
+
     runConsumerResearchAction(simulationId, data) {
       return service.post(`/api/consumer/simulations/${simulationId}/research-actions`, data)
     },

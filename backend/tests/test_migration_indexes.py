@@ -102,3 +102,16 @@ def test_performance_indexes_upgrade_and_downgrade(sqlite_connection, migration_
     for table_name in expected_by_table:
         indexes_after_downgrade = {index["name"] for index in inspector.get_indexes(table_name)}
         assert indexes_after_downgrade == set()
+
+
+def test_performance_migration_declares_postgres_jsonb_gin_indexes(migration_module):
+    expected = {
+        ("ix_projects_data_gin", "projects", "data"),
+        ("ix_simulations_data_gin", "simulations", "data"),
+        ("ix_reports_data_gin", "reports", "data"),
+        ("ix_consumer_events_payload_gin", "consumer_events", "payload"),
+        ("ix_research_assets_payload_gin", "research_assets", "payload"),
+        ("ix_tasks_payload_gin", "tasks", "payload"),
+    }
+
+    assert set(migration_module.POSTGRES_GIN_INDEXES) >= expected

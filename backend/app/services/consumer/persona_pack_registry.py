@@ -9,6 +9,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
+from ...config import Config
 from .persona_pack import (
     AgentTraitProfile,
     PersonaRecord,
@@ -73,10 +74,28 @@ class PersonaPackRegistry:
     """Discover, validate, and load persona packs from built-in and project storage."""
 
     _BUILTIN_PACKS: Dict[str, PersonaPackMetadata] = {}
+    _cache: Optional[Any] = None
+    _cache_url: Optional[str] = None
+    _builtin_cache_ttl_seconds = 300
 
     def __init__(self, project_persona_dir: Optional[Path] = None) -> None:
         self._project_dir = project_persona_dir
         self._custom_cache: Dict[str, PersonaPackMetadata] = {}
+
+    @classmethod
+    def _get_cache(cls) -> Optional[Any]:
+        redis_url = Config.REDIS_URL
+        if not redis_url:
+            return None
+        if cls._cache is None or cls._cache_url != redis_url:
+            from ..application.redis_cache import RedisCache
+            cls._cache = RedisCache(redis_url=redis_url)
+            cls._cache_url = redis_url
+        return cls._cache
+
+    @classmethod
+    def _builtin_cache_key(cls, pack_id: str) -> str:
+        return f"persona_pack:v1:{pack_id}"
 
     @classmethod
     def _ensure_builtin_index(cls) -> None:
@@ -137,6 +156,13 @@ class PersonaPackRegistry:
         self.__class__._ensure_builtin_index()
         if pack_id in self._BUILTIN_PACKS:
             path = Path(self._BUILTIN_PACKS[pack_id].path)
+            cache = self.__class__._get_cache()
+            if cache is not None:
+                return cache.get_or_set(
+                    self.__class__._builtin_cache_key(pack_id),
+                    lambda: _load_personas_from_path(path),
+                    ttl=self.__class__._builtin_cache_ttl_seconds,
+                )
             return _load_personas_from_path(path)
         custom = self._discover_custom_packs()
         if pack_id in custom:

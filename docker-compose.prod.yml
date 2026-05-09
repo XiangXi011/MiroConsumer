@@ -17,7 +17,7 @@ services:
     image: ${MIROCONSUMER_BACKEND_IMAGE:-miroconsumer-backend:latest}
     command: >-
       sh -c 'gunicorn "app:create_app()" --bind 0.0.0.0:5001
-      --workers "$${GUNICORN_WORKERS:-2}"
+      --workers "$${GUNICORN_WORKERS:-4}"
       --threads "$${GUNICORN_THREADS:-4}"
       --timeout "$${GUNICORN_TIMEOUT:-300}"'
     env_file:
@@ -29,7 +29,7 @@ services:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       LOCK_BACKEND: ${LOCK_BACKEND:-auto}
       RQ_QUEUE_NAME: ${RQ_QUEUE_NAME:-default}
-      GUNICORN_WORKERS: ${GUNICORN_WORKERS:-2}
+      GUNICORN_WORKERS: ${GUNICORN_WORKERS:-4}
       GUNICORN_THREADS: ${GUNICORN_THREADS:-4}
       GUNICORN_TIMEOUT: ${GUNICORN_TIMEOUT:-300}
       STORAGE_BACKEND: ${STORAGE_BACKEND:-s3}

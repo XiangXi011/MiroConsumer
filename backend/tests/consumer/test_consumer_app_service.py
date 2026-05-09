@@ -179,6 +179,30 @@ def test_get_consumer_summary_uses_redis_cache_when_configured(monkeypatch):
     assert kwargs["ttl"] == ConsumerAppService._summary_cache_ttl_seconds
 
 
+def test_get_channel_summary_uses_redis_cache_when_configured(monkeypatch):
+    cache = MagicMock()
+    cache.get_or_set.return_value = {"cached": "channel"}
+
+    monkeypatch.setattr(
+        ConsumerAppService,
+        "_require_consumer_simulation",
+        classmethod(lambda cls, simulation_id: SimpleNamespace(project_id="project_cache")),
+    )
+    monkeypatch.setattr(
+        ConsumerAppService,
+        "_get_cache",
+        classmethod(lambda cls: cache),
+    )
+
+    data = ConsumerAppService.get_channel_summary("sim_channel")
+
+    assert data == {"cached": "channel"}
+    cache.get_or_set.assert_called_once()
+    args, kwargs = cache.get_or_set.call_args
+    assert args[0] == "consumer_channel_summary:v1:sim_channel"
+    assert kwargs["ttl"] == ConsumerAppService._channel_summary_cache_ttl_seconds
+
+
 def test_get_consumer_summary_builds_phase2_fields(monkeypatch_config_upload_folder, tmp_path):
     project = ProjectManager.create_project(name="Consumer Phase2")
     project.project_type = "consumer_test"

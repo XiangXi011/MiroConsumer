@@ -34,6 +34,14 @@ class StartSimulationRequest(BaseModel):
     enable_graph_memory_update: bool = False
     force: bool = False
     dry_run: bool = False
+    society_mode: str = Field(default="quick", pattern="^(quick|standard|standard_plus|large_society)$")
+    society_seed: Optional[int] = None
+    society_max_agents: Optional[int] = Field(default=None, ge=1)
+    society_audit_sample_size: Optional[int] = Field(default=None, ge=1)
+    advanced_society_mode: bool = False
+    enabled_channels: Optional[list[str]] = None
+    channel_seed: Optional[int] = None
+    llm_budget_limit: Optional[int] = Field(default=None, ge=0)
 
 
 class StopSimulationRequest(BaseModel):

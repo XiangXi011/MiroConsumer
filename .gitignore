@@ -59,3 +59,5 @@ backend/uploads/
 
 # Docker 数据
 data/
+!backend/app/services/consumer/data/
+!backend/app/services/consumer/data/*.json

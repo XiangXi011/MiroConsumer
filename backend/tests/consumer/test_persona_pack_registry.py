@@ -1,6 +1,7 @@
 from pathlib import Path
 import sys
 import json
+from unittest.mock import MagicMock
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
@@ -64,6 +65,35 @@ def test_registry_load_default_returns_personas():
 def test_registry_load_pack_by_id():
     personas = load_persona_pack_by_id("default_persona_pack")
     assert len(personas) > 0
+
+
+def test_registry_load_builtin_pack_uses_redis_cache(monkeypatch):
+    cache = MagicMock()
+    cache.get_or_set.return_value = [{"persona_id": "cached_persona"}]
+    monkeypatch.setattr(
+        PersonaPackRegistry,
+        "_BUILTIN_PACKS",
+        {
+            "default_persona_pack": PersonaPackMetadata(
+                pack_id="default_persona_pack",
+                label="Default",
+                path="unused.json",
+            )
+        },
+    )
+    monkeypatch.setattr(
+        PersonaPackRegistry,
+        "_get_cache",
+        classmethod(lambda cls: cache),
+    )
+
+    personas = PersonaPackRegistry().load_pack("default_persona_pack")
+
+    assert personas == [{"persona_id": "cached_persona"}]
+    cache.get_or_set.assert_called_once()
+    args, kwargs = cache.get_or_set.call_args
+    assert args[0] == "persona_pack:v1:default_persona_pack"
+    assert kwargs["ttl"] == PersonaPackRegistry._builtin_cache_ttl_seconds
 
 
 def test_registry_resolve_selection_with_none_returns_default():

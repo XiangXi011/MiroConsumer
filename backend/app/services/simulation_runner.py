@@ -562,6 +562,8 @@ class SimulationRunner:
             "min_rounds",
             "attitude_change_threshold",
             "active_agent_ratio_threshold",
+            "event_distribution_change_threshold",
+            "community_coverage_threshold",
         }
         detector_kwargs = {
             key: value

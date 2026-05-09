@@ -90,6 +90,6 @@ def test_production_compose_contains_required_services():
     assert "GUNICORN_WORKERS" in backend["environment"]
     assert "GUNICORN_THREADS" in backend["environment"]
     assert "LOCK_BACKEND" in backend["environment"]
-    assert "$${GUNICORN_WORKERS:-2}" in backend["command"]
+    assert "$${GUNICORN_WORKERS:-4}" in backend["command"]
     assert "$${GUNICORN_THREADS:-4}" in backend["command"]
     assert "$${GUNICORN_TIMEOUT:-300}" in backend["command"]

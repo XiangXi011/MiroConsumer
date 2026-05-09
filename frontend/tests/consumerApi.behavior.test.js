@@ -268,6 +268,17 @@ test('runConsumerResearchAction posts to /api/consumer/simulations/{id}/research
   assert.strictEqual(result, fake.fakeResponse)
 })
 
+test('getReportEvidenceGraph uses GET /api/consumer/reports/{id}/evidence-graph', async () => {
+  const fake = makeFakeService()
+  const api = createConsumerApi(fake)
+  const result = await api.getReportEvidenceGraph('report-graph')
+
+  assert.equal(fake.calls.length, 1)
+  assert.equal(fake.calls[0].method, 'get')
+  assert.equal(fake.calls[0].url, '/api/consumer/reports/report-graph/evidence-graph')
+  assert.strictEqual(result, fake.fakeResponse)
+})
+
 test('fake service return value is returned to caller without mutation', async () => {
   const fake = makeFakeService()
   fake.fakeResponse = { custom: 'value', nested: { arr: [1, 2, 3] } }

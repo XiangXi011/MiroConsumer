@@ -21,6 +21,7 @@ def auth_app():
     app = Flask(__name__)
     app.config['TESTING'] = True
     app.config['SECRET_KEY'] = 'test-secret-key'
+    app.config['AUTH_BYPASS_IN_TESTING'] = False
 
     init_auth(app)
     app.register_blueprint(auth_bp)

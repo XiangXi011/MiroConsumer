@@ -23,7 +23,8 @@ def init_auth(app, auth_repository=None):
     def authenticate():
         # 公开端点
         public_paths = ('/health', '/api/version', '/api/openapi.json', '/api/docs',
-                        '/api/auth/register', '/api/auth/login')
+                        '/api/auth/register', '/api/auth/login',
+                        '/api/v1/auth/register', '/api/v1/auth/login')
         if request.path in public_paths:
             g.current_user = None
             g.current_tenant = None
@@ -36,6 +37,11 @@ def init_auth(app, auth_repository=None):
             return
 
         # 认证：检查 API Key 或 JWT
+        if _auth_bypass_enabled():
+            g.current_user = None
+            g.current_tenant = None
+            return
+
         user = None
         repository = get_auth_repository()
 
@@ -76,10 +82,14 @@ def init_auth(app, auth_repository=None):
         g.current_tenant = user.tenant_id
 
 
-def _permission_bypass_enabled() -> bool:
+def _auth_bypass_enabled() -> bool:
     if not current_app.config.get("TESTING"):
         return False
-    return "auth_repository" not in current_app.extensions
+    return current_app.config.get("AUTH_BYPASS_IN_TESTING", True)
+
+
+def _permission_bypass_enabled() -> bool:
+    return _auth_bypass_enabled()
 
 
 def require_permission(permission):

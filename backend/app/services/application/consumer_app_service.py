@@ -43,6 +43,7 @@ class ConsumerAppService:
     _cache: Optional[RedisCache] = None
     _cache_url: Optional[str] = None
     _summary_cache_ttl_seconds = 120
+    _channel_summary_cache_ttl_seconds = 120
 
     @classmethod
     def _get_cache(cls) -> Optional[RedisCache]:
@@ -57,6 +58,10 @@ class ConsumerAppService:
     @classmethod
     def _summary_cache_key(cls, simulation_id: str) -> str:
         return f"consumer_summary:v1:{simulation_id}"
+
+    @classmethod
+    def _channel_summary_cache_key(cls, simulation_id: str) -> str:
+        return f"consumer_channel_summary:v1:{simulation_id}"
 
     @classmethod
     def _require_consumer_simulation(cls, simulation_id: str) -> Any:
@@ -222,6 +227,13 @@ class ConsumerAppService:
     @classmethod
     def get_channel_summary(cls, simulation_id: str) -> Dict[str, Any]:
         cls._require_consumer_simulation(simulation_id)
+        cache = cls._get_cache()
+        if cache is not None:
+            return cache.get_or_set(
+                cls._channel_summary_cache_key(simulation_id),
+                lambda: ChannelReportAdapter().build_report_context(simulation_id),
+                ttl=cls._channel_summary_cache_ttl_seconds,
+            )
         return ChannelReportAdapter().build_report_context(simulation_id)
 
     @classmethod
