@@ -1,12 +1,15 @@
 """Concurrency lock foundation for Phase 7C."""
 
 import os
+import uuid
 import sys
 import threading
 import time
 from contextlib import contextmanager
 from hashlib import blake2b
 from pathlib import Path
+
+import redis
 
 from app.contracts.errors import ConcurrencyConflictError
 
@@ -95,6 +98,70 @@ class FileLockManager:
             os.close(fd)
 
 
+class RedisLockManager:
+    """Redis SET NX lock manager for cross-process and cross-node exclusion."""
+
+    _release_script = """
+if redis.call("get", KEYS[1]) == ARGV[1] then
+    return redis.call("del", KEYS[1])
+end
+return 0
+"""
+
+    def __init__(
+        self,
+        redis_url,
+        redis_client=None,
+        namespace="miroconsumer:locks",
+        min_ttl_seconds=30,
+    ):
+        if not redis_url and redis_client is None:
+            raise ValueError("REDIS_URL is required for RedisLockManager")
+        self.redis_url = redis_url
+        self.namespace = namespace.rstrip(":")
+        self.min_ttl_seconds = int(min_ttl_seconds)
+        self._redis = redis_client if redis_client is not None else redis.Redis.from_url(redis_url)
+
+    def _key(self, lock_type, resource_id):
+        return f"{self.namespace}:{lock_type}:{lock_key(lock_type, resource_id)}"
+
+    @contextmanager
+    def acquire(self, lock_type, resource_id, timeout_seconds=30):
+        redis_key = self._key(lock_type, resource_id)
+        token = uuid.uuid4().hex
+        ttl = max(self.min_ttl_seconds, int(timeout_seconds) + self.min_ttl_seconds)
+        acquired = False
+        start = time.monotonic()
+
+        while True:
+            try:
+                acquired = bool(self._redis.set(redis_key, token, nx=True, ex=ttl))
+            except redis.exceptions.RedisError as exc:
+                raise ConcurrencyConflictError(
+                    resource=lock_type,
+                    resource_id=resource_id,
+                    reason="lock_unavailable",
+                ) from exc
+
+            if acquired:
+                break
+            if time.monotonic() - start >= timeout_seconds:
+                raise ConcurrencyConflictError(
+                    resource=lock_type,
+                    resource_id=resource_id,
+                    reason="lock_timeout",
+                )
+            time.sleep(0.05)
+
+        try:
+            yield
+        finally:
+            try:
+                self._redis.eval(self._release_script, 1, redis_key, token)
+            except redis.exceptions.RedisError:
+                pass
+
+
 class SQLiteTransactionLockManager:
     """SQLite BEGIN IMMEDIATE transaction-level locking."""
 
@@ -164,12 +231,7 @@ class PostgresAdvisoryLockManager:
                 conn.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": key})
 
 
-def create_lock_manager(config=None):
-    """Factory returning the right lock manager for the configured DB."""
-    from app.config import Config
-
-    if config is None:
-        config = Config
+def _database_or_file_lock_manager(config):
     db_url = config.DB_URL
     if not db_url:
         return FileLockManager()
@@ -180,3 +242,28 @@ def create_lock_manager(config=None):
     if db_url.startswith("postgresql+psycopg://"):
         return PostgresAdvisoryLockManager(db_url)
     raise ValueError(f"Unsupported database URL: {db_url}")
+
+
+def create_lock_manager(config=None):
+    """Factory returning the configured lock manager with local fallbacks."""
+    from app.config import Config
+
+    if config is None:
+        config = Config
+
+    lock_backend = getattr(config, "LOCK_BACKEND", "auto")
+    if lock_backend == "file":
+        return FileLockManager()
+    if lock_backend == "db":
+        return _database_or_file_lock_manager(config)
+    if lock_backend == "redis":
+        redis_url = config.REDIS_URL
+        if not redis_url:
+            raise ValueError("REDIS_URL is required when LOCK_BACKEND=redis")
+        return RedisLockManager(redis_url)
+    if lock_backend == "auto":
+        redis_url = config.REDIS_URL
+        if redis_url:
+            return RedisLockManager(redis_url)
+        return _database_or_file_lock_manager(config)
+    raise ValueError(f"Unsupported lock backend: {lock_backend}")

@@ -2,7 +2,7 @@ x-dev-service: &dev-service
   build:
     context: .
     dockerfile: Dockerfile
-  image: ${MIROCONSUMER_DEV_IMAGE:-miroconsumer:dev}
+  image: ${MIROCONSUMER_IMAGE:-miroconsumer:dev}
   restart: unless-stopped
 
 services:
@@ -24,6 +24,7 @@ services:
       DB_URL: postgresql+psycopg://${POSTGRES_USER:-miroconsumer}:${POSTGRES_PASSWORD:-miroconsumer}@postgres:5432/${POSTGRES_DB:-miroconsumer}
       QUEUE_BACKEND: ${MIROCONSUMER_DEV_QUEUE_BACKEND:-rq}
       REDIS_URL: ${MIROCONSUMER_DEV_REDIS_URL:-redis://redis:6379/0}
+      LOCK_BACKEND: ${MIROCONSUMER_DEV_LOCK_BACKEND:-auto}
       RQ_QUEUE_NAME: ${MIROCONSUMER_DEV_RQ_QUEUE_NAME:-default}
       STORAGE_BACKEND: ${MIROCONSUMER_DEV_STORAGE_BACKEND:-s3}
       S3_ENDPOINT: ${MIROCONSUMER_DEV_S3_ENDPOINT:-http://minio:9000}

@@ -28,6 +28,7 @@ def test_openapi_spec_documents_v1_resource_paths():
 
     paths = spec["paths"]
     assert "/api/v1/consumer/simulation/{simulation_id}/consumer-summary" in paths
+    assert "/api/v1/consumer/reports/{report_id}/evidence-graph" in paths
     assert "/api/v1/graph/projects" in paths
     assert "/api/v1/report/generate" in paths
     assert "/api/consumer/simulation/{simulation_id}/consumer-summary" not in paths

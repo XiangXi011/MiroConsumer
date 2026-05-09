@@ -15,4 +15,4 @@ COPY backend ./
 
 EXPOSE 5001
 
-CMD gunicorn "app:create_app()" --bind 0.0.0.0:5001 --workers 2 --threads 4 --timeout 300
+CMD gunicorn "app:create_app()" --bind 0.0.0.0:5001 --workers ${GUNICORN_WORKERS:-2} --threads ${GUNICORN_THREADS:-4} --timeout ${GUNICORN_TIMEOUT:-300}

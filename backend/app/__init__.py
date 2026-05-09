@@ -185,6 +185,7 @@ def create_app(config_class=Config):
                 "/api/v1/consumer/research-assets": {"get": {"summary": "List research assets", "responses": {"200": {"description": "Asset list"}}}},
                 "/api/v1/consumer/simulations/{simulation_id}/interviews": {"post": {"summary": "Run consumer interview", "responses": {"200": {"description": "Interview result"}}}},
                 "/api/v1/consumer/simulations/{simulation_id}/focus-groups": {"post": {"summary": "Run focus group", "responses": {"200": {"description": "Focus group result"}}}},
+                "/api/v1/consumer/reports/{report_id}/evidence-graph": {"get": {"summary": "Report evidence graph", "parameters": [{"name": "report_id", "in": "path", "required": True, "schema": {"type": "string"}}], "responses": {"200": {"description": "Finding-evidence-source graph"}}}},
                 "/api/v1/report/generate": {"post": {"summary": "Generate report", "responses": {"200": {"description": "Task ID returned"}}}},
                 "/api/v1/simulation/entities/{graph_id}": {"get": {"summary": "Get graph entities", "responses": {"200": {"description": "Entity list"}}}},
                 "/api/v1/graph/projects": {"get": {"summary": "List projects", "responses": {"200": {"description": "Project list"}}}}

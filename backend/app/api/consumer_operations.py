@@ -55,6 +55,27 @@ def get_report_audit_chain(report_id: str):
         logger.error(f"获取报告审计链失败: {str(e)}")
         return jsonify(api_error_payload(str(e))), 500
 
+@consumer_bp.route("/reports/<report_id>/evidence-graph", methods=["GET"])
+def get_report_evidence_graph(report_id: str):
+    """Return a finding-evidence-source graph for a consumer report."""
+    try:
+        current_tenant = getattr(g, 'current_tenant', None)
+        if current_tenant:
+            from ..services.report_agent import ReportManager
+            report = ReportManager.get_report(report_id)
+            if report and report.simulation_id:
+                sim = SimulationManager().get_simulation(report.simulation_id)
+                if sim and sim.tenant_id and sim.tenant_id != current_tenant:
+                    return jsonify({"success": False, "error": "FORBIDDEN", "message": "Access denied: tenant mismatch"}), 403
+        result = AuditChainService().build_evidence_graph(report_id)
+        return jsonify({"success": True, "data": result})
+    except ValueError as e:
+        return _value_error_response(e)
+    except Exception as e:
+        logger.error(f"鑾峰彇鎶ュ憡璇佹嵁鍥捐氨澶辫触: {str(e)}")
+        return jsonify(api_error_payload(str(e))), 500
+
+
 @consumer_bp.route("/task-queue/dead-letters", methods=["GET"])
 def get_task_queue_dead_letters():
     """List dead letters for the current queue backend."""

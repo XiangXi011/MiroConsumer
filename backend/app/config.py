@@ -94,6 +94,7 @@ class Config:
     # Queue configuration
     _queue_backend_cache = None
     _redis_url_cache = None
+    _lock_backend_cache = None
     _rq_queue_name_cache = None
     _queue_retry_limit_cache = None
     _queue_visibility_timeout_cache = None
@@ -128,6 +129,12 @@ class Config:
         if cls._redis_url_cache is not None:
             return cls._redis_url_cache
         return os.environ.get('REDIS_URL', '')
+
+    @_ClassProperty
+    def LOCK_BACKEND(cls):
+        if cls._lock_backend_cache is not None:
+            return cls._lock_backend_cache
+        return os.environ.get('LOCK_BACKEND', 'auto')
 
     @_ClassProperty
     def RQ_QUEUE_NAME(cls):
@@ -259,6 +266,13 @@ class Config:
 
         if queue_backend == 'rq' and not cls.REDIS_URL:
             errors.append("REDIS_URL is required when QUEUE_BACKEND=rq")
+
+        lock_backend = cls.LOCK_BACKEND
+        valid_lock_backends = ('auto', 'redis', 'file', 'db')
+        if lock_backend not in valid_lock_backends:
+            errors.append(f"LOCK_BACKEND must be one of {valid_lock_backends}, got: {lock_backend}")
+        if lock_backend == 'redis' and not cls.REDIS_URL:
+            errors.append("REDIS_URL is required when LOCK_BACKEND=redis")
 
         if not cls.DEBUG:
             sk = cls.SECRET_KEY

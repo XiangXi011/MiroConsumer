@@ -296,7 +296,7 @@ P0 内推荐顺序：先做 `P0-2` API Key bcrypt（范围小、立刻降低安�
 |---|---|
 | 任务ID | `P3-3` |
 | 优先级 | P3 |
-| 状态 | `TODO` |
+| 状态 | `DONE` |
 | 目标 | 文件锁升级为可选 Redis 分布式锁，Gunicorn worker 数通过环境变量配置 |
 | 触发原因 | 当前文件锁不支持多节点，生产 compose 中 worker 数固定偏低 |
 | 主要改动方向 | 增加 Redis lock backend；保留本地文件锁 fallback；新增 `GUNICORN_WORKERS` 和 `GUNICORN_THREADS` 配置 |
@@ -312,7 +312,7 @@ P0 内推荐顺序：先做 `P0-2` API Key bcrypt（范围小、立刻降低安�
 |---|---|
 | 任务ID | `P3-4` |
 | 优先级 | P3 |
-| 状态 | `TODO` |
+| 状态 | `DONE` |
 | 目标 | 提供发现-证据-来源的三层图谱 API 或前端可视化 |
 | 触发原因 | 当前证据链存在但缺少直观展示，研究人员难以快速理解支撑结构 |
 | 主要改动方向 | 增加 evidence graph 数据接口；前端展示 finding、evidence snippet、source、confidence 关系 |
@@ -354,7 +354,7 @@ P0 阶段额外准入测试：
 
 ## 7. 当前下一步
 
-Current P0, P1, P2-1 through P2-5, P3-1, and P3-2 are DONE with local verification evidence. Next highest-priority TODO is `P3-3` distributed lock and Gunicorn worker configuration.
+Current P0, P1, P2-1 through P2-5, and P3-1 through P3-4 are DONE with local verification evidence. No TODO items remain in this remediation spec.
 
 ### P1-6 数据库索引优化
 - 状态: DONE ✅
@@ -442,3 +442,22 @@ Current P0, P1, P2-1 through P2-5, P3-1, and P3-2 are DONE with local verificati
 - Coverage gate: `vitest.config.js` uses v8 coverage with text/lcov/json-summary output under `frontend/coverage` and thresholds of statements 70%, lines 70%, functions 70%, branches 60%.
 - Verification: `npm test` -> 23 test files passed, 280 tests passed; `npm run test:coverage` -> 23 test files passed, 280 tests passed, coverage summary statements 90.18%, branches 77.03%, functions 97.5%, lines 90.38%; `npm run build` -> Vite production build completed.
 - Notes: `frontend/coverage/` remains a generated ignored artifact; `npm audit --audit-level=moderate` reports 0 vulnerabilities after lockfile updates to safe transitive/direct versions.
+
+### P3-3 Distributed Lock and Gunicorn Config Pass 2026-05-09
+- Status: DONE
+- Commit: pending local workspace commit
+- Execution: Codex
+- Files: backend/app/services/application/concurrency.py, backend/app/config.py, backend/tests/services/application/test_concurrency_locks.py, backend/tests/deployment/test_phase7e_deployment.py, Dockerfile.backend, docker-compose.yml, docker-compose.prod.yml, .env.example
+- Locking: Added `RedisLockManager` using Redis `SET NX EX` with token-checked Lua release; added `LOCK_BACKEND=auto|redis|file|db`; `auto` selects Redis when `REDIS_URL` is configured and otherwise keeps existing database/file fallbacks.
+- Deployment: Gunicorn workers, threads, and timeout now read `GUNICORN_WORKERS`, `GUNICORN_THREADS`, and `GUNICORN_TIMEOUT`; production compose exposes these env vars and keeps Redis lock config available to backend and worker.
+- Verification: `python -m pytest -o addopts= backend\tests\services\application\test_concurrency_locks.py backend\tests\deployment\test_phase7e_deployment.py backend\tests\concurrency\test_phase7c_locks.py backend\tests\smoke\test_phase7_production_flow.py::test_production_compose_config_parses backend\tests\smoke\test_phase7_production_flow.py::test_lock_run_estimate_audit_and_storage_smoke -q` -> 40 passed, 1 warning; `docker compose -f docker-compose.prod.yml config` passed; `python -m compileall -q backend\app\services\application\concurrency.py backend\app\config.py` passed; `git diff --check` passed.
+- Notes: A broader opportunistic run including `backend\tests\services\application\test_app_services_use_repositories.py` and `backend\tests\services\application\test_task_executor.py` still showed pre-existing/non-P3 blockers: stale stub signatures around `tenant_id` and report worker task args, plus missing local `rq` package for RQ-specific tests.
+
+### P3-4 Evidence Graph API Pass 2026-05-09
+- Status: DONE
+- Commit: pending local workspace commit
+- Execution: Codex
+- Files: backend/app/services/application/audit_chain_service.py, backend/app/api/consumer_operations.py, backend/app/__init__.py, backend/tests/services/application/test_audit_chain_service.py, backend/tests/api/test_phase7d_observability_api.py, backend/tests/test_openapi_spec.py
+- API: Added `GET /api/consumer/reports/<report_id>/evidence-graph` and documented the v1 path in `/api/openapi.json`.
+- Graph shape: Builds finding, evidence, and source nodes from `report_context.enriched_findings`, `source_catalog`, and confidence summaries; emits `supported_by` and `sourced_from` edges with real JSON-list `traceable_fields`, including `evidence_snippets` fallback traces; low/unknown confidence findings are explicitly marked with `low_confidence`.
+- Verification: `python -m pytest -o addopts= backend\tests\services\application\test_audit_chain_service.py backend\tests\api\test_phase7d_observability_api.py backend\tests\api\test_consumer_api_modularization.py backend\tests\api\test_consumer_canonical_routes.py backend\tests\test_openapi_spec.py -q` -> 24 passed, 1 warning.
