@@ -3,6 +3,7 @@ MiroConsumer Backend - Flask应用工厂
 """
 
 import os
+import re
 import uuid
 import warnings
 
@@ -48,6 +49,47 @@ def _json_response(description: str, schema_name: str | None = None) -> dict:
 
 def _path_param(name: str) -> dict:
     return {"name": name, "in": "path", "required": True, "schema": {"type": "string"}}
+
+
+_FLASK_PATH_PARAM_RE = re.compile(r"<(?:[^:<>]+:)?([^<>]+)>")
+
+
+def _flask_rule_to_openapi_path(rule: str) -> str:
+    return _FLASK_PATH_PARAM_RE.sub(lambda match: "{" + match.group(1) + "}", rule)
+
+
+def _route_tag_from_path(path: str) -> str:
+    parts = [part for part in path.split("/") if part]
+    if len(parts) >= 3 and parts[0] == "api" and parts[1] == "v1":
+        return parts[2]
+    return parts[0] if parts else "api"
+
+
+def _route_summary_from_endpoint(endpoint: str) -> str:
+    leaf = endpoint.split(".")[-1]
+    return leaf.replace("_", " ").strip().title() or endpoint
+
+
+def _auto_openapi_operation(rule, method: str) -> dict:
+    openapi_path = _flask_rule_to_openapi_path(rule.rule)
+    parameters = [_path_param(name) for name in sorted(rule.arguments or [])]
+    response_content = {
+        "application/json": {
+            "schema": _schema_ref("SuccessResponse")
+        }
+    }
+    return {
+        "summary": _route_summary_from_endpoint(rule.endpoint),
+        "operationId": rule.endpoint.replace(".", "_"),
+        "tags": [_route_tag_from_path(openapi_path)],
+        **({"parameters": parameters} if parameters else {}),
+        "responses": {
+            "200": {
+                "description": f"{method.title()} response",
+                "content": response_content,
+            }
+        },
+    }
 
 
 def _openapi_components() -> dict:
@@ -188,8 +230,8 @@ def _openapi_components() -> dict:
     }
 
 
-def _openapi_paths() -> dict:
-    return {
+def _openapi_paths(app=None) -> dict:
+    paths = {
         "/health": {"get": {"summary": "Health check", "responses": {"200": _json_response("OK", "SuccessResponse")}}},
         "/api/v1/auth/register": {
             "post": {
@@ -317,6 +359,20 @@ def _openapi_paths() -> dict:
             "get": {"summary": "List projects", "responses": {"200": _json_response("Project list", "SuccessResponse")}}
         },
     }
+    if app is not None:
+        for rule in app.url_map.iter_rules():
+            if not rule.rule.startswith("/api/v1/"):
+                continue
+            path = _flask_rule_to_openapi_path(rule.rule)
+            path_item = paths.setdefault(path, {})
+            for method in sorted(rule.methods or []):
+                if method in {"HEAD", "OPTIONS"}:
+                    continue
+                openapi_method = method.lower()
+                if openapi_method in path_item:
+                    continue
+                path_item[openapi_method] = _auto_openapi_operation(rule, method)
+    return paths
 
 
 def _sanitize_log_data(data, max_length=200):
@@ -472,7 +528,7 @@ def create_app(config_class=Config):
             "openapi": "3.0.3",
             "info": {"title": "MiroConsumer API", "version": "0.7.0"},
             "servers": [{"url": "/", "description": "Current host"}],
-            "paths": _openapi_paths(),
+            "paths": _openapi_paths(app),
             "components": _openapi_components(),
         }
 

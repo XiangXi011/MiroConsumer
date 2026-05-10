@@ -1,9 +1,38 @@
 """Tests for the generated OpenAPI route inventory."""
 
+import re
 from pathlib import Path
 
 from app import create_app
 from app.config import Config
+
+
+_FLASK_PATH_PARAM_RE = re.compile(r"<(?:[^:<>]+:)?([^<>]+)>")
+_OPENAPI_METHODS = {"get", "post", "put", "patch", "delete"}
+
+
+def _flask_rule_to_openapi_path(rule: str) -> str:
+    return _FLASK_PATH_PARAM_RE.sub(lambda match: "{" + match.group(1) + "}", rule)
+
+
+def _registered_v1_operations(app):
+    return {
+        (_flask_rule_to_openapi_path(rule.rule), method.lower())
+        for rule in app.url_map.iter_rules()
+        if rule.rule.startswith("/api/v1/")
+        for method in sorted(rule.methods or [])
+        if method not in {"HEAD", "OPTIONS"}
+    }
+
+
+def _documented_v1_operations(spec):
+    return {
+        (path, method)
+        for path, item in spec["paths"].items()
+        if path.startswith("/api/v1/")
+        for method in item
+        if method in _OPENAPI_METHODS
+    }
 
 
 class TestConfig(Config):
@@ -66,7 +95,7 @@ def test_openapi_spec_documents_v1_resource_paths():
     assert "/api/consumer/simulation/{simulation_id}/consumer-summary" not in paths
 
 
-def test_openapi_v1_paths_match_registered_flask_routes():
+def test_openapi_v1_route_inventory_matches_registered_flask_routes():
     app = create_app(TestConfig)
     client = app.test_client()
 
@@ -74,18 +103,14 @@ def test_openapi_v1_paths_match_registered_flask_routes():
     assert response.status_code == 200
     spec = response.get_json()
 
-    registered_rules = {
-        rule.rule
-        for rule in app.url_map.iter_rules()
-        if rule.rule.startswith("/api/v1/")
-    }
-    documented_rules = {
-        path.replace("{", "<").replace("}", ">")
-        for path in spec["paths"]
-        if path.startswith("/api/v1/")
-    }
+    registered_operations = _registered_v1_operations(app)
+    documented_operations = _documented_v1_operations(spec)
 
-    assert documented_rules <= registered_rules
+    missing_operations = sorted(registered_operations - documented_operations)
+    extra_operations = sorted(documented_operations - registered_operations)
+
+    assert missing_operations == []
+    assert extra_operations == []
 
 
 def test_api_versioning_policy_documents_legacy_deprecation_window():

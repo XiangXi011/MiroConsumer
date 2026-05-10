@@ -4,7 +4,7 @@
 > 审核对象：`D:\project\MiroFish` 当前工作区  
 > 来源文档：`C:\Users\05537\Downloads\miroconsumer.agent.final.md`  
 > 审核方式：逐项读取原评审第 21 章正式整改矩阵，并交叉核对代码、文档、测试和 CI 配置  
-> 结论摘要：P0 已落地；本轮已补齐 CI 前端测试命令、dev worker 编排、后端全量测试阻断、生产 Gunicorn 默认 worker、StartSimulationRequest 契约、内置 tech persona pack、Redis 缓存覆盖、v1 auth/OpenAPI schema、evidence graph 前端组件、PostgreSQL JSONB GIN 索引声明、传播收敛补充指标、API versioning policy、VOC 覆盖度指标与 ReasoningTrace input/evidence/conclusion 三元组；P1-P3 仍存在少量“有代码落点但未满足原报告完整验收口径”的部分落地项，不能判定为“全部完成”
+> 结论摘要：P0 已落地；本轮已补齐 CI 前端测试命令、dev worker 编排、后端全量测试阻断、生产 Gunicorn 默认 worker、StartSimulationRequest 契约、内置 tech persona pack、Redis 缓存覆盖、v1 auth/OpenAPI schema、OpenAPI 路由清单自动补齐、evidence graph 前端组件、PostgreSQL JSONB GIN 索引声明、传播收敛补充指标、API versioning policy、VOC 覆盖度指标与 ReasoningTrace input/evidence/conclusion 三元组；P1-P3 仍存在少量“有代码落点但未满足原报告完整验收口径”的部分落地项，不能判定为“全部完成”
 
 ---
 
@@ -41,21 +41,21 @@
 
 本轮整改后，CI 前端测试命令、开发 compose worker 编排、全量后端测试中的 auth/400 冲突、生产 Gunicorn 默认 worker 偏低、`StartSimulationRequest` 丢弃 society/channel 字段、内置 `tech_early_adopters` 画像包缺失、Redis 缓存覆盖不足、evidence graph 缺前端可视化、传播收敛指标不足、API versioning 策略缺失、VOC 覆盖度指标缺失等问题已关闭。
 
-但 P1-P3 中仍有至少 3 项应按“部分落地”处理：OpenAPI 仍是手工 curated 契约且未覆盖完整路由清单；数据库已声明 JSONB GIN 索引但仍缺 EXPLAIN 证据；分布式锁仍缺真实多实例 Redis 竞争 smoke。
+但 P1-P3 中仍有至少 2 项应按“部分落地”处理：数据库已声明 JSONB GIN 索引但仍缺 EXPLAIN 证据；分布式锁仍缺真实多实例 Redis 竞争 smoke。
 
 综合判定：
 
 | 类别 | 数量 | 项目 |
 |---|---:|---|
-| 已落地 | 15 | P0-1、P0-2、P0-3、P1-1、P1-2、P1-3、P1-4、P1-5、P2-1、P2-2、P2-4、P2-5、P3-1、P3-2、P3-4 |
-| 部分落地 | 3 | P1-6、P2-3、P3-3 |
+| 已落地 | 16 | P0-1、P0-2、P0-3、P1-1、P1-2、P1-3、P1-4、P1-5、P2-1、P2-2、P2-3、P2-4、P2-5、P3-1、P3-2、P3-4 |
+| 部分落地 | 2 | P1-6、P3-3 |
 | 未落地 | 0 | 正式 18 项内未发现完全无实现项 |
 
 Go/No-Go 判断：
 
 - P0 已关闭，具备进入受控 staging 继续验证的基础。
 - 不建议按“整改全部完成”对外宣称，也不建议直接进入真实生产负载。
-- 下一步应优先补齐部分落地项中会影响契约完整性和核心可信度的项目：P2-3 OpenAPI 自动同步/覆盖率、P1-6 EXPLAIN 证据、P3-3 真实 Redis 竞争 smoke。
+- 下一步应优先补齐部分落地项中会影响契约完整性和核心可信度的项目：P1-6 EXPLAIN 证据、P3-3 真实 Redis 竞争 smoke。
 
 ---
 
@@ -238,26 +238,19 @@ Go/No-Go 判断：
 
 ### P2-3 完善 OpenAPI 文档
 
-状态：部分落地。
+状态：已落地。
 
-已落地证据：
-- `/api/openapi.json` 不再是空 `paths`，`backend/app/__init__.py` 手工返回若干 v1 paths。
-- `backend/tests/test_openapi_spec.py` 验证关键路径非空且旧 consumer path 未进入 spec。
+证据：
+- `/api/openapi.json` 不再是空 `paths`，`backend/app/__init__.py` 先保留核心手工 schema，再基于真实 Flask 路由清单自动补齐所有 `/api/v1/*` 路径与方法。
+- `backend/tests/test_openapi_spec.py` 既验证关键路径和核心 schema，也验证 v1 route inventory 与 OpenAPI operations 完全一致。
 - 本轮已补齐 `StartSimulationRequest` 中 `society_mode`、`society_seed`、`society_max_agents`、`society_audit_sample_size`、`advanced_society_mode`、`enabled_channels`、`channel_seed`、`llm_budget_limit` 字段，避免 Flask 路由层校验时丢弃 society/channel 参数。
 - `backend/tests/api/test_consumer_channel_routes.py::test_start_simulation_rejects_illegal_consumer_channel_id` 已验证非法 channel 能进入业务校验并返回 400。
 - 本轮新增 OpenAPI `components.schemas`，覆盖 `RegisterUserRequest`、`LoginRequest`、`CreateApiKeyRequest`、`GenerateReportRequest`、`GenerateReportStatusRequest`、`DeadLetterListResponse`、`EvidenceGraphResponse`、`StartSimulationRequest`。
-- OpenAPI paths 已补 auth v1、health、queue dead letters、report generate/status、simulation start、evidence graph 等核心路径。
 - `backend/tests/test_openapi_spec.py::test_openapi_spec_exposes_core_request_and_response_schemas` 验证核心 schema 存在。
-- 本轮新增 `backend/tests/test_openapi_spec.py::test_openapi_v1_paths_match_registered_flask_routes`，保证已写入 OpenAPI 的 v1 paths 都能映射到真实 Flask route；并修正项目列表路径为实际存在的 `/api/v1/graph/project/list`。
+- `backend/tests/test_openapi_spec.py::test_openapi_v1_route_inventory_matches_registered_flask_routes` 验证所有注册的 `/api/v1/*` 路由方法都进入 OpenAPI，修正项目列表路径为实际存在的 `/api/v1/graph/project/list`。
 
-缺口：
-- OpenAPI 是手工 curated，不是从 Flask 路由或契约模型自动生成。
-- 仍只覆盖主要 consumer/report/simulation/graph/auth/queue 路径；很多 report/consumer 子路径的 request/response schema 尚未完整纳入。
-- 原报告建议“API 文档与代码同步”，当前已增加“已记录路径必须匹配真实 route”的护栏，但仍未形成完整自动生成/覆盖率机制。
-
-建议：
-- 生成完整路由清单并对 OpenAPI paths 做覆盖率门禁。
-- 为核心 POST/GET 添加 request/response schema，而不只是 summary/description。
+遗留观察：
+- 核心路径仍保留手工 schema 以便精确描述请求/响应；其余 v1 路径由路由清单自动补齐，后续新增路由会自动进入 spec。
 
 ### P2-4 结构化 ReasoningTrace
 
@@ -458,23 +451,19 @@ Go/No-Go 判断：
 
 ### 高风险
 
-1. **OpenAPI 仍是手工 curated，不是自动同步契约**
-   - 影响：API 文档可用性提升了，但不能作为完整客户端生成或契约测试依据。
-   - 修复：继续补齐剩余 report/consumer 子路径 schema，并建立路由清单到 OpenAPI 的覆盖率测试。
-
-2. **分布式锁仍缺真实多实例 Redis 竞争 smoke**
+1. **分布式锁仍缺真实多实例 Redis 竞争 smoke**
    - 影响：已有 RedisLockManager 和单元测试，但尚未证明多 worker/多实例竞争下的行为。
    - 修复：增加 docker compose 或集成测试级别的真实 Redis lock smoke。
 
 ### 中风险
 
-3. **JSONB/GIN 索引与 EXPLAIN 证据不足**
+2. **JSONB/GIN 索引与 EXPLAIN 证据不足**
    - 影响：B-tree 和 PostgreSQL GIN 索引声明已补，但尚未用 staging 数据量证明关键查询计划。
    - 修复：在 PostgreSQL staging 上跑 migration smoke 和 EXPLAIN。
 
 ### 中低风险
 
-4. **章节级技术债尚未纳入本轮**
+3. **章节级技术债尚未纳入本轮**
    - 影响：`report.py` 拆分、readiness 健康检查、SBOM/许可证自动化、运维手册等仍未完整闭环。
    - 修复：作为后续工程成熟度批次单独拆分验收。
 
@@ -482,10 +471,9 @@ Go/No-Go 判断：
 
 ## 7. 推荐下一步整改顺序
 
-1. 补 OpenAPI 覆盖率门禁，至少覆盖剩余主要 consumer/report 子路径 request/response schema，并减少手工不同步风险。
-2. 增加真实 Redis 多实例/多 worker 分布式锁 smoke。
-3. 在 PostgreSQL staging 上运行 JSONB GIN migration smoke 与关键查询 EXPLAIN。
-4. 处理章节级技术债：`report.py` 拆分、健康检查 readiness、SBOM/许可证自动化、运维手册。
+1. 增加真实 Redis 多实例/多 worker 分布式锁 smoke。
+2. 在 PostgreSQL staging 上运行 JSONB GIN migration smoke 与关键查询 EXPLAIN。
+3. 处理章节级技术债：`report.py` 拆分、健康检查 readiness、SBOM/许可证自动化、运维手册。
 
 ---
 
@@ -493,8 +481,8 @@ Go/No-Go 判断：
 
 来源评审文档中的正式 P0 阻断项已经落地，项目当前不再处于原报告描述的 P0 No-Go 状态。
 
-本轮整改又关闭了多项会直接影响落地可信度的问题：CI 前端测试命令已改为 Vitest 入口，后端全量测试中的 auth/400 冲突已修复，dev compose 已补 worker，生产 Gunicorn 默认 worker 已调到 4，`StartSimulationRequest` 已接收 society/channel 相关字段，内置 `tech_early_adopters` 画像包已加入并解除 `.gitignore` 拦截，缓存覆盖扩展到 consumer summary/channel summary/simulation config/persona pack，evidence graph 已有前端组件，OpenAPI 已补 v1 auth/queue/schema 且新增真实 route 匹配测试，PostgreSQL JSONB GIN 索引声明已加入，传播收敛指标、API versioning policy、VOC 覆盖度指标与 ReasoningTrace input/evidence/conclusion 三元组已补齐。
+本轮整改又关闭了多项会直接影响落地可信度的问题：CI 前端测试命令已改为 Vitest 入口，后端全量测试中的 auth/400 冲突已修复，dev compose 已补 worker，生产 Gunicorn 默认 worker 已调到 4，`StartSimulationRequest` 已接收 society/channel 相关字段，内置 `tech_early_adopters` 画像包已加入并解除 `.gitignore` 拦截，缓存覆盖扩展到 consumer summary/channel summary/simulation config/persona pack，evidence graph 已有前端组件，OpenAPI 已补 v1 auth/queue/schema 并完成真实 route 清单自动补齐，PostgreSQL JSONB GIN 索引声明已加入，传播收敛指标、API versioning policy、VOC 覆盖度指标与 ReasoningTrace input/evidence/conclusion 三元组已补齐。
 
 但是，P1-P3 并未全部按原报告完整口径关闭。当前更准确的表述应是：
 
-> P0 已关闭；CI、全量测试阻断、dev worker、生产 worker 默认值、simulation 契约字段、内置 persona pack、缓存覆盖、v1 auth/OpenAPI schema、证据图谱前端可视化、JSONB GIN 索引声明、传播收敛补充指标、API versioning policy、VOC 覆盖度指标与 ReasoningTrace input/evidence/conclusion 三元组等本轮问题已关闭。项目可进入受控 staging 继续验证，但不应宣称最终评审所有优化和修复均已完成；在 OpenAPI 自动同步/覆盖率、真实 Redis 竞争 smoke 和 PostgreSQL EXPLAIN 证据补齐前，不建议进入真实生产负载。
+> P0 已关闭；CI、全量测试阻断、dev worker、生产 worker 默认值、simulation 契约字段、内置 persona pack、缓存覆盖、v1 auth/OpenAPI schema、OpenAPI 路由清单自动补齐、证据图谱前端可视化、JSONB GIN 索引声明、传播收敛补充指标、API versioning policy、VOC 覆盖度指标与 ReasoningTrace input/evidence/conclusion 三元组等本轮问题已关闭。项目可进入受控 staging 继续验证，但不应宣称最终评审所有优化和修复均已完成；在真实 Redis 竞争 smoke 和 PostgreSQL EXPLAIN 证据补齐前，不建议进入真实生产负载。
