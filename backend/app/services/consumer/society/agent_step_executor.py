@@ -153,6 +153,13 @@ class AgentStepExecutor:
             ),
             decision_reasoning="reasoning_method=rule_state_machine; llm_invoked=False",
             expression_reasoning=f"output_events={len(events)}",
+            reasoning_triplets=[
+                {
+                    "input": f"input=shadow_batch; round_index={round_index}; agent_count={len(agents_list)}",
+                    "evidence": "reasoning_method=rule_state_machine; llm_invoked=False",
+                    "conclusion": f"output_events={len(events)}",
+                }
+            ],
             round_index=round_index,
         )
         return events, [trace]
@@ -232,6 +239,28 @@ class AgentStepExecutor:
         elif backend == "template_fallback":
             fallback_reason = "unknown"
 
+        perception_reasoning = AgentStepExecutor._join_reasoning_parts(
+            [
+                f"claim={claim}" if claim else "",
+                f"agent_id={agent.agent_id}",
+                f"segment={agent.segment}",
+                f"source_input_refs={source_input_refs}" if source_input_refs else "",
+            ]
+        )
+        decision_reasoning = AgentStepExecutor._join_reasoning_parts(
+            [
+                f"event_type={event_type}" if event_type else "",
+                f"reasoning_method={reasoning_method}" if reasoning_method else "",
+                f"trust={event.get('trust')}" if event.get("trust") is not None else "",
+                (
+                    f"purchase_intent={event.get('purchase_intent')}"
+                    if event.get("purchase_intent") is not None
+                    else ""
+                ),
+            ]
+        )
+        expression_reasoning = f"quote={quote}" if quote else ""
+
         return ReasoningTrace(
             reasoning_backend=backend,
             llm_invoked=llm_invoked,
@@ -240,27 +269,16 @@ class AgentStepExecutor:
             model=str(event.get("model_version", "") or ""),
             latency_ms=float(event.get("latency_ms", 0.0) or 0.0),
             reasoning_summary=str(quote) if quote else "",
-            perception_reasoning=AgentStepExecutor._join_reasoning_parts(
-                [
-                    f"agent_id={agent.agent_id}",
-                    f"segment={agent.segment}",
-                    f"claim={claim}" if claim else "",
-                    f"source_input_refs={source_input_refs}" if source_input_refs else "",
-                ]
-            ),
-            decision_reasoning=AgentStepExecutor._join_reasoning_parts(
-                [
-                    f"event_type={event_type}" if event_type else "",
-                    f"reasoning_method={reasoning_method}" if reasoning_method else "",
-                    f"trust={event.get('trust')}" if event.get("trust") is not None else "",
-                    (
-                        f"purchase_intent={event.get('purchase_intent')}"
-                        if event.get("purchase_intent") is not None
-                        else ""
-                    ),
-                ]
-            ),
-            expression_reasoning=f"quote={quote}" if quote else "",
+            perception_reasoning=perception_reasoning,
+            decision_reasoning=decision_reasoning,
+            expression_reasoning=expression_reasoning,
+            reasoning_triplets=[
+                {
+                    "input": perception_reasoning,
+                    "evidence": decision_reasoning,
+                    "conclusion": str(quote) if quote else expression_reasoning,
+                }
+            ],
             related_finding_id=finding_id,
             related_event_id=event_id,
             agent_id=agent.agent_id,

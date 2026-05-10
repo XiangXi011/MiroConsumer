@@ -40,6 +40,7 @@ class ReasoningTrace:
     perception_reasoning: str = ""
     decision_reasoning: str = ""
     expression_reasoning: str = ""
+    reasoning_triplets: List[Dict[str, Any]] = field(default_factory=list)
 
     # P2-4: Trace-to-entity linkage
     related_finding_id: str = ""
@@ -64,6 +65,16 @@ class ReasoningTrace:
             d["decision_reasoning"] = self.decision_reasoning
         if self.expression_reasoning:
             d["expression_reasoning"] = self.expression_reasoning
+        if self.reasoning_triplets:
+            d["reasoning_triplets"] = [
+                {
+                    "input": str(item.get("input", "")),
+                    "evidence": str(item.get("evidence", "")),
+                    "conclusion": str(item.get("conclusion", "")),
+                }
+                for item in self.reasoning_triplets
+                if any(str(item.get(key, "")).strip() for key in ("input", "evidence", "conclusion"))
+            ]
         if self.related_finding_id:
             d["related_finding_id"] = self.related_finding_id
         if self.related_event_id:
@@ -92,11 +103,43 @@ class ReasoningTrace:
             perception_reasoning=str(d.get("perception_reasoning", "")),
             decision_reasoning=str(d.get("decision_reasoning", "")),
             expression_reasoning=str(d.get("expression_reasoning", "")),
+            reasoning_triplets=cls._normalize_reasoning_triplets(d),
             related_finding_id=str(d.get("related_finding_id", "")),
             related_event_id=str(d.get("related_event_id", "")),
             agent_id=str(d.get("agent_id", "")),
             round_index=int(d.get("round_index", -1)),
         )
+
+    @staticmethod
+    def _normalize_reasoning_triplets(d: Mapping[str, Any]) -> List[Dict[str, str]]:
+        raw_triplets = d.get("reasoning_triplets")
+        normalized: List[Dict[str, str]] = []
+        if isinstance(raw_triplets, list):
+            for item in raw_triplets:
+                if not isinstance(item, Mapping):
+                    continue
+                triplet = {
+                    "input": str(item.get("input", "")).strip(),
+                    "evidence": str(item.get("evidence", "")).strip(),
+                    "conclusion": str(item.get("conclusion", "")).strip(),
+                }
+                if any(triplet.values()):
+                    normalized.append(triplet)
+        if normalized:
+            return normalized
+
+        input_text = str(d.get("perception_reasoning", "")).strip()
+        evidence_text = str(d.get("decision_reasoning", "")).strip()
+        conclusion_text = str(d.get("expression_reasoning", "")).strip()
+        if any((input_text, evidence_text, conclusion_text)):
+            return [
+                {
+                    "input": input_text,
+                    "evidence": evidence_text,
+                    "conclusion": conclusion_text,
+                }
+            ]
+        return []
 
 
 # Legacy source markers that map to canonical sources.

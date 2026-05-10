@@ -71,6 +71,30 @@ class TestReasoningTraceSchema:
         assert trace.source == "interview"
         assert trace.fallback_reason == "timeout"
 
+    def test_trace_preserves_reasoning_triplets(self):
+        trace = ReasoningTrace(
+            reasoning_backend="llm",
+            llm_invoked=True,
+            source="society_runtime",
+            reasoning_summary="Need evidence before deciding.",
+            reasoning_triplets=[
+                {
+                    "input": "claim=low sugar",
+                    "evidence": "event_type=ASK_PROOF",
+                    "conclusion": "I need proof before I trust this.",
+                }
+            ],
+        )
+
+        payload = trace.to_dict()
+        assert payload["reasoning_triplets"][0]["input"] == "claim=low sugar"
+        assert payload["reasoning_triplets"][0]["evidence"] == "event_type=ASK_PROOF"
+        assert payload["reasoning_triplets"][0]["conclusion"] == "I need proof before I trust this."
+
+        loaded = ReasoningTrace.from_dict(payload)
+        assert loaded.reasoning_triplets[0]["input"] == "claim=low sugar"
+        assert loaded.reasoning_triplets[0]["conclusion"] == "I need proof before I trust this."
+
     def test_trace_backend_enum_validation(self):
         # Valid backends
         for backend in ["llm", "rules", "template_fallback", "mock"]:
@@ -327,3 +351,6 @@ class TestSocietyRuntimeTraceMapping:
         assert "event_type=ASK_PROOF" in payload["decision_reasoning"]
         assert "trust=0.31" in payload["decision_reasoning"]
         assert "I need proof" in payload["expression_reasoning"]
+        assert payload["reasoning_triplets"][0]["input"].startswith("claim=low sugar")
+        assert payload["reasoning_triplets"][0]["evidence"].startswith("event_type=ASK_PROOF")
+        assert payload["reasoning_triplets"][0]["conclusion"] == "I need proof before I trust this."

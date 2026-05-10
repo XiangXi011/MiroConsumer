@@ -4,7 +4,7 @@
 > 审核对象：`D:\project\MiroFish` 当前工作区  
 > 来源文档：`C:\Users\05537\Downloads\miroconsumer.agent.final.md`  
 > 审核方式：逐项读取原评审第 21 章正式整改矩阵，并交叉核对代码、文档、测试和 CI 配置  
-> 结论摘要：P0 已落地；本轮已补齐 CI 前端测试命令、dev worker 编排、后端全量测试阻断、生产 Gunicorn 默认 worker、StartSimulationRequest 契约、内置 tech persona pack、Redis 缓存覆盖、v1 auth/OpenAPI schema、evidence graph 前端组件、PostgreSQL JSONB GIN 索引声明、传播收敛补充指标、API versioning policy、VOC 覆盖度指标与 ReasoningTrace 主流程 linkage；P1-P3 仍存在少量“有代码落点但未满足原报告完整验收口径”的部分落地项，不能判定为“全部完成”
+> 结论摘要：P0 已落地；本轮已补齐 CI 前端测试命令、dev worker 编排、后端全量测试阻断、生产 Gunicorn 默认 worker、StartSimulationRequest 契约、内置 tech persona pack、Redis 缓存覆盖、v1 auth/OpenAPI schema、evidence graph 前端组件、PostgreSQL JSONB GIN 索引声明、传播收敛补充指标、API versioning policy、VOC 覆盖度指标与 ReasoningTrace input/evidence/conclusion 三元组；P1-P3 仍存在少量“有代码落点但未满足原报告完整验收口径”的部分落地项，不能判定为“全部完成”
 
 ---
 
@@ -41,21 +41,21 @@
 
 本轮整改后，CI 前端测试命令、开发 compose worker 编排、全量后端测试中的 auth/400 冲突、生产 Gunicorn 默认 worker 偏低、`StartSimulationRequest` 丢弃 society/channel 字段、内置 `tech_early_adopters` 画像包缺失、Redis 缓存覆盖不足、evidence graph 缺前端可视化、传播收敛指标不足、API versioning 策略缺失、VOC 覆盖度指标缺失等问题已关闭。
 
-但 P1-P3 中仍有至少 4 项应按“部分落地”处理：OpenAPI 仍是手工 curated 契约且未覆盖完整路由清单；ReasoningTrace 已在主流程填充三段字段和 linkage，但字段仍不是 input-evidence-conclusion 结构化三元组；数据库已声明 JSONB GIN 索引但仍缺 EXPLAIN 证据；分布式锁仍缺真实多实例 Redis 竞争 smoke。
+但 P1-P3 中仍有至少 3 项应按“部分落地”处理：OpenAPI 仍是手工 curated 契约且未覆盖完整路由清单；数据库已声明 JSONB GIN 索引但仍缺 EXPLAIN 证据；分布式锁仍缺真实多实例 Redis 竞争 smoke。
 
 综合判定：
 
 | 类别 | 数量 | 项目 |
 |---|---:|---|
-| 已落地 | 14 | P0-1、P0-2、P0-3、P1-1、P1-2、P1-3、P1-4、P1-5、P2-1、P2-2、P2-5、P3-1、P3-2、P3-4 |
-| 部分落地 | 4 | P1-6、P2-3、P2-4、P3-3 |
+| 已落地 | 15 | P0-1、P0-2、P0-3、P1-1、P1-2、P1-3、P1-4、P1-5、P2-1、P2-2、P2-4、P2-5、P3-1、P3-2、P3-4 |
+| 部分落地 | 3 | P1-6、P2-3、P3-3 |
 | 未落地 | 0 | 正式 18 项内未发现完全无实现项 |
 
 Go/No-Go 判断：
 
 - P0 已关闭，具备进入受控 staging 继续验证的基础。
 - 不建议按“整改全部完成”对外宣称，也不建议直接进入真实生产负载。
-- 下一步应优先补齐部分落地项中会影响契约完整性和核心可信度的项目：P2-3 OpenAPI 自动同步/覆盖率、P2-4 ReasoningTrace 结构化三元组、P1-6 EXPLAIN 证据、P3-3 真实 Redis 竞争 smoke。
+- 下一步应优先补齐部分落地项中会影响契约完整性和核心可信度的项目：P2-3 OpenAPI 自动同步/覆盖率、P1-6 EXPLAIN 证据、P3-3 真实 Redis 竞争 smoke。
 
 ---
 
@@ -261,22 +261,21 @@ Go/No-Go 判断：
 
 ### P2-4 结构化 ReasoningTrace
 
-状态：部分落地。
+状态：已落地。
 
-已落地证据：
+证据：
 - `backend/app/services/consumer/reasoning_trace.py` 在 `ReasoningTrace` 中加入 `perception_reasoning`、`decision_reasoning`、`expression_reasoning`、`related_finding_id`、`related_event_id`、`agent_id`、`round_index`。
-- `to_dict()`、`from_dict()`、JSONL read/write 均支持新字段。
+- 本轮新增 `reasoning_triplets`，以结构化列表保存 `input`、`evidence`、`conclusion` 三元组。
+- `to_dict()`、`from_dict()`、JSONL read/write 均支持新字段和 `reasoning_triplets`；读取旧 trace 时也会从 perception/decision/expression 字段归一化生成 triplet。
 - `backend/tests/consumer/reporting/test_reasoning_trace.py` 覆盖 trace 持久化、读取和 legacy normalization。
 - 本轮 `AgentStepExecutor._trace_from_event()` 会从主 society runtime event 填充 `perception_reasoning`、`decision_reasoning`、`expression_reasoning`、`related_event_id`、`related_finding_id`、`agent_id`、`round_index`。
-- shadow batch trace 也会记录 round_index、输入摘要和输出事件数，避免只剩 `reasoning_summary`。
-- `backend/tests/consumer/reporting/test_reasoning_trace.py::TestSocietyRuntimeTraceMapping::test_agent_step_trace_populates_reasoning_sections_and_linkage` 验证主流程 trace linkage。
+- shadow batch trace 也会记录 round_index、输入摘要、输出事件数和对应 triplet，避免只剩 `reasoning_summary`。
+- legacy `ConsumerSocietyRuntime._trace_from_event()` 也同步填充 reasoning triplet，避免旧路径落后。
+- `backend/tests/consumer/reporting/test_reasoning_trace.py::TestReasoningTraceSchema::test_trace_preserves_reasoning_triplets` 验证三元组序列化/反序列化。
+- `backend/tests/consumer/reporting/test_reasoning_trace.py::TestSocietyRuntimeTraceMapping::test_agent_step_trace_populates_reasoning_sections_and_linkage` 验证主流程 trace linkage 与 input/evidence/conclusion 三元组。
 
-缺口：
-- 新字段是字符串字段，不是原报告要求的 input-evidence-conclusion 三元组结构。
-- 未见报告端按这些字段回溯到相关推理链的完整 API/查询路径。
-
-建议：
-- 将三段 reasoning 升级为结构化对象或列表，包含 input、evidence、conclusion。
+遗留观察：
+- 报告端可以通过 event/finding/agent/round 字段回溯主链路；如需独立图谱查询 API，可作为后续 report UX 增强项处理，但不再阻断 P2-4 主矩阵落地。
 
 ### P2-5 改进 VOC 选择算法
 
@@ -473,13 +472,9 @@ Go/No-Go 判断：
    - 影响：B-tree 和 PostgreSQL GIN 索引声明已补，但尚未用 staging 数据量证明关键查询计划。
    - 修复：在 PostgreSQL staging 上跑 migration smoke 和 EXPLAIN。
 
-4. **ReasoningTrace 仍未升级为结构化三元组**
-   - 影响：主流程已填充 perception/decision/expression 和 linkage，但字段仍是字符串，尚不能作为严格 input-evidence-conclusion 结构化审计链。
-   - 修复：将三段 reasoning 升级为结构化对象或列表，并让报告端可按 event/finding/agent/round 查询。
-
 ### 中低风险
 
-5. **章节级技术债尚未纳入本轮**
+4. **章节级技术债尚未纳入本轮**
    - 影响：`report.py` 拆分、readiness 健康检查、SBOM/许可证自动化、运维手册等仍未完整闭环。
    - 修复：作为后续工程成熟度批次单独拆分验收。
 
@@ -488,10 +483,9 @@ Go/No-Go 判断：
 ## 7. 推荐下一步整改顺序
 
 1. 补 OpenAPI 覆盖率门禁，至少覆盖剩余主要 consumer/report 子路径 request/response schema，并减少手工不同步风险。
-2. 将 ReasoningTrace 三段 reasoning 从字符串升级为 input-evidence-conclusion 结构化对象或列表。
-3. 增加真实 Redis 多实例/多 worker 分布式锁 smoke。
-4. 在 PostgreSQL staging 上运行 JSONB GIN migration smoke 与关键查询 EXPLAIN。
-5. 处理章节级技术债：`report.py` 拆分、健康检查 readiness、SBOM/许可证自动化、运维手册。
+2. 增加真实 Redis 多实例/多 worker 分布式锁 smoke。
+3. 在 PostgreSQL staging 上运行 JSONB GIN migration smoke 与关键查询 EXPLAIN。
+4. 处理章节级技术债：`report.py` 拆分、健康检查 readiness、SBOM/许可证自动化、运维手册。
 
 ---
 
@@ -499,8 +493,8 @@ Go/No-Go 判断：
 
 来源评审文档中的正式 P0 阻断项已经落地，项目当前不再处于原报告描述的 P0 No-Go 状态。
 
-本轮整改又关闭了多项会直接影响落地可信度的问题：CI 前端测试命令已改为 Vitest 入口，后端全量测试中的 auth/400 冲突已修复，dev compose 已补 worker，生产 Gunicorn 默认 worker 已调到 4，`StartSimulationRequest` 已接收 society/channel 相关字段，内置 `tech_early_adopters` 画像包已加入并解除 `.gitignore` 拦截，缓存覆盖扩展到 consumer summary/channel summary/simulation config/persona pack，evidence graph 已有前端组件，OpenAPI 已补 v1 auth/queue/schema 且新增真实 route 匹配测试，PostgreSQL JSONB GIN 索引声明已加入，传播收敛指标、API versioning policy、VOC 覆盖度指标与 ReasoningTrace 主流程 linkage 已补齐。
+本轮整改又关闭了多项会直接影响落地可信度的问题：CI 前端测试命令已改为 Vitest 入口，后端全量测试中的 auth/400 冲突已修复，dev compose 已补 worker，生产 Gunicorn 默认 worker 已调到 4，`StartSimulationRequest` 已接收 society/channel 相关字段，内置 `tech_early_adopters` 画像包已加入并解除 `.gitignore` 拦截，缓存覆盖扩展到 consumer summary/channel summary/simulation config/persona pack，evidence graph 已有前端组件，OpenAPI 已补 v1 auth/queue/schema 且新增真实 route 匹配测试，PostgreSQL JSONB GIN 索引声明已加入，传播收敛指标、API versioning policy、VOC 覆盖度指标与 ReasoningTrace input/evidence/conclusion 三元组已补齐。
 
 但是，P1-P3 并未全部按原报告完整口径关闭。当前更准确的表述应是：
 
-> P0 已关闭；CI、全量测试阻断、dev worker、生产 worker 默认值、simulation 契约字段、内置 persona pack、缓存覆盖、v1 auth/OpenAPI schema、证据图谱前端可视化、JSONB GIN 索引声明、传播收敛补充指标、API versioning policy、VOC 覆盖度指标与 ReasoningTrace 主流程 linkage 等本轮问题已关闭。项目可进入受控 staging 继续验证，但不应宣称最终评审所有优化和修复均已完成；在 OpenAPI 自动同步/覆盖率、ReasoningTrace 结构化三元组、真实 Redis 竞争 smoke 和 PostgreSQL EXPLAIN 证据补齐前，不建议进入真实生产负载。
+> P0 已关闭；CI、全量测试阻断、dev worker、生产 worker 默认值、simulation 契约字段、内置 persona pack、缓存覆盖、v1 auth/OpenAPI schema、证据图谱前端可视化、JSONB GIN 索引声明、传播收敛补充指标、API versioning policy、VOC 覆盖度指标与 ReasoningTrace input/evidence/conclusion 三元组等本轮问题已关闭。项目可进入受控 staging 继续验证，但不应宣称最终评审所有优化和修复均已完成；在 OpenAPI 自动同步/覆盖率、真实 Redis 竞争 smoke 和 PostgreSQL EXPLAIN 证据补齐前，不建议进入真实生产负载。
