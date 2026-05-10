@@ -199,6 +199,7 @@ Go/No-Go 判断：
 - `backend/alembic/versions/20260508_0001_auth_persistence.py` 增加 auth_users/auth_api_keys 的 tenant/user/hash 索引。
 - 本轮在 `20260508_0003_add_performance_indexes.py` 中新增 PostgreSQL 专用 `POSTGRES_GIN_INDEXES`，覆盖 `projects.data`、`simulations.data`、`reports.data`、`consumer_events.payload`、`research_assets.payload`、`tasks.payload`。
 - `backend/tests/test_migration_indexes.py` 验证 upgrade/downgrade。
+- 新增 Docker-backed `run_postgres_explain_smoke()` 与对应 smoke 测试入口，可在具备 Docker daemon 的环境生成真实 `EXPLAIN` 证据；当前本机 daemon 不可用，因此仍未采到执行输出。
 
 缺口：
 - JSONB GIN 索引声明已补齐，但本机 SQLite migration smoke 不会实际创建 PostgreSQL GIN。
@@ -324,12 +325,13 @@ Go/No-Go 判断：
 - `LOCK_BACKEND=auto|redis|file|db`，auto 在有 `REDIS_URL` 时优先 Redis。
 - `Dockerfile.backend`、`docker-compose.prod.yml` 支持 `GUNICORN_WORKERS`、`GUNICORN_THREADS`、`GUNICORN_TIMEOUT`。
 - 并发锁相关测试包含在 159 passed 定向套件中。
+- 新增 Docker-backed `run_real_redis_lock_smoke()` 与对应 smoke 测试入口，可在具备 Docker daemon 的环境验证多实例 Redis 竞争；当前本机 daemon 不可用，因此仍未采到执行输出。
 
 已补齐：
 - `docker-compose.prod.yml` 默认 worker 已从 `${GUNICORN_WORKERS:-2}` 调整为 `${GUNICORN_WORKERS:-4}`，满足原报告 4-8 的下限建议。
 
 仍有缺口：
-- 本次仍未做真实多实例 Redis 竞争 smoke，仅有 fake Redis/unit 验证。
+- 本机环境暂时无法启动 Docker daemon，因此真实多实例 Redis 竞争 smoke 仍未完成本地执行闭环。
 
 建议：
 - 增加真实 Redis 集成测试或 docker compose smoke。
@@ -376,7 +378,7 @@ Go/No-Go 判断：
    - 本轮整改前结果：未开始测试，pytest 参数失败。
    - 原因：当前解释器缺少 `pytest-cov`，而 `backend/pyproject.toml` 默认 addopts 包含 `--cov=app --cov-report=term-missing`。
    - 本轮处理：安装 `pytest-cov 7.1.0` 与 `coverage 7.13.5` 后重跑默认命令。
-   - 最新结果：1878 passed，1 skipped，204 warnings；coverage TOTAL 73%。
+   - 最新结果：1879 passed，3 skipped，58 warnings；coverage TOTAL 73%。
 
 2. `python -m pytest -o addopts= backend/tests/ -x -q`
    - 本轮整改前结果：20 passed 后失败。
@@ -406,10 +408,11 @@ Go/No-Go 判断：
    - `python -m pytest -o addopts= backend/tests/deployment/test_phase7e_deployment.py -q`：5 passed。
    - `python -m pytest -o addopts= backend/tests/test_auth.py backend/tests/test_tenant_isolation.py -q`：30 passed，1 skipped。
     - `python -m pytest -o addopts= backend/tests/services/application/test_app_services_use_repositories.py::TestSimulationAppServiceUsesRepositories::test_create_simulation_calls_project_repo backend/tests/services/application/test_app_services_use_repositories.py::TestPhase7CServiceLocks::test_generate_report_worker_acquires_report_generation_lock -q`：2 passed。
-    - `python -m pytest -o addopts= backend/tests/test_openapi_spec.py -q`：3 passed。
+    - `python -m pytest -o addopts= backend/tests/test_openapi_spec.py -q`：5 passed。
     - `python -m pytest -o addopts= backend/tests/test_redis_cache.py backend/tests/consumer/test_consumer_app_service.py::test_get_consumer_summary_uses_redis_cache_when_configured backend/tests/consumer/test_consumer_app_service.py::test_get_channel_summary_uses_redis_cache_when_configured backend/tests/consumer/test_persona_pack_registry.py::test_registry_load_builtin_pack_uses_redis_cache backend/tests/services/application/test_simulation_manager_repo.py -q`：20 passed。
     - `python -m pytest -o addopts= backend/tests/test_migration_indexes.py -q`：2 passed。
     - `python -m pytest -o addopts= backend/tests/consumer/test_convergence_detector.py backend/tests/consumer/test_scoring.py backend/tests/consumer/reporting/test_reasoning_trace.py backend/tests/consumer/society/test_society_runtime.py backend/tests/test_openapi_spec.py -q`：49 passed，2 warnings。
+    - `python -m pytest -o addopts= backend/tests/smoke/test_phase7_production_flow.py -q`：5 passed，2 skipped；新增 Docker-backed Redis/PostgreSQL smoke 入口已接入，但当前机器没有可用 Docker daemon，所以相关项被跳过。
 
 ### 前端
 

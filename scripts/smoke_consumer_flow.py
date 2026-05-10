@@ -1,12 +1,14 @@
 """Phase 7 production smoke helpers.
 
 This script intentionally validates infrastructure readiness without running
-external LLM calls or starting Docker containers.
+external LLM calls. Optional Docker-backed smoke helpers can be enabled with
+RUN_DOCKER_SMOKES=1.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -21,6 +23,11 @@ ROOT = Path(__file__).resolve().parents[1]
 BACKEND_PATH = str(ROOT / "backend")
 if BACKEND_PATH not in sys.path:
     sys.path.insert(0, BACKEND_PATH)
+
+from app.services.application.infra_smokes import (  # noqa: E402
+    run_postgres_explain_smoke,
+    run_real_redis_lock_smoke,
+)
 
 
 def run_compose_config() -> dict:
@@ -463,6 +470,30 @@ def run_smoke_checks() -> dict:
             "response_schema": {"error": str(exc)},
         })
         failed += 1
+
+    if os.environ.get("RUN_DOCKER_SMOKES") == "1":
+        for smoke_name, smoke_runner in [
+            ("real_redis_lock_contention", run_real_redis_lock_smoke),
+            ("postgres_jsonb_gin_explain", run_postgres_explain_smoke),
+        ]:
+            try:
+                smoke_result = smoke_runner()
+                step = smoke_result["steps"][0]
+                steps.append(step)
+                if step["status"] == "passed":
+                    passed += 1
+                else:
+                    failed += 1
+            except Exception as exc:
+                steps.append({
+                    "name": smoke_name,
+                    "status": "failed",
+                    "trace_id": _make_trace_id(smoke_name),
+                    "repository_backend": "docker",
+                    "task_status": "FAILED",
+                    "response_schema": {"error": str(exc)},
+                })
+                failed += 1
 
     return {
         "steps": steps,
