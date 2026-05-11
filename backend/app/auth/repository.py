@@ -9,6 +9,7 @@ from sqlalchemy import (
     Column,
     Float,
     ForeignKey,
+    Integer,
     Index,
     JSON,
     MetaData,
@@ -41,9 +42,15 @@ auth_users = Table(
     Column("role", String(50), nullable=False),
     Column("tenant_id", String(255), nullable=False),
     Column("workspace_id", String(255), nullable=False),
+    Column("password_hash", String(255), nullable=False, default=""),
+    Column("password_changed_at", Float),
+    Column("failed_login_count", Integer, nullable=False, default=0),
+    Column("locked_until", Float),
     Column("is_active", Boolean, nullable=False, default=True),
     Column("created_at", Float, nullable=False),
     Index("ix_auth_users_user_id", "user_id"),
+    Index("ix_auth_users_username", "username"),
+    Index("ix_auth_users_email", "email"),
     Index("ix_auth_users_tenant_id", "tenant_id"),
 )
 
@@ -80,6 +87,14 @@ class AuthRepository(ABC):
     @abstractmethod
     def get_user(self, user_id: str) -> Optional[User]:
         """Return a user by id, or None."""
+
+    @abstractmethod
+    def get_user_by_username(self, username: str) -> Optional[User]:
+        """Return a user by username, or None."""
+
+    @abstractmethod
+    def get_user_by_email(self, email: str) -> Optional[User]:
+        """Return a user by email, or None."""
 
     @abstractmethod
     def save_api_key(self, api_key: APIKey) -> None:
@@ -124,6 +139,20 @@ class MemoryAuthRepository(AuthRepository):
         user = self._users.get(user_id)
         return _copy_user(user) if user else None
 
+    def get_user_by_username(self, username: str) -> Optional[User]:
+        normalized = (username or "").strip().lower()
+        for user in self._users.values():
+            if user.username.lower() == normalized:
+                return _copy_user(user)
+        return None
+
+    def get_user_by_email(self, email: str) -> Optional[User]:
+        normalized = (email or "").strip().lower()
+        for user in self._users.values():
+            if user.email.lower() == normalized:
+                return _copy_user(user)
+        return None
+
     def save_api_key(self, api_key: APIKey) -> None:
         self._api_keys[api_key.key_id] = _copy_api_key(api_key)
 
@@ -165,6 +194,10 @@ class SqlAlchemyAuthRepository(AuthRepository):
             "role": user.role,
             "tenant_id": user.tenant_id,
             "workspace_id": user.workspace_id,
+            "password_hash": user.password_hash,
+            "password_changed_at": user.password_changed_at,
+            "failed_login_count": user.failed_login_count,
+            "locked_until": user.locked_until,
             "is_active": user.is_active,
             "created_at": user.created_at,
         }
@@ -186,6 +219,20 @@ class SqlAlchemyAuthRepository(AuthRepository):
         with self._session() as session:
             row = session.execute(
                 select(auth_users).where(auth_users.c.user_id == user_id)
+            ).mappings().fetchone()
+            return self._user_from_row(row) if row else None
+
+    def get_user_by_username(self, username: str) -> Optional[User]:
+        with self._session() as session:
+            row = session.execute(
+                select(auth_users).where(auth_users.c.username == username)
+            ).mappings().fetchone()
+            return self._user_from_row(row) if row else None
+
+    def get_user_by_email(self, email: str) -> Optional[User]:
+        with self._session() as session:
+            row = session.execute(
+                select(auth_users).where(auth_users.c.email == email)
             ).mappings().fetchone()
             return self._user_from_row(row) if row else None
 
@@ -253,6 +300,10 @@ class SqlAlchemyAuthRepository(AuthRepository):
             role=row["role"],
             tenant_id=row["tenant_id"],
             workspace_id=row["workspace_id"],
+            password_hash=row.get("password_hash", ""),
+            password_changed_at=row.get("password_changed_at"),
+            failed_login_count=int(row.get("failed_login_count") or 0),
+            locked_until=row.get("locked_until"),
             is_active=bool(row["is_active"]),
             created_at=float(row["created_at"]),
         )

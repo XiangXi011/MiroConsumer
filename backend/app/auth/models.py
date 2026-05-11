@@ -14,6 +14,10 @@ class User:
     role: str  # owner/admin/researcher/viewer/auditor/service
     tenant_id: str
     workspace_id: str
+    password_hash: str = ""
+    password_changed_at: Optional[float] = None
+    failed_login_count: int = 0
+    locked_until: Optional[float] = None
     is_active: bool = True
     created_at: float = field(default_factory=time.time)
 
@@ -32,15 +36,22 @@ class APIKey:
 
 # 角色权限映射
 ROLE_PERMISSIONS = {
-    "owner": {"project.read", "project.write", "simulation.run", "report.read",
-              "report.export", "asset.export", "admin.manage_users", "audit.read"},
-    "admin": {"project.read", "project.write", "simulation.run", "report.read",
-              "report.export", "asset.export", "admin.manage_users"},
-    "researcher": {"project.read", "project.write", "simulation.run", "report.read", "report.export"},
-    "viewer": {"project.read", "report.read"},
-    "auditor": {"project.read", "report.read", "audit.read"},
-    "service": {"project.read", "project.write", "simulation.run", "report.read",
-                "report.export", "asset.export"},
+    "owner": {"project.read", "project.write", "simulation.read", "simulation.run",
+              "report.read", "report.generate", "report.export", "asset.export",
+              "admin.manage_users", "audit.read"},
+    "admin": {"project.read", "project.write", "simulation.read", "simulation.run",
+              "report.read", "report.generate", "report.export", "asset.export",
+              "admin.manage_users"},
+    "super_admin": {"project.read", "project.write", "simulation.read", "simulation.run",
+                    "report.read", "report.generate", "report.export", "asset.export",
+                    "admin.manage_users", "audit.read", "tenant.cross_access"},
+    "analyst": {"project.read", "simulation.read", "report.read", "report.export"},
+    "researcher": {"project.read", "project.write", "simulation.read", "simulation.run",
+                   "report.read", "report.generate", "report.export"},
+    "viewer": {"project.read", "simulation.read", "report.read"},
+    "auditor": {"project.read", "simulation.read", "report.read", "audit.read"},
+    "service": {"project.read", "project.write", "simulation.read", "simulation.run",
+                "report.read", "report.generate", "report.export", "asset.export"},
 }
 
 # 端点权限映射
@@ -87,5 +98,37 @@ def verify_api_key(raw_key: str, key_hash: str) -> bool:
         return False
     try:
         return bcrypt.checkpw(raw_key.encode("utf-8"), key_hash.encode("utf-8"))
+    except ValueError:
+        return False
+
+
+def validate_password_strength(password: str) -> Optional[str]:
+    """Return a validation message when password policy fails."""
+    if not password:
+        return "password is required"
+    if len(password) < 10:
+        return "password must be at least 10 characters"
+    has_alpha = any(ch.isalpha() for ch in password)
+    has_digit = any(ch.isdigit() for ch in password)
+    if not has_alpha or not has_digit:
+        return "password must contain at least one letter and one number"
+    return None
+
+
+def hash_password(password: str, rounds: int = 12) -> str:
+    """Hash a login password with bcrypt for storage."""
+    error = validate_password_strength(password)
+    if error:
+        raise ValueError(error)
+    salt = bcrypt.gensalt(rounds=rounds)
+    return bcrypt.hashpw(password.encode("utf-8"), salt).decode("utf-8")
+
+
+def verify_password(password: str, password_hash: str) -> bool:
+    """Verify a login password against a stored bcrypt hash."""
+    if not password or not password_hash:
+        return False
+    try:
+        return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
     except ValueError:
         return False

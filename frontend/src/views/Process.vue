@@ -481,9 +481,9 @@ const goHome = () => {
 }
 
 const goToNextStep = () => {
-  // TODO: 进入环境搭建步骤
-  alert('环境搭建功能开发中...')
+  error.value = 'Legacy process view is inactive; continue from the main workflow.'
 }
+
 
 const toggleFullScreen = () => {
   isFullScreen.value = !isFullScreen.value

@@ -43,7 +43,7 @@ class RuntimeControlLayer:
     def save_checkpoint(self, round_id: int, state: Dict, metrics: Dict):
         """保存 checkpoint"""
         state_str = json.dumps(state, sort_keys=True, default=str)
-        state_hash = hashlib.md5(state_str.encode()).hexdigest()
+        state_hash = hashlib.sha256(state_str.encode()).hexdigest()
         cp = RoundCheckpoint(
             round_id=round_id,
             state_hash=state_hash,

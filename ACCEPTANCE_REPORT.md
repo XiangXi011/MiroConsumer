@@ -1,78 +1,44 @@
-# MiroConsumer 改进验收报告
+﻿# MiroConsumer Phase7 Acceptance Report
 
-> 每完成一个任务，由 Hermes 审计并记录验收结果
-> 验收依据：`IMPROVEMENT_CHECKLIST.md` 中的验收标准
+Date: 2026-05-11
+Branch: phase7/gatekeeper-comprehensive-fixes
 
----
+## Gatekeeper Summary
 
-## 任务 1：Production Safety Gate
-**状态**：⏳ 待执行
-**执行者**：Claude Code (mimo-v2.5-pro)
-**验收者**：Hermes
+Status: conditionally accepted for code/security review, with one host-environment blocker for local Docker image build and Trivy image scan.
 
-### 验收项
+The Phase7 P0/P1 code repair set is implemented and covered by backend/frontend/security tests. The remaining blocker is not a code bypass: Docker Desktop's daemon is not reachable from this machine, so `docker build -t miroconsumer:test .` and the follow-up local `trivy image` scan could not execute here.
 
-| # | 验收标准 | 结果 | 备注 |
-|---|---------|------|------|
-| 1 | CORS 严格限定 `CORS_ALLOWED_ORIGINS`，不含 `*` | ⬜ | |
-| 2 | 安全头全量注入 | ⬜ | |
-| 3 | SECRET_KEY 启动时校验 | ⬜ | |
-| 4 | 健康检查不泄露敏感信息 | ⬜ | |
-| 5 | 全局 API 限流中间件 | ⬜ | |
-| 6 | 结构化日志输出 | ⬜ | |
-| 7 | 请求体大小限制 | ⬜ | |
+## P0 Acceptance
 
-### 验收结论
-待执行
+| Area | Result | Evidence |
+|---|---|---|
+| Password login | Pass | Register/login require password; bcrypt hash/verify tests added. |
+| JWT secret validation | Pass | Weak/missing/short secrets rejected; HS256/claims/expiry/forgery tests pass. |
+| Redis-capable rate limiter | Pass | Memory and Redis fixed-window semantics covered by tests. |
+| TenantGuard isolation | Pass | Tenant-bound admin and cross-tenant super_admin behavior tested. |
+| Permission coverage | Pass | Missing route permission contract tests added. |
 
-### 发现的问题
-（待记录）
+## P1 Acceptance
 
----
+| Area | Result | Evidence |
+|---|---|---|
+| Docker Trivy workflow | Pass | Workflow builds local image, pinned Trivy scan runs before push; CI contract tests pass. |
+| Frontend navigation | Pass | `Process.vue` alert removed; Step1 renders error state and routes success to `Simulation`; Vitest passes. |
+| Audit log | Pass | JSONL redaction tests pass. |
+| Health/readiness | Pass | `/health` and `/ready` readiness tests pass. |
+| OpenAPI/errors | Pass | Auth password schema and security schemes tested; structured error response tests pass. |
+| Dependency/SAST audit | Pass | Bandit and pip-audit pass after SHA-256, HTTP/HTTPS URL guard, and dependency overrides. |
 
-## 任务 2：Methodology Disclaimers
-**状态**：⬜ 未开始
+## Verification Snapshot
 
----
+- Backend: `1915 passed, 3 skipped`, coverage 73%.
+- Frontend: build success; `25 passed`, `288 tests`.
+- Bandit: no issues identified; no `#nosec` skips.
+- pip-audit: no known vulnerabilities for both the bare tool command and the backend project environment.
+- Docker local build/scan: blocked by unavailable Docker daemon, documented in `TEST_RESULT.md`.
 
-## 任务 3：API Contract Hardening
-**状态**：⬜ 未开始
+## Residual Risk
 
----
-
-## 任务 4：LLM Governance
-**状态**：⬜ 未开始
-
----
-
-## 任务 5：Test & CI Baseline
-**状态**：⬜ 未开始
-
----
-
-## 任务 6：Consumer Agent v1
-**状态**：⬜ 未开始
-
----
-
-## 任务 7：Population Model v1
-**状态**：⬜ 未开始
-
----
-
-## 任务 8：Monte Carlo Control Layer
-**状态**：⬜ 未开始
-
----
-
-## 任务 9：Social Graph Realism
-**状态**：⬜ 未开始
-
----
-
-## 任务 10：Database & API Integration
-**状态**：⬜ 未开始
-
----
-
-**最后更新**：2026-05-07
+- `backend/app/services/consumer/confidence_scoring.py` still contains a documented `replay_score = 0.5` placeholder; it is not part of the P0/P1 security gate but should be scheduled.
+- Local Docker verification must be rerun on a host where Docker Desktop service/daemon is available.

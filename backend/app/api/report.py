@@ -21,6 +21,7 @@ from ..services.application.comparison_app_service import ComparisonAppService
 from ..contracts.errors import ConcurrencyConflictError
 from ..utils.pagination import paginate_query
 from ..auth.middleware import require_permission
+from ..auth.tenant_guard import TenantAccessDenied, TenantGuard, tenant_forbidden_response
 from ..middleware.rate_limiter import export_rate_limit
 from ..repositories import SimulationRepository
 from ..repositories.factory import create_repository_bundle
@@ -78,7 +79,7 @@ def _value_error_response(e: ValueError):
 # ============== 报告生成接口 ==============
 
 @report_bp.route('/generate', methods=['POST'])
-@require_permission('report.read')
+@require_permission('report.generate')
 def generate_report():
     """
     生成模拟分析报告（异步任务）
@@ -132,6 +133,7 @@ def generate_report():
 
 
 @report_bp.route('/generate/status', methods=['POST'])
+@require_permission('report.read')
 def get_generate_status():
     """
     查询报告生成任务进度
@@ -186,6 +188,7 @@ def get_generate_status():
 # ============== 报告获取接口 ==============
 
 @report_bp.route('/<report_id>', methods=['GET'])
+@require_permission('report.read')
 def get_report(report_id: str):
     """
     获取报告详情
@@ -236,6 +239,7 @@ def get_report(report_id: str):
 
 
 @report_bp.route('/by-simulation/<simulation_id>', methods=['GET'])
+@require_permission('report.read')
 def get_report_by_simulation(simulation_id: str):
     """
     根据模拟ID获取报告
@@ -273,6 +277,7 @@ def get_report_by_simulation(simulation_id: str):
 
 
 @report_bp.route('/list', methods=['GET'])
+@require_permission('report.read')
 def list_reports():
     """
     列出所有报告（分页）
@@ -375,6 +380,7 @@ def download_report(report_id: str):
 
 
 @report_bp.route('/<report_id>', methods=['DELETE'])
+@require_permission('report.generate')
 def delete_report(report_id: str):
     """删除报告"""
     try:
@@ -399,6 +405,7 @@ def delete_report(report_id: str):
 # ============== Report Agent对话接口 ==============
 
 @report_bp.route('/chat', methods=['POST'])
+@require_permission('report.read')
 def chat_with_report_agent():
     """
     与Report Agent对话
@@ -470,6 +477,7 @@ def chat_with_report_agent():
 # ============== 报告进度与分章节接口 ==============
 
 @report_bp.route('/<report_id>/progress', methods=['GET'])
+@require_permission('report.read')
 def get_report_progress(report_id: str):
     """
     获取报告生成进度（实时）
@@ -507,6 +515,7 @@ def get_report_progress(report_id: str):
 
 
 @report_bp.route('/<report_id>/sections', methods=['GET'])
+@require_permission('report.read')
 def get_report_sections(report_id: str):
     """
     获取已生成的章节列表（分章节输出）
@@ -545,6 +554,7 @@ def get_report_sections(report_id: str):
 
 
 @report_bp.route('/<report_id>/section/<int:section_index>', methods=['GET'])
+@require_permission('report.read')
 def get_single_section(report_id: str, section_index: int):
     """
     获取单个章节内容
@@ -587,6 +597,7 @@ def get_single_section(report_id: str, section_index: int):
 # ============== 报告状态检查接口 ==============
 
 @report_bp.route('/check/<simulation_id>', methods=['GET'])
+@require_permission('report.read')
 def check_report_status(simulation_id: str):
     """
     检查模拟是否有报告，以及报告状态
@@ -621,6 +632,7 @@ def check_report_status(simulation_id: str):
 # ============== Agent 日志接口 ==============
 
 @report_bp.route('/<report_id>/agent-log', methods=['GET'])
+@require_permission('audit.read')
 def get_agent_log(report_id: str):
     """
     获取 Report Agent 的详细执行日志
@@ -676,6 +688,7 @@ def get_agent_log(report_id: str):
 
 
 @report_bp.route('/<report_id>/agent-log/stream', methods=['GET'])
+@require_permission('audit.read')
 def stream_agent_log(report_id: str):
     """
     获取完整的 Agent 日志（一次性获取全部）
@@ -708,6 +721,7 @@ def stream_agent_log(report_id: str):
 # ============== 控制台日志接口 ==============
 
 @report_bp.route('/<report_id>/console-log', methods=['GET'])
+@require_permission('audit.read')
 def get_console_log(report_id: str):
     """
     获取 Report Agent 的控制台输出日志
@@ -750,6 +764,7 @@ def get_console_log(report_id: str):
 
 
 @report_bp.route('/<report_id>/console-log/stream', methods=['GET'])
+@require_permission('audit.read')
 def stream_console_log(report_id: str):
     """
     获取完整的控制台日志（一次性获取全部）
@@ -782,6 +797,7 @@ def stream_console_log(report_id: str):
 # ============== 工具调用接口（供调试使用）==============
 
 @report_bp.route('/tools/search', methods=['POST'])
+@require_permission('report.read')
 def search_graph_tool():
     """
     图谱搜索工具接口（供调试使用）
@@ -827,6 +843,7 @@ def search_graph_tool():
 
 
 @report_bp.route('/tools/statistics', methods=['POST'])
+@require_permission('report.read')
 def get_graph_statistics_tool():
     """
     图谱统计工具接口（供调试使用）
@@ -912,6 +929,7 @@ def export_research_asset():
 
 
 @report_bp.route('/research-assets', methods=['GET'])
+@require_permission('project.read')
 def list_research_assets():
     """
     List research asset packs for a project.
@@ -938,6 +956,7 @@ def list_research_assets():
 
 
 @report_bp.route('/research-assets/<asset_id>', methods=['GET'])
+@require_permission('project.read')
 def get_research_asset(asset_id: str):
     """
     Get a single research asset pack.
@@ -959,6 +978,7 @@ def get_research_asset(asset_id: str):
 # ============== 对比快照接口 ==============
 
 @report_bp.route('/compare', methods=['POST'])
+@require_permission('report.generate')
 def create_comparison_snapshot():
     """
     Create a persisted comparison snapshot.
@@ -985,6 +1005,7 @@ def create_comparison_snapshot():
 
 
 @report_bp.route('/comparisons', methods=['GET'])
+@require_permission('report.read')
 def list_comparison_snapshots():
     """
     List comparison snapshots.
@@ -1011,6 +1032,7 @@ def list_comparison_snapshots():
 
 
 @report_bp.route('/comparisons/<comparison_id>', methods=['GET'])
+@require_permission('report.read')
 def get_comparison_snapshot(comparison_id: str):
     """
     Get a single comparison snapshot.
@@ -1032,6 +1054,7 @@ def get_comparison_snapshot(comparison_id: str):
 # ============== 基准测试接口 ==============
 
 @report_bp.route('/benchmarks/register', methods=['POST'])
+@require_permission('report.generate')
 def register_benchmark_route():
     """
     Register a new benchmark case.
@@ -1065,6 +1088,7 @@ def register_benchmark_route():
 
 
 @report_bp.route('/benchmarks', methods=['GET'])
+@require_permission('report.read')
 def list_benchmarks_route():
     """
     List all registered benchmarks.
@@ -1081,6 +1105,7 @@ def list_benchmarks_route():
 
 
 @report_bp.route('/benchmarks/<benchmark_id>', methods=['GET'])
+@require_permission('report.read')
 def get_benchmark_route(benchmark_id: str):
     """
     Get a single benchmark by ID.
@@ -1099,6 +1124,7 @@ def get_benchmark_route(benchmark_id: str):
 
 
 @report_bp.route('/benchmarks/<benchmark_id>/replay', methods=['POST'])
+@require_permission('report.generate')
 def replay_benchmark_route(benchmark_id: str):
     """
     Replay a benchmark against the current simulation report context.
@@ -1135,6 +1161,7 @@ def replay_benchmark_route(benchmark_id: str):
 
 
 @report_bp.route('/benchmark-replays/<replay_id>', methods=['GET'])
+@require_permission('report.read')
 def get_replay_result_route(replay_id: str):
     """
     Get a single replay result by ID.

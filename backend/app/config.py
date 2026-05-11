@@ -37,6 +37,7 @@ class Config:
 
     # Flask配置
     SECRET_KEY = os.environ.get('SECRET_KEY', '')
+    JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY', '')
     DEBUG = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
     CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:3000')
 
@@ -56,6 +57,10 @@ class Config:
 
     RATE_LIMIT_ENABLED = os.environ.get('RATE_LIMIT_ENABLED', 'false').lower() == 'true'
     RATE_LIMIT_PER_MINUTE = int(os.environ.get('RATE_LIMIT_PER_MINUTE', '60'))
+    RATE_LIMIT_BACKEND = os.environ.get('RATE_LIMIT_BACKEND', 'memory').lower()
+    AUTH_RATE_LIMIT_PER_MINUTE = int(os.environ.get('AUTH_RATE_LIMIT_PER_MINUTE', '10'))
+    EXPORT_RATE_LIMIT_PER_MINUTE = int(os.environ.get('EXPORT_RATE_LIMIT_PER_MINUTE', '10'))
+    AUDIT_LOG_PATH = os.environ.get('AUDIT_LOG_PATH', '')
     LOG_FORMAT = os.environ.get('LOG_FORMAT', 'json')
     SECURITY_HEADERS_ENABLED = os.environ.get('SECURITY_HEADERS_ENABLED', 'true').lower() == 'true'
     CSP_POLICY = os.environ.get('CSP_POLICY', '')
@@ -260,6 +265,14 @@ class Config:
                 errors.append(f"DB_URL unsupported scheme: {db_url.split('://')[0] if '://' in db_url else db_url}")
 
         queue_backend = cls.QUEUE_BACKEND
+        valid_rate_limit_backends = ('memory', 'redis')
+        if cls.RATE_LIMIT_BACKEND not in valid_rate_limit_backends:
+            errors.append(f"RATE_LIMIT_BACKEND must be one of {valid_rate_limit_backends}, got: {cls.RATE_LIMIT_BACKEND}")
+        if cls.RATE_LIMIT_ENABLED and cls.RATE_LIMIT_BACKEND == 'redis' and not cls.REDIS_URL:
+            errors.append("REDIS_URL is required when RATE_LIMIT_BACKEND=redis")
+        if cls.RATE_LIMIT_ENABLED and cls.RATE_LIMIT_BACKEND == 'memory' and not (cls.DEBUG or getattr(cls, 'TESTING', False)):
+            errors.append("memory rate limiter is not allowed in production")
+
         valid_backends = ('thread', 'sqlite', 'rq')
         if queue_backend not in valid_backends:
             errors.append(f"QUEUE_BACKEND must be one of {valid_backends}, got: {queue_backend}")

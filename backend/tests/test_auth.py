@@ -20,7 +20,7 @@ def auth_app():
     """创建带认证系统的测试应用"""
     app = Flask(__name__)
     app.config['TESTING'] = True
-    app.config['SECRET_KEY'] = 'test-secret-key'
+    app.config['SECRET_KEY'] = 'test-secret-key-for-auth-suite-123456'
     app.config['AUTH_BYPASS_IN_TESTING'] = False
 
     init_auth(app)
@@ -65,7 +65,8 @@ def registered_user(auth_client):
         'username': 'testuser',
         'email': 'test@example.com',
         'role': 'researcher',
-        'tenant_id': 'tenant1'
+        'tenant_id': 'tenant1',
+        'password': 'StrongPassword123!'
     })
     data = resp.get_json()
     return data['data']
@@ -78,7 +79,8 @@ def admin_user(auth_client):
         'username': 'admin',
         'email': 'admin@example.com',
         'role': 'admin',
-        'tenant_id': 'tenant1'
+        'tenant_id': 'tenant1',
+        'password': 'StrongPassword123!'
     })
     data = resp.get_json()
     return data['data']
@@ -91,7 +93,8 @@ def viewer_user(auth_client):
         'username': 'viewer',
         'email': 'viewer@example.com',
         'role': 'viewer',
-        'tenant_id': 'tenant1'
+        'tenant_id': 'tenant1',
+        'password': 'StrongPassword123!'
     })
     data = resp.get_json()
     return data['data']
@@ -99,7 +102,7 @@ def viewer_user(auth_client):
 
 def _get_jwt(auth_client, user_id):
     """Helper: 登录并获取 JWT"""
-    resp = auth_client.post('/api/auth/login', json={'user_id': user_id})
+    resp = auth_client.post('/api/auth/login', json={'user_id': user_id, 'password': 'StrongPassword123!'})
     return resp.get_json()['data']['token']
 
 
@@ -352,7 +355,7 @@ class TestRegistration:
     def test_register_invalid_role(self, auth_client):
         """无效角色返回 400"""
         resp = auth_client.post('/api/auth/register', json={
-            'username': 'test', 'email': 'test@test.com', 'role': 'invalid'
+            'username': 'test', 'email': 'test@test.com', 'role': 'invalid', 'password': 'StrongPassword123!'
         })
         assert resp.status_code == 400
         assert 'Invalid role' in resp.get_json()['message']
@@ -360,7 +363,7 @@ class TestRegistration:
     def test_register_success(self, auth_client):
         """注册成功返回用户信息"""
         resp = auth_client.post('/api/auth/register', json={
-            'username': 'newuser', 'email': 'new@test.com'
+            'username': 'newuser', 'email': 'new@test.com', 'password': 'StrongPassword123!'
         })
         assert resp.status_code == 201
         data = resp.get_json()['data']

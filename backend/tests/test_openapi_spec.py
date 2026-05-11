@@ -38,7 +38,7 @@ def _documented_v1_operations(spec):
 class TestConfig(Config):
     TESTING = True
     DEBUG = True
-    SECRET_KEY = "test-secret-key-for-openapi"
+    SECRET_KEY = "test-secret-key-for-openapi-suite-123456"
     LOG_FORMAT = "text"
     CORS_ALLOWED_ORIGINS = "http://localhost:3000"
     _db_url_cache = ""
@@ -62,11 +62,12 @@ def test_v1_auth_register_and_login_routes_are_public():
         "email": "v1@example.com",
         "role": "researcher",
         "tenant_id": "tenant-v1",
+        "password": "StrongPassword123!",
     })
     assert register_response.status_code == 201
     user_id = register_response.get_json()["data"]["user_id"]
 
-    login_response = client.post("/api/v1/auth/login", json={"user_id": user_id})
+    login_response = client.post("/api/v1/auth/login", json={"user_id": user_id, "password": "StrongPassword123!"})
     assert login_response.status_code == 200
     payload = login_response.get_json()
     assert payload["success"] is True
@@ -144,8 +145,12 @@ def test_openapi_spec_exposes_core_request_and_response_schemas():
     ]:
         assert name in schemas
 
-    assert schemas["RegisterUserRequest"]["required"] == ["username", "email"]
+    assert schemas["RegisterUserRequest"]["required"] == ["username", "email", "password"]
     assert "tenant_id" in schemas["RegisterUserRequest"]["properties"]
+    assert "password" in schemas["RegisterUserRequest"]["properties"]
+    assert "password" in schemas["LoginRequest"]["required"]
+    assert "BearerAuth" in spec["components"]["securitySchemes"]
+    assert "ApiKeyAuth" in spec["components"]["securitySchemes"]
     assert "role" in schemas["RegisterUserRequest"]["properties"]
     assert "scopes" in schemas["CreateApiKeyRequest"]["properties"]
     assert "simulation_id" in schemas["GenerateReportRequest"]["required"]

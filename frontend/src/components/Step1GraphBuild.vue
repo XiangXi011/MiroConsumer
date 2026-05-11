@@ -166,6 +166,9 @@
             <span v-if="creatingSimulation" class="spinner-sm"></span>
             {{ creatingSimulation ? $t('step1.creating') : $t('step1.enterEnvSetup') + ' ➝' }}
           </button>
+          <div v-if="createError" class="create-error" role="alert">
+            {{ createError }}
+          </div>
         </div>
       </div>
     </div>
@@ -209,10 +212,14 @@ defineEmits(['next-step'])
 const selectedOntologyItem = ref(null)
 const logContent = ref(null)
 const creatingSimulation = ref(false)
+const createError = ref('')
 
 // 进入环境搭建 - 创建 simulation 并跳转
 const handleEnterEnvSetup = async () => {
+  createError.value = ''
+
   if (!props.projectData?.project_id || !props.projectData?.graph_id) {
+    createError.value = 'Missing project or graph information.'
     console.error('缺少项目或图谱信息')
     return
   }
@@ -234,12 +241,12 @@ const handleEnterEnvSetup = async () => {
         params: { simulationId: res.data.simulation_id }
       })
     } else {
-      console.error('创建模拟失败:', res.error)
-      alert(t('step1.createSimulationFailed', { error: res.error || t('common.unknownError') }))
+      console.error('Create simulation failed:', res.error)
+      createError.value = t('step1.createSimulationFailed', { error: res.error || t('common.unknownError') })
     }
   } catch (err) {
-    console.error('创建模拟异常:', err)
-    alert(t('step1.createSimulationException', { error: err.message }))
+    console.error('Create simulation exception:', err)
+    createError.value = t('step1.createSimulationException', { error: err.message || t('common.unknownError') })
   } finally {
     creatingSimulation.value = false
   }
@@ -621,6 +628,17 @@ watch(() => props.systemLogs.length, () => {
 .action-btn:disabled {
   background: #CCC;
   cursor: not-allowed;
+}
+
+.create-error {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid #F5C2C7;
+  border-radius: 4px;
+  background: #FFF5F5;
+  color: #B42318;
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .progress-section {

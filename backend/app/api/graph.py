@@ -6,7 +6,7 @@
 import json
 import os
 from pathlib import Path
-from flask import request, jsonify
+from flask import request, jsonify, g
 from ..utils.request_validator import safe_get_json
 
 from . import graph_bp, api_error_payload
@@ -25,6 +25,8 @@ from ..utils.locale import t
 from ..models.task import TaskManager, TaskStatus
 from ..models.project import ProjectManager, ProjectStatus
 from ..services.application.graph_app_service import GraphAppService
+from ..auth.middleware import require_permission
+from ..auth.tenant_guard import TenantAccessDenied, TenantGuard, tenant_forbidden_response
 
 # 获取日志器
 logger = get_logger('miroconsumer.api')
@@ -110,6 +112,7 @@ def list_persona_packs():
 # ============== 项目管理接口 ==============
 
 @graph_bp.route('/project/<project_id>/persona-packs', methods=['POST'])
+@require_permission('project.write')
 def upload_project_persona_pack(project_id: str):
     """Upload a custom persona pack for an existing project."""
     project = ProjectManager.get_project(project_id)
@@ -118,6 +121,10 @@ def upload_project_persona_pack(project_id: str):
             "success": False,
             "error": t('api.projectNotFound', id=project_id)
         }), 404
+    try:
+        TenantGuard.assert_project_access(project)
+    except TenantAccessDenied:
+        return jsonify(tenant_forbidden_response()[0]), tenant_forbidden_response()[1]
 
     persona_pack_file = request.files.get('persona_pack_file')
     if not persona_pack_file or not persona_pack_file.filename:
@@ -163,6 +170,7 @@ def upload_project_persona_pack(project_id: str):
 
 
 @graph_bp.route('/project/<project_id>', methods=['GET'])
+@require_permission('project.read')
 def get_project(project_id: str):
     """
     获取项目详情
@@ -174,6 +182,10 @@ def get_project(project_id: str):
             "success": False,
             "error": t('api.projectNotFound', id=project_id)
         }), 404
+    try:
+        TenantGuard.assert_project_access(project)
+    except TenantAccessDenied:
+        return jsonify(tenant_forbidden_response()[0]), tenant_forbidden_response()[1]
 
     return jsonify({
         "success": True,
@@ -182,12 +194,16 @@ def get_project(project_id: str):
 
 
 @graph_bp.route('/project/list', methods=['GET'])
+@require_permission('project.read')
 def list_projects():
     """
     列出所有项目
     """
     limit = request.args.get('limit', 50, type=int)
     projects = ProjectManager.list_projects(limit=limit)
+    current_user = getattr(g, 'current_user', None)
+    if current_user:
+        projects = [p for p in projects if TenantGuard.can_access_tenant(current_user, getattr(p, 'tenant_id', None))]
     
     return jsonify({
         "success": True,
@@ -197,10 +213,17 @@ def list_projects():
 
 
 @graph_bp.route('/project/<project_id>', methods=['DELETE'])
+@require_permission('project.write')
 def delete_project(project_id: str):
     """
     删除项目
     """
+    project = ProjectManager.get_project(project_id)
+    if project:
+        try:
+            TenantGuard.assert_project_access(project)
+        except TenantAccessDenied:
+            return jsonify(tenant_forbidden_response()[0]), tenant_forbidden_response()[1]
     success = ProjectManager.delete_project(project_id)
     
     if not success:
@@ -216,6 +239,7 @@ def delete_project(project_id: str):
 
 
 @graph_bp.route('/project/<project_id>/reset', methods=['POST'])
+@require_permission('project.write')
 def reset_project(project_id: str):
     """
     重置项目状态（用于重新构建图谱）
@@ -227,6 +251,11 @@ def reset_project(project_id: str):
             "success": False,
             "error": t('api.projectNotFound', id=project_id)
         }), 404
+
+    try:
+        TenantGuard.assert_project_access(project)
+    except TenantAccessDenied:
+        return jsonify(tenant_forbidden_response()[0]), tenant_forbidden_response()[1]
 
     # 重置到本体已生成状态
     if project.ontology:
@@ -250,6 +279,7 @@ def reset_project(project_id: str):
 # ============== 接口1：上传文件并生成本体 ==============
 
 @graph_bp.route('/ontology/generate', methods=['POST'])
+@require_permission('project.write')
 def generate_ontology():
     """
     接口1：上传文件，分析生成本体定义
@@ -305,7 +335,7 @@ def generate_ontology():
             }), 400
         
         # 创建项目
-        project = ProjectManager.create_project(name=project_name)
+        project = ProjectManager.create_project(name=project_name, tenant_id=getattr(g, 'current_tenant', '') or '')
         project.simulation_requirement = simulation_requirement
         project.project_type = project_type
         logger.info(f"创建项目: {project.project_id}")
@@ -432,6 +462,7 @@ def generate_ontology():
 # ============== 接口2：构建图谱 ==============
 
 @graph_bp.route('/build', methods=['POST'])
+@require_permission('project.write')
 def build_graph():
     """
     接口2：根据project_id构建图谱
@@ -594,6 +625,7 @@ def build_graph():
 # ============== 任务查询接口 ==============
 
 @graph_bp.route('/task/<task_id>', methods=['GET'])
+@require_permission('project.read')
 def get_task(task_id: str):
     """
     查询任务状态
@@ -613,6 +645,7 @@ def get_task(task_id: str):
 
 
 @graph_bp.route('/tasks', methods=['GET'])
+@require_permission('project.read')
 def list_tasks():
     """
     列出所有任务
@@ -629,6 +662,7 @@ def list_tasks():
 # ============== 图谱数据接口 ==============
 
 @graph_bp.route('/data/<graph_id>', methods=['GET'])
+@require_permission('project.read')
 def get_graph_data(graph_id: str):
     """
     获取图谱数据（节点和边）
@@ -637,6 +671,11 @@ def get_graph_data(graph_id: str):
         if graph_id.startswith("consumer_"):
             project_id = graph_id[len("consumer_"):]
             project = ProjectManager.get_project(project_id)
+            if project:
+                try:
+                    TenantGuard.assert_project_access(project)
+                except TenantAccessDenied:
+                    return jsonify(tenant_forbidden_response()[0]), tenant_forbidden_response()[1]
             graph_payload = _get_consumer_graph_payload(project)
             if graph_payload:
                 return jsonify({
@@ -667,6 +706,7 @@ def get_graph_data(graph_id: str):
 
 
 @graph_bp.route('/delete/<graph_id>', methods=['DELETE'])
+@require_permission('project.write')
 def delete_graph(graph_id: str):
     """
     删除Zep图谱
@@ -675,6 +715,11 @@ def delete_graph(graph_id: str):
         if graph_id.startswith("consumer_"):
             project_id = graph_id[len("consumer_"):]
             project = ProjectManager.get_project(project_id)
+            if project:
+                try:
+                    TenantGuard.assert_project_access(project)
+                except TenantAccessDenied:
+                    return jsonify(tenant_forbidden_response()[0]), tenant_forbidden_response()[1]
             graph_payload = _get_consumer_graph_payload(project)
 
             if not project or graph_id != project.graph_id or not graph_payload:

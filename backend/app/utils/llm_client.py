@@ -117,7 +117,7 @@ class LLMClient:
             kwargs["timeout"] = request_timeout
 
         start_time = time.time()
-        prompt_hash = hashlib.md5(str(messages).encode()).hexdigest()[:8]
+        prompt_hash = hashlib.sha256(str(messages).encode()).hexdigest()[:8]
         try:
             response = self.client.chat.completions.create(**kwargs)
         except Exception:
@@ -210,7 +210,7 @@ class LLMClient:
             kwargs["timeout"] = request_timeout
 
         start_time = time.time()
-        prompt_hash = hashlib.md5(str(messages).encode()).hexdigest()[:8]
+        prompt_hash = hashlib.sha256(str(messages).encode()).hexdigest()[:8]
         try:
             response = self.client.chat.completions.create(**kwargs)
         except Exception:

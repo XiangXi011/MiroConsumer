@@ -23,12 +23,13 @@ class TestTenantIsolation:
             'email': f'{tenant_id}_{role}@test.com',
             'role': role,
             'tenant_id': tenant_id,
+            'password': 'StrongPassword123!',
         })
         data = resp.get_json().get('data', {})
         user_id = data.get('user_id')
         if not user_id:
             return None
-        resp = client.post('/api/auth/login', json={'user_id': user_id})
+        resp = client.post('/api/auth/login', json={'user_id': user_id, 'password': 'StrongPassword123!'})
         return resp.get_json().get('data', {}).get('token')
 
     def test_create_simulation_records_tenant(self, client):

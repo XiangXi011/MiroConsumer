@@ -33,6 +33,7 @@ from ..contracts.simulation_contracts import (
 )
 from pydantic import ValidationError as PydanticValidationError
 from ..auth.middleware import require_permission
+from ..auth.tenant_guard import TenantAccessDenied, TenantGuard, tenant_forbidden_response
 from ..middleware.rate_limiter import export_rate_limit
 
 logger = get_logger('miroconsumer.api.simulation')
@@ -72,6 +73,14 @@ def _check_simulation_prepared(simulation_id: str):
     return SimulationAppService.check_prepared(simulation_id)
 
 
+def _guard_simulation_state(state):
+    try:
+        TenantGuard.assert_simulation_access(state)
+    except TenantAccessDenied:
+        return jsonify(tenant_forbidden_response()[0]), tenant_forbidden_response()[1]
+    return None
+
+
 # Interview prompt 优化前缀
 # 添加此前缀可以避免Agent调用工具，直接用文本回复
 INTERVIEW_PROMPT_PREFIX = "结合你的人设、所有的过往记忆与行动，不调用任何工具直接用文本回复我："
@@ -98,6 +107,7 @@ def optimize_interview_prompt(prompt: str) -> str:
 # ============== 实体读取接口 ==============
 
 @simulation_bp.route('/entities/<graph_id>', methods=['GET'])
+@require_permission('simulation.read')
 def get_graph_entities(graph_id: str):
     """
     获取图谱中的所有实体（已过滤）
@@ -139,6 +149,7 @@ def get_graph_entities(graph_id: str):
 
 
 @simulation_bp.route('/entities/<graph_id>/<entity_uuid>', methods=['GET'])
+@require_permission('simulation.read')
 def get_entity_detail(graph_id: str, entity_uuid: str):
     """获取单个实体的详细信息"""
     try:
@@ -168,6 +179,7 @@ def get_entity_detail(graph_id: str, entity_uuid: str):
 
 
 @simulation_bp.route('/entities/<graph_id>/by-type/<entity_type>', methods=['GET'])
+@require_permission('simulation.read')
 def get_entities_by_type(graph_id: str, entity_type: str):
     """获取指定类型的所有实体"""
     try:
@@ -256,7 +268,10 @@ def create_simulation():
         project_id = data.get('project_id', '')
         if project_id:
             manager = SimulationManager()
-            existing_sims = manager.list_simulations(project_id=project_id)
+            existing_sims = [
+                sim for sim in manager.list_simulations(project_id=project_id)
+                if TenantGuard.can_access_tenant(getattr(g, 'current_user', None), getattr(sim, 'tenant_id', None))
+            ]
             if existing_sims:
                 return jsonify({
                     "success": True,
@@ -278,6 +293,7 @@ def create_simulation():
 
 
 @simulation_bp.route('/prepare', methods=['POST'])
+@require_permission('simulation.run')
 def prepare_simulation():
     """
     准备模拟环境（异步任务，LLM智能生成所有参数）
@@ -349,6 +365,7 @@ def prepare_simulation():
 
 
 @simulation_bp.route('/prepare/status', methods=['POST'])
+@require_permission('simulation.read')
 def get_prepare_status():
     """查询准备任务进度"""
     try:
@@ -367,6 +384,7 @@ def get_prepare_status():
 
 
 @simulation_bp.route('/<simulation_id>', methods=['GET'])
+@require_permission('simulation.read')
 def get_simulation(simulation_id: str):
     """获取模拟状态"""
     try:
@@ -416,6 +434,9 @@ def export_simulation(simulation_id):
     state = manager.get_simulation(simulation_id)
     if not state:
         return error_response(ErrorCodes.SIMULATION_NOT_FOUND)
+    denied = _guard_simulation_state(state)
+    if denied:
+        return denied
 
     result = state.to_dict()
 
@@ -434,6 +455,7 @@ def export_simulation(simulation_id):
 
 
 @simulation_bp.route('/list', methods=['GET'])
+@require_permission('simulation.read')
 def list_simulations():
     """
     列出所有模拟
@@ -523,6 +545,7 @@ def _get_report_id_for_simulation(simulation_id: str) -> str:
 
 
 @simulation_bp.route('/history', methods=['GET'])
+@require_permission('simulation.read')
 def get_simulation_history():
     """
     获取历史模拟列表（带项目详情）
@@ -638,6 +661,7 @@ def get_simulation_history():
 
 
 @simulation_bp.route('/<simulation_id>/profiles', methods=['GET'])
+@require_permission('simulation.read')
 def get_simulation_profiles(simulation_id: str):
     """
     获取模拟的Agent Profile
@@ -672,6 +696,7 @@ def get_simulation_profiles(simulation_id: str):
 
 
 @simulation_bp.route('/<simulation_id>/profiles/realtime', methods=['GET'])
+@require_permission('simulation.read')
 def get_simulation_profiles_realtime(simulation_id: str):
     """
     实时获取模拟的Agent Profile（用于在生成过程中实时查看进度）
@@ -778,6 +803,7 @@ def get_simulation_profiles_realtime(simulation_id: str):
 
 
 @simulation_bp.route('/<simulation_id>/consumer-summary', methods=['GET'])
+@require_permission('simulation.read')
 def get_consumer_summary(simulation_id: str):
     """读取消费者传播快照并返回结构化摘要。
 
@@ -800,6 +826,7 @@ def get_consumer_summary(simulation_id: str):
 
 
 @simulation_bp.route('/<simulation_id>/branches', methods=['POST'])
+@require_permission('simulation.run')
 def create_branch(simulation_id: str):
     """Create a new branch for a consumer simulation."""
     try:
@@ -821,6 +848,7 @@ def create_branch(simulation_id: str):
 
 
 @simulation_bp.route('/<simulation_id>/branches', methods=['GET'])
+@require_permission('project.read')
 def list_branches(simulation_id: str):
     """List all branches for a simulation."""
     try:
@@ -837,6 +865,7 @@ def list_branches(simulation_id: str):
 
 
 @simulation_bp.route('/<simulation_id>/interventions', methods=['GET'])
+@require_permission('project.read')
 def list_interventions_for_simulation(simulation_id: str):
     """List interventions for a simulation (across all branches or filtered by branch_id)."""
     try:
@@ -854,6 +883,7 @@ def list_interventions_for_simulation(simulation_id: str):
 
 
 @simulation_bp.route('/<simulation_id>/branches/<branch_id>/interventions', methods=['POST'])
+@require_permission('simulation.run')
 def add_intervention(simulation_id: str, branch_id: str):
     """Add an intervention to a branch."""
     try:
@@ -875,6 +905,7 @@ def add_intervention(simulation_id: str, branch_id: str):
 
 
 @simulation_bp.route('/<simulation_id>/branches/<branch_id>/interventions', methods=['GET'])
+@require_permission('project.read')
 def list_interventions_for_branch(simulation_id: str, branch_id: str):
     """List interventions for a specific branch."""
     try:
@@ -891,6 +922,7 @@ def list_interventions_for_branch(simulation_id: str, branch_id: str):
 
 
 @simulation_bp.route('/<simulation_id>/branches/<branch_id>/comparison', methods=['GET'])
+@require_permission('project.read')
 def get_branch_comparison(simulation_id: str, branch_id: str):
     """Fetch branch comparison context with base-vs-branch summaries."""
     try:
@@ -904,6 +936,7 @@ def get_branch_comparison(simulation_id: str, branch_id: str):
 
 
 @simulation_bp.route('/<simulation_id>/branches/<branch_id>/resume', methods=['POST'])
+@require_permission('simulation.run')
 def resume_branch(simulation_id: str, branch_id: str):
     """Run or resume a branch simulation (consumer_test only)."""
     try:
@@ -922,6 +955,7 @@ def resume_branch(simulation_id: str, branch_id: str):
 
 
 @simulation_bp.route('/<simulation_id>/branches/<branch_id>/status', methods=['GET'])
+@require_permission('simulation.read')
 def get_branch_run_status_route(simulation_id: str, branch_id: str):
     """Get branch simulation run status."""
     try:
@@ -935,6 +969,7 @@ def get_branch_run_status_route(simulation_id: str, branch_id: str):
 
 
 @simulation_bp.route('/<simulation_id>/config/realtime', methods=['GET'])
+@require_permission('simulation.read')
 def get_simulation_config_realtime(simulation_id: str):
     """
     实时获取模拟配置（用于在生成过程中实时查看进度）
@@ -1051,6 +1086,7 @@ def get_simulation_config_realtime(simulation_id: str):
 
 
 @simulation_bp.route('/<simulation_id>/config', methods=['GET'])
+@require_permission('simulation.read')
 def get_simulation_config(simulation_id: str):
     """
     获取模拟配置（LLM智能生成的完整配置）
@@ -1084,6 +1120,7 @@ def get_simulation_config(simulation_id: str):
 
 @simulation_bp.route('/<simulation_id>/config/download', methods=['GET'])
 @export_rate_limit
+@require_permission('report.export')
 def download_simulation_config(simulation_id: str):
     """下载模拟配置文件"""
     try:
@@ -1110,6 +1147,7 @@ def download_simulation_config(simulation_id: str):
 
 @simulation_bp.route('/script/<script_name>/download', methods=['GET'])
 @export_rate_limit
+@require_permission('report.export')
 def download_simulation_script(script_name: str):
     """
     下载模拟运行脚本文件（通用脚本，位于 backend/scripts/）
@@ -1160,6 +1198,7 @@ def download_simulation_script(script_name: str):
 # ============== Profile生成接口（独立使用） ==============
 
 @simulation_bp.route('/generate-profiles', methods=['POST'])
+@require_permission('simulation.run')
 def generate_profiles():
     """
     直接从图谱生成OASIS Agent Profile（不创建模拟）
@@ -1303,6 +1342,7 @@ def start_simulation():
 
 
 @simulation_bp.route('/stop', methods=['POST'])
+@require_permission('simulation.run')
 def stop_simulation():
     """
     停止模拟
@@ -1370,6 +1410,7 @@ def stop_simulation():
 # ============== 实时状态监控接口 ==============
 
 @simulation_bp.route('/<simulation_id>/run-status', methods=['GET'])
+@require_permission('simulation.read')
 def get_run_status(simulation_id: str):
     """
     获取模拟运行实时状态（用于前端轮询）
@@ -1424,6 +1465,7 @@ def get_run_status(simulation_id: str):
 
 
 @simulation_bp.route('/<simulation_id>/run-status/detail', methods=['GET'])
+@require_permission('simulation.read')
 def get_run_status_detail(simulation_id: str):
     """
     获取模拟运行详细状态（包含所有动作）
@@ -1521,6 +1563,7 @@ def get_run_status_detail(simulation_id: str):
 
 
 @simulation_bp.route('/<simulation_id>/actions', methods=['GET'])
+@require_permission('simulation.read')
 def get_simulation_actions(simulation_id: str):
     """
     获取模拟中的Agent动作历史
@@ -1571,6 +1614,7 @@ def get_simulation_actions(simulation_id: str):
 
 
 @simulation_bp.route('/<simulation_id>/timeline', methods=['GET'])
+@require_permission('simulation.read')
 def get_simulation_timeline(simulation_id: str):
     """
     获取模拟时间线（按轮次汇总）
@@ -1607,6 +1651,7 @@ def get_simulation_timeline(simulation_id: str):
 
 
 @simulation_bp.route('/<simulation_id>/agent-stats', methods=['GET'])
+@require_permission('simulation.read')
 def get_agent_stats(simulation_id: str):
     """
     获取每个Agent的统计信息
@@ -1632,6 +1677,7 @@ def get_agent_stats(simulation_id: str):
 # ============== 数据库查询接口 ==============
 
 @simulation_bp.route('/<simulation_id>/posts', methods=['GET'])
+@require_permission('simulation.read')
 def get_simulation_posts(simulation_id: str):
     """
     获取模拟中的帖子
@@ -1706,6 +1752,7 @@ def get_simulation_posts(simulation_id: str):
 
 
 @simulation_bp.route('/<simulation_id>/comments', methods=['GET'])
+@require_permission('simulation.read')
 def get_simulation_comments(simulation_id: str):
     """
     获取模拟中的评论（仅Reddit）
@@ -1779,6 +1826,7 @@ def get_simulation_comments(simulation_id: str):
 # ============== Interview 采访接口 ==============
 
 @simulation_bp.route('/interview', methods=['POST'])
+@require_permission('simulation.run')
 def interview_agent():
     """
     采访单个Agent
@@ -1905,6 +1953,7 @@ def interview_agent():
 
 
 @simulation_bp.route('/interview/batch', methods=['POST'])
+@require_permission('simulation.run')
 def interview_agents_batch():
     """
     批量采访多个Agent
@@ -2040,6 +2089,7 @@ def interview_agents_batch():
 
 
 @simulation_bp.route('/interview/all', methods=['POST'])
+@require_permission('simulation.run')
 def interview_all_agents():
     """
     全局采访 - 使用相同问题采访所有Agent
@@ -2140,6 +2190,7 @@ def interview_all_agents():
 
 
 @simulation_bp.route('/interview/history', methods=['POST'])
+@require_permission('simulation.read')
 def get_interview_history():
     """
     获取Interview历史记录
@@ -2209,6 +2260,7 @@ def get_interview_history():
 
 
 @simulation_bp.route('/env-status', methods=['POST'])
+@require_permission('simulation.read')
 def get_env_status():
     """
     获取模拟环境状态
@@ -2271,6 +2323,7 @@ def get_env_status():
 
 
 @simulation_bp.route('/close-env', methods=['POST'])
+@require_permission('simulation.run')
 def close_simulation_env():
     """
     关闭模拟环境

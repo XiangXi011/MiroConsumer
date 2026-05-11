@@ -84,7 +84,7 @@ class PopulationFactory:
         seed: int,
     ) -> ConsumerSocietyAgent:
         persona_id = str(persona.get("persona_id", "persona")).strip() or "persona"
-        agent_hash = hashlib.sha1(f"{seed}:{layer}:{persona_id}:{index}".encode("utf-8")).hexdigest()[:10]
+        agent_hash = hashlib.sha256(f"{seed}:{layer}:{persona_id}:{index}".encode("utf-8")).hexdigest()[:10]
         role = variation["role"]
         if isinstance(role, str):
             role = ConsumerRole(role)

@@ -120,17 +120,23 @@ def _openapi_components() -> dict:
                     "email": {"type": "string", "format": "email"},
                     "role": {
                         "type": "string",
-                        "enum": ["owner", "admin", "researcher", "viewer", "auditor", "service"],
+                        "enum": ["owner", "admin", "super_admin", "researcher", "viewer", "auditor", "service", "analyst"],
                         "default": "researcher",
                     },
                     "tenant_id": {"type": "string", "default": "default"},
+                    "password": {"type": "string", "format": "password", "minLength": 10},
                 },
-                "required": ["username", "email"],
+                "required": ["username", "email", "password"],
             },
             "LoginRequest": {
                 "type": "object",
-                "properties": {"user_id": {"type": "string"}},
-                "required": ["user_id"],
+                "properties": {
+                    "username": {"type": "string"},
+                    "email": {"type": "string", "format": "email"},
+                    "user_id": {"type": "string"},
+                    "password": {"type": "string", "format": "password"},
+                },
+                "required": ["password"],
             },
             "CreateApiKeyRequest": {
                 "type": "object",
@@ -514,6 +520,18 @@ def create_app(config_class=Config):
     def health():
         return {'status': 'ok'}
 
+    @app.route('/ready')
+    def ready():
+        checks = {}
+        errors = {}
+        from .redis.health import check_redis
+        redis_status, redis_error = check_redis(app.config.get('REDIS_URL', ''))
+        checks['redis'] = redis_status
+        if redis_error:
+            errors['redis'] = redis_error
+        status_code = 200 if all(value in {'ok', 'skipped'} for value in checks.values()) else 503
+        return {'status': 'ready' if status_code == 200 else 'not_ready', 'checks': checks, **({'errors': errors} if errors else {})}, status_code
+
     # 版本信息
     from .utils.version import get_version_info
 
@@ -529,7 +547,8 @@ def create_app(config_class=Config):
             "info": {"title": "MiroConsumer API", "version": "0.7.0"},
             "servers": [{"url": "/", "description": "Current host"}],
             "paths": _openapi_paths(app),
-            "components": _openapi_components(),
+            "components": {**_openapi_components(), "securitySchemes": {"BearerAuth": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"}, "ApiKeyAuth": {"type": "apiKey", "in": "header", "name": "X-API-Key"}}},
+            "security": [{"BearerAuth": []}, {"ApiKeyAuth": []}],
         }
 
     # Swagger UI 文档页
