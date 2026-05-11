@@ -13,6 +13,7 @@ class ConsumerEvidenceBundle:
     top_risk_quotes: List[Dict[str, Any]] = field(default_factory=list)
     top_misread_quotes: List[Dict[str, Any]] = field(default_factory=list)
     quote_metadata: List[Dict[str, Any]] = field(default_factory=list)
+    voc_diversity_metrics: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -20,6 +21,7 @@ class ConsumerEvidenceBundle:
             "top_risk_quotes": self.top_risk_quotes,
             "top_misread_quotes": self.top_misread_quotes,
             "quote_metadata": self.quote_metadata,
+            "voc_diversity_metrics": self.voc_diversity_metrics,
         }
 
 
@@ -59,6 +61,10 @@ class ConsumerScoringService:
             top_risk_quotes=risk_quotes,
             top_misread_quotes=misread_quotes,
             quote_metadata=normalized,
+            voc_diversity_metrics=self._voc_diversity_metrics(
+                normalized,
+                resonance_quotes + risk_quotes + misread_quotes,
+            ),
         )
 
     def summarize(
@@ -92,14 +98,146 @@ class ConsumerScoringService:
         buckets: set[str],
         limit: int = 3,
     ) -> List[Dict[str, Any]]:
+        """Select top quotes with diversity-aware scoring.
+
+        P2-5 improvements:
+        - Persona coverage: prefer quotes from distinct agents
+        - Semantic dedup: skip quotes that are >80% similar to already-selected
+        - Engagement remains a factor but not the only one
+        - Small sample degradation: if fewer quotes than limit, return all with note
+        """
         filtered = [event for event in events if event["bucket"] in buckets]
-        filtered.sort(
-            key=lambda item: (
-                -int(item.get("engagement", 0)),
-                str(item.get("quote", "")).casefold(),
-            )
+
+        if len(filtered) <= limit:
+            # Small sample: return all, sorted by engagement
+            filtered.sort(key=lambda x: -int(x.get("engagement", 0)))
+            return filtered
+
+        # Score each quote: engagement + persona diversity bonus + bucket diversity bonus
+        selected: List[Dict[str, Any]] = []
+        seen_agents: set[str] = set()
+        seen_quotes: List[str] = []
+
+        # Sort by engagement first as base ranking
+        filtered.sort(key=lambda x: -int(x.get("engagement", 0)))
+
+        for item in filtered:
+            if len(selected) >= limit:
+                break
+
+            agent_id = str(item.get("agent_id", ""))
+            quote = str(item.get("quote", ""))
+
+            # Semantic dedup: skip if >80% similar to any selected quote
+            if self._is_too_similar(quote, seen_quotes):
+                continue
+
+            # Persona diversity bonus: prefer unseen agents
+            diversity_bonus = 0.3 if agent_id and agent_id not in seen_agents else 0.0
+
+            # Combined score (engagement normalized + diversity)
+            engagement = int(item.get("engagement", 0))
+            item["_score"] = engagement * (1.0 + diversity_bonus)
+
+            selected.append(item)
+            if agent_id:
+                seen_agents.add(agent_id)
+            seen_quotes.append(quote)
+
+        # Sort final selection by composite score
+        selected.sort(key=lambda x: -x.get("_score", 0))
+        # Clean up internal score field
+        for item in selected:
+            item.pop("_score", None)
+
+        return selected
+
+    @staticmethod
+    def _is_too_similar(quote: str, existing: List[str], threshold: float = 0.8) -> bool:
+        """Simple character-overlap similarity check for deduplication."""
+        if not existing or not quote:
+            return False
+        quote_chars = set(quote.lower().split())
+        for other in existing:
+            other_chars = set(other.lower().split())
+            if not quote_chars or not other_chars:
+                continue
+            overlap = len(quote_chars & other_chars) / max(len(quote_chars), len(other_chars))
+            if overlap > threshold:
+                return True
+        return False
+
+    def _voc_diversity_metrics(
+        self,
+        all_quotes: List[Mapping[str, Any]],
+        selected_quotes: List[Mapping[str, Any]],
+    ) -> Dict[str, Any]:
+        all_agents = self._non_empty_values(all_quotes, "agent_id")
+        selected_agents = self._non_empty_values(selected_quotes, "agent_id")
+        all_segments = self._non_empty_values(all_quotes, "segment")
+        selected_segments = self._non_empty_values(selected_quotes, "segment")
+        all_buckets = self._non_empty_values(all_quotes, "bucket")
+        selected_buckets = self._non_empty_values(selected_quotes, "bucket")
+        bucket_counts = Counter(str(item.get("bucket", "") or "") for item in all_quotes)
+        selected_bucket_counts = Counter(str(item.get("bucket", "") or "") for item in selected_quotes)
+        minority_segments = self._minority_values(all_quotes, "segment")
+        minority_segments_retained = bool(
+            not minority_segments
+            or (minority_segments & set(selected_segments))
         )
-        return filtered[:limit]
+
+        return {
+            "total_quote_count": len(all_quotes),
+            "selected_quote_count": len(selected_quotes),
+            "unique_agent_count": len(all_agents),
+            "selected_unique_agent_count": len(selected_agents),
+            "agent_coverage_ratio": self._ratio(len(selected_agents), len(all_agents)),
+            "unique_segment_count": len(all_segments),
+            "selected_unique_segment_count": len(selected_segments),
+            "segment_coverage_ratio": self._ratio(len(selected_segments), len(all_segments)),
+            "bucket_coverage_ratio": self._ratio(len(selected_buckets), len(all_buckets)),
+            "total_bucket_distribution": {
+                bucket: count for bucket, count in sorted(bucket_counts.items()) if bucket
+            },
+            "selected_bucket_distribution": {
+                bucket: count for bucket, count in sorted(selected_bucket_counts.items()) if bucket
+            },
+            "minority_segments": sorted(minority_segments),
+            "minority_segment_retained": minority_segments_retained,
+            "minority_agent_retained": minority_segments_retained,
+        }
+
+    @staticmethod
+    def _non_empty_values(events: Iterable[Mapping[str, Any]], key: str) -> List[str]:
+        values: List[str] = []
+        seen: set[str] = set()
+        for event in events:
+            value = str(event.get(key, "") or "").strip()
+            if value and value not in seen:
+                seen.add(value)
+                values.append(value)
+        return values
+
+    @staticmethod
+    def _minority_values(events: Iterable[Mapping[str, Any]], key: str) -> set[str]:
+        counts = Counter(
+            str(event.get(key, "") or "").strip()
+            for event in events
+            if str(event.get(key, "") or "").strip()
+        )
+        if len(counts) < 2:
+            return set()
+        minimum = min(counts.values())
+        maximum = max(counts.values())
+        if minimum == maximum:
+            return set()
+        return {value for value, count in counts.items() if count == minimum}
+
+    @staticmethod
+    def _ratio(numerator: int, denominator: int) -> float:
+        if denominator <= 0:
+            return 0.0
+        return round(numerator / denominator, 4)
 
     def _normalize_quote_event(self, event: Mapping[str, Any]) -> Dict[str, Any]:
         quote = str(event.get("quote", "")).strip()
@@ -110,6 +248,10 @@ class ConsumerScoringService:
             "bucket": bucket,
             "engagement": engagement,
             "agent_id": event.get("agent_id"),
+            "persona_id": event.get("persona_id") or event.get("agent_id"),
+            "segment": event.get("segment") or event.get("community") or event.get("role"),
+            "role": event.get("role"),
+            "community": event.get("community"),
             "round_num": event.get("round_num"),
         }
 

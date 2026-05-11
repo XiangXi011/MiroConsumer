@@ -31,4 +31,16 @@ def list_dead_letters() -> Dict[str, Any]:
     if backend == "thread":
         return {"backend": "thread", "dead_letters": []}
 
+    if backend == "rq":
+        redis_url = Config.REDIS_URL
+        if not redis_url:
+            raise ValueError("REDIS_URL is required when QUEUE_BACKEND=rq")
+        from app.services.application.rq_queue import RQQueueBackend
+
+        queue_backend = RQQueueBackend(
+            redis_url=redis_url,
+            queue_name=getattr(Config, "RQ_QUEUE_NAME", "default"),
+        )
+        return {"backend": "rq", "dead_letters": queue_backend.list_dead_letters()}
+
     raise ValueError(f"Unsupported QUEUE_BACKEND: {backend}")

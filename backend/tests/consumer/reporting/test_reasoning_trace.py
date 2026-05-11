@@ -3,6 +3,9 @@
 import json
 import pytest
 
+from app.services.consumer.society.agent_step_executor import AgentStepExecutor
+from app.services.consumer.society.consumer_roles import ConsumerRole
+from app.services.consumer.society.population_models import ConsumerSocietyAgent
 from app.services.consumer.reasoning_trace import (
     ReasoningTrace,
     normalize_legacy_trace,
@@ -67,6 +70,30 @@ class TestReasoningTraceSchema:
         assert trace.reasoning_backend == "template_fallback"
         assert trace.source == "interview"
         assert trace.fallback_reason == "timeout"
+
+    def test_trace_preserves_reasoning_triplets(self):
+        trace = ReasoningTrace(
+            reasoning_backend="llm",
+            llm_invoked=True,
+            source="society_runtime",
+            reasoning_summary="Need evidence before deciding.",
+            reasoning_triplets=[
+                {
+                    "input": "claim=low sugar",
+                    "evidence": "event_type=ASK_PROOF",
+                    "conclusion": "I need proof before I trust this.",
+                }
+            ],
+        )
+
+        payload = trace.to_dict()
+        assert payload["reasoning_triplets"][0]["input"] == "claim=low sugar"
+        assert payload["reasoning_triplets"][0]["evidence"] == "event_type=ASK_PROOF"
+        assert payload["reasoning_triplets"][0]["conclusion"] == "I need proof before I trust this."
+
+        loaded = ReasoningTrace.from_dict(payload)
+        assert loaded.reasoning_triplets[0]["input"] == "claim=low sugar"
+        assert loaded.reasoning_triplets[0]["conclusion"] == "I need proof before I trust this."
 
     def test_trace_backend_enum_validation(self):
         # Valid backends
@@ -287,3 +314,43 @@ class TestTraceCoverageFiltering:
         ]
         covered = [t for t in traces if t.source == "society_runtime" and t.llm_invoked and t.fallback_reason == ""]
         assert len(covered) == 0
+
+
+class TestSocietyRuntimeTraceMapping:
+    def test_agent_step_trace_populates_reasoning_sections_and_linkage(self):
+        agent = ConsumerSocietyAgent(
+            agent_id="agent-42",
+            parent_persona_id="persona-42",
+            layer="core",
+            segment="commuter parents",
+            role=ConsumerRole.Skeptic,
+        )
+        event = {
+            "event_id": "event-42",
+            "consumer_event_type": "ASK_PROOF",
+            "claim": "low sugar",
+            "quote": "I need proof before I trust this.",
+            "reasoning_backend": "llm",
+            "llm_invoked": True,
+            "reasoning_method": "llm_deep_reasoning",
+            "trigger_finding_ids": ["finding-1"],
+            "source_input_refs": ["event-previous"],
+            "trust": 0.31,
+            "purchase_intent": 0.42,
+        }
+
+        trace = AgentStepExecutor._trace_from_event(agent, event, round_index=3)
+        payload = trace.to_dict()
+
+        assert payload["agent_id"] == "agent-42"
+        assert payload["round_index"] == 3
+        assert payload["related_event_id"] == "event-42"
+        assert payload["related_finding_id"] == "finding-1"
+        assert "claim=low sugar" in payload["perception_reasoning"]
+        assert "source_input_refs=event-previous" in payload["perception_reasoning"]
+        assert "event_type=ASK_PROOF" in payload["decision_reasoning"]
+        assert "trust=0.31" in payload["decision_reasoning"]
+        assert "I need proof" in payload["expression_reasoning"]
+        assert payload["reasoning_triplets"][0]["input"].startswith("claim=low sugar")
+        assert payload["reasoning_triplets"][0]["evidence"].startswith("event_type=ASK_PROOF")
+        assert payload["reasoning_triplets"][0]["conclusion"] == "I need proof before I trust this."

@@ -1,4 +1,4 @@
-import { test } from 'node:test'
+import { test } from 'vitest'
 import assert from 'node:assert/strict'
 import { createConsumerApi } from '../src/api/consumerFactory.js'
 
@@ -265,6 +265,17 @@ test('runConsumerResearchAction posts to /api/consumer/simulations/{id}/research
   assert.equal(fake.calls[0].method, 'post')
   assert.equal(fake.calls[0].url, '/api/consumer/simulations/sim-7/research-actions')
   assert.deepStrictEqual(fake.calls[0].data, payload)
+  assert.strictEqual(result, fake.fakeResponse)
+})
+
+test('getReportEvidenceGraph uses GET /api/consumer/reports/{id}/evidence-graph', async () => {
+  const fake = makeFakeService()
+  const api = createConsumerApi(fake)
+  const result = await api.getReportEvidenceGraph('report-graph')
+
+  assert.equal(fake.calls.length, 1)
+  assert.equal(fake.calls[0].method, 'get')
+  assert.equal(fake.calls[0].url, '/api/consumer/reports/report-graph/evidence-graph')
   assert.strictEqual(result, fake.fakeResponse)
 })
 

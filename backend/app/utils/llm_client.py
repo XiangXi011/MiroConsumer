@@ -4,11 +4,31 @@ LLM客户端封装
 """
 
 import json
+import logging
+import os
 import re
+import time
+import hashlib
+import datetime
 from typing import Optional, Dict, Any, List
 from openai import OpenAI
 
 from ..config import Config
+from .llm_governance import validate_llm_output
+from .llm_governor import governor
+from .retry import retry_with_backoff
+
+logger = logging.getLogger(__name__)
+
+LLM_LOG_DIR = os.path.join(os.path.dirname(__file__), '../../logs/llm')
+
+
+def _usage_token_counts(usage: Any) -> Optional[tuple[int, int]]:
+    prompt_tokens = getattr(usage, "prompt_tokens", None)
+    completion_tokens = getattr(usage, "completion_tokens", None)
+    if isinstance(prompt_tokens, int) and isinstance(completion_tokens, int):
+        return prompt_tokens, completion_tokens
+    return None
 
 
 class LLMClient:
@@ -34,6 +54,24 @@ class LLMClient:
             base_url=self.base_url
         )
     
+    def _resolve_governance_ids(self):
+        """从 Flask 请求上下文获取 tenant_id / user_id / project_id"""
+        tenant_id = "default"
+        user_id = None
+        project_id = None
+        try:
+            from flask import g, request
+            if hasattr(g, 'current_user') and g.current_user:
+                tenant_id = g.current_user.tenant_id
+                user_id = g.current_user.user_id
+            if request and request.args:
+                project_id = request.args.get('project_id')
+        except RuntimeError:
+            pass  # outside Flask request context
+        return tenant_id, user_id, project_id
+
+    @retry_with_backoff(max_retries=3, initial_delay=1.0, max_delay=30.0,
+                        exceptions=(TimeoutError, ConnectionError))
     def chat(
         self,
         messages: List[Dict[str, str]],
@@ -44,33 +82,87 @@ class LLMClient:
     ) -> str:
         """
         发送聊天请求
-        
+
         Args:
             messages: 消息列表
             temperature: 温度参数
             max_tokens: 最大token数
             response_format: 响应格式（如JSON模式）
-            
+
         Returns:
             模型响应文本
         """
+        tenant_id, user_id, project_id = self._resolve_governance_ids()
+
+        # Governor: 预算检查
+        if not governor.check_budget(tenant_id, user_id, project_id):
+            raise RuntimeError(f"LLM budget exhausted for tenant {tenant_id}")
+
+        # Governor: 熔断检查
+        service = "llm"
+        if not governor.check_circuit(service):
+            raise RuntimeError(f"LLM circuit breaker open for service {service}")
+
         kwargs = {
             "model": self.model,
             "messages": messages,
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
-        
+
         if response_format:
             kwargs["response_format"] = response_format
         request_timeout = timeout if timeout is not None else self.request_timeout
         if request_timeout is not None:
             kwargs["timeout"] = request_timeout
-        
-        response = self.client.chat.completions.create(**kwargs)
+
+        start_time = time.time()
+        prompt_hash = hashlib.sha256(str(messages).encode()).hexdigest()[:8]
+        try:
+            response = self.client.chat.completions.create(**kwargs)
+        except Exception:
+            governor.record_circuit_failure(service)
+            raise
+        elapsed = time.time() - start_time
         content = response.choices[0].message.content
         # 部分模型（如MiniMax M2.5）会在content中包含<think>思考内容，需要移除
         content = re.sub(r'<think>[\s\S]*?</think>', '', content).strip()
+
+        # Governor: 记录成功
+        governor.record_circuit_success(service)
+        usage = response.usage
+        token_counts = _usage_token_counts(usage)
+        if token_counts:
+            prompt_tokens, completion_tokens = token_counts
+            total_tokens = prompt_tokens + completion_tokens
+            # 粗略成本估算: $0.002 / 1K tokens
+            cost = total_tokens * 0.002 / 1000
+            governor.record_cost(tenant_id, user_id, project_id, total_tokens, cost)
+
+        # 记录LLM调用详情
+        tokens_str = f"prompt={prompt_tokens},completion={completion_tokens}" if token_counts else "N/A"
+        logger.info(
+            "LLM调用: model=%s, prompt_hash=%s, tokens=%s, elapsed=%.2fs",
+            self.model,
+            prompt_hash,
+            tokens_str,
+            elapsed,
+        )
+
+        # 持久化日志到文件
+        self._log_llm_call(
+            model=self.model,
+            prompt_hash=prompt_hash,
+            tokens=tokens_str,
+            elapsed=elapsed,
+            status="success",
+        )
+
+        # LLM 输出治理校验
+        validation = validate_llm_output(content, context="llm_client.chat")
+        if not validation["valid"]:
+            logger.warning("LLM输出治理发现问题: %s", validation["issues"])
+
         return content
     
     def chat_with_finish_reason(
@@ -93,6 +185,17 @@ class LLMClient:
         Returns:
             (模型响应文本, finish_reason)
         """
+        tenant_id, user_id, project_id = self._resolve_governance_ids()
+
+        # Governor: 预算检查
+        if not governor.check_budget(tenant_id, user_id, project_id):
+            raise RuntimeError(f"LLM budget exhausted for tenant {tenant_id}")
+
+        # Governor: 熔断检查
+        service = "llm"
+        if not governor.check_circuit(service):
+            raise RuntimeError(f"LLM circuit breaker open for service {service}")
+
         kwargs = {
             "model": self.model,
             "messages": messages,
@@ -106,12 +209,59 @@ class LLMClient:
         if request_timeout is not None:
             kwargs["timeout"] = request_timeout
 
-        response = self.client.chat.completions.create(**kwargs)
+        start_time = time.time()
+        prompt_hash = hashlib.sha256(str(messages).encode()).hexdigest()[:8]
+        try:
+            response = self.client.chat.completions.create(**kwargs)
+        except Exception:
+            governor.record_circuit_failure(service)
+            raise
+        elapsed = time.time() - start_time
         content = response.choices[0].message.content
         # 部分模型（如MiniMax M2.5）会在content中包含<think>思考内容，需要移除
         content = re.sub(r'<think>[\s\S]*?</think>', '', content).strip()
         finish_reason = response.choices[0].finish_reason
+
+        # Governor: 记录成功
+        governor.record_circuit_success(service)
+        usage = response.usage
+        token_counts = _usage_token_counts(usage)
+        if token_counts:
+            prompt_tokens, completion_tokens = token_counts
+            total_tokens = prompt_tokens + completion_tokens
+            cost = total_tokens * 0.002 / 1000
+            governor.record_cost(tenant_id, user_id, project_id, total_tokens, cost)
+
+        # 记录LLM调用详情
+        tokens_str = f"prompt={prompt_tokens},completion={completion_tokens}" if token_counts else "N/A"
+        logger.info(
+            "LLM调用(finish_reason): model=%s, prompt_hash=%s, tokens=%s, elapsed=%.2fs",
+            self.model, prompt_hash, tokens_str, elapsed,
+        )
+        self._log_llm_call(
+            model=self.model, prompt_hash=prompt_hash,
+            tokens=tokens_str, elapsed=elapsed, status="success",
+        )
+
         return content, finish_reason
+
+    def _log_llm_call(self, model, prompt_hash, tokens, elapsed, status):
+        """将LLM调用日志写入JSONL文件"""
+        try:
+            os.makedirs(LLM_LOG_DIR, exist_ok=True)
+            log_entry = {
+                "timestamp": datetime.datetime.utcnow().isoformat(),
+                "model": model,
+                "prompt_hash": prompt_hash,
+                "tokens": tokens,
+                "elapsed_seconds": round(elapsed, 3),
+                "status": status,
+            }
+            log_file = os.path.join(LLM_LOG_DIR, f"llm_{datetime.date.today().isoformat()}.jsonl")
+            with open(log_file, 'a', encoding='utf-8') as f:
+                f.write(json.dumps(log_entry, ensure_ascii=False) + '\n')
+        except Exception:
+            logger.debug("LLM日志写入失败", exc_info=True)
 
     @staticmethod
     def clean_llm_text(text: str) -> str:

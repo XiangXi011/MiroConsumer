@@ -32,6 +32,7 @@ class Project:
     created_at: str
     updated_at: str
     project_type: str = "default"
+    tenant_id: str = ""
     
     # 文件信息
     files: List[Dict[str, str]] = field(default_factory=list)  # [{filename, path, size}]
@@ -71,6 +72,7 @@ class Project:
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "project_type": self.project_type,
+            "tenant_id": self.tenant_id,
             "files": self.files,
             "total_text_length": self.total_text_length,
             "ontology": self.ontology,
@@ -99,6 +101,7 @@ class Project:
             created_at=data.get('created_at', ''),
             updated_at=data.get('updated_at', ''),
             project_type=data.get('project_type', 'default'),
+            tenant_id=data.get('tenant_id', ''),
             files=data.get('files', []),
             total_text_length=data.get('total_text_length', 0),
             ontology=data.get('ontology'),
@@ -151,7 +154,7 @@ class ProjectManager:
         return os.path.join(cls._get_project_dir(project_id), 'consumer_graph.json')
     
     @classmethod
-    def create_project(cls, name: str = "Unnamed Project") -> Project:
+    def create_project(cls, name: str = "Unnamed Project", tenant_id: str = "") -> Project:
         """
         创建新项目
         
@@ -171,7 +174,8 @@ class ProjectManager:
             name=name,
             status=ProjectStatus.CREATED,
             created_at=now,
-            updated_at=now
+            updated_at=now,
+            tenant_id=tenant_id
         )
         
         # 创建项目目录结构

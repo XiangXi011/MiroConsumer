@@ -59,6 +59,8 @@ class QueueTaskExecutor(TaskExecutor):
                         "error": str(exc),
                     },
                 )
+                if getattr(self.backend, "runs_externally", False):
+                    raise
         else:
             logger.info(
                 "Queue submit (no-op skeleton)",
@@ -68,8 +70,8 @@ class QueueTaskExecutor(TaskExecutor):
         with self._lock:
             self._submitted[tid] = {"status": PENDING, "task_type": metadata.get("task_type")}
 
-        # Only execute the fn if this is a newly created task and we have a backend
-        if created and self.backend is not None:
+        # Only execute locally for backends whose workers live in this process.
+        if created and self.backend is not None and not getattr(self.backend, "runs_externally", False):
             self._spawn_worker(tid, fn, args, kwargs)
 
         return tid

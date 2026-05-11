@@ -6,6 +6,7 @@ status checks, agent chat, and downloads.
 """
 
 import os
+import inspect
 import tempfile
 import traceback
 import uuid
@@ -26,6 +27,84 @@ from .concurrency import create_lock_manager, report_generation_lock
 from .task_executor import TaskExecutor, create_task_executor
 
 logger = get_logger("miroconsumer.app_service.report")
+
+
+def _call_class_hook(cls: type, name: str, *args):
+    hook = getattr(cls, name)
+    signature = inspect.signature(hook)
+    parameters = list(signature.parameters)
+    if len(parameters) == len(args) + 1 and parameters[0] in {"cls", "self"}:
+        return hook(cls, *args)
+    return hook(*args)
+
+
+def run_generate_report_task(
+    simulation_id: str,
+    report_id: str,
+    task_id: str,
+    graph_id: str,
+    simulation_requirement: str,
+    project_type: str,
+    project_id: str,
+    locale: str,
+) -> None:
+    """Importable RQ target for report generation."""
+    set_locale(locale)
+    task_manager = TaskManager()
+    report_repo = ReportAppService._report_repo
+    lock_manager = create_lock_manager()
+
+    try:
+        with lock_manager.acquire(
+            report_generation_lock,
+            simulation_id,
+            timeout_seconds=0,
+        ):
+            task_manager.update_task(
+                task_id,
+                status=TaskStatus.PROCESSING,
+                progress=0,
+                message=t("api.initReportAgent"),
+            )
+
+            agent = ReportAgent(
+                graph_id=graph_id,
+                simulation_id=simulation_id,
+                simulation_requirement=simulation_requirement,
+                project_type=project_type,
+                project_id=project_id,
+            )
+
+            def progress_callback(stage, progress, message):
+                task_manager.update_task(
+                    task_id,
+                    progress=progress,
+                    message=f"[{stage}] {message}",
+                )
+
+            report = agent.generate_report(
+                progress_callback=progress_callback,
+                report_id=report_id,
+            )
+
+            report_repo.save_report(report)
+
+            if report.status == ReportStatus.COMPLETED:
+                task_manager.complete_task(
+                    task_id,
+                    result={
+                        "report_id": report.report_id,
+                        "simulation_id": simulation_id,
+                        "status": "completed",
+                    },
+                )
+            else:
+                task_manager.fail_task(task_id, report.error or t("api.reportGenerateFailed"))
+
+    except Exception as e:
+        logger.error(f"Report generation failed: {str(e)}")
+        task_manager.fail_task(task_id, str(e))
+        raise
 
 
 class ReportAppService:
@@ -122,61 +201,16 @@ class ReportAppService:
 
         current_locale = get_locale()
 
-        def run_generate():
-            set_locale(current_locale)
-            try:
-                with cls._lock_manager.acquire(
-                    report_generation_lock,
-                    simulation_id,
-                    timeout_seconds=0,
-                ):
-                    task_manager.update_task(
-                        task_id,
-                        status=TaskStatus.PROCESSING,
-                        progress=0,
-                        message=t("api.initReportAgent"),
-                    )
-
-                    agent = ReportAgent(
-                        graph_id=graph_id,
-                        simulation_id=simulation_id,
-                        simulation_requirement=simulation_requirement,
-                        project_type=project.project_type or state.project_type or "default",
-                        project_id=project.project_id,
-                    )
-
-                    def progress_callback(stage, progress, message):
-                        task_manager.update_task(
-                            task_id,
-                            progress=progress,
-                            message=f"[{stage}] {message}",
-                        )
-
-                    report = agent.generate_report(
-                        progress_callback=progress_callback,
-                        report_id=report_id,
-                    )
-
-                    cls._report_repo.save_report(report)
-
-                    if report.status == ReportStatus.COMPLETED:
-                        task_manager.complete_task(
-                            task_id,
-                            result={
-                                "report_id": report.report_id,
-                                "simulation_id": simulation_id,
-                                "status": "completed",
-                            },
-                        )
-                    else:
-                        task_manager.fail_task(task_id, report.error or t("api.reportGenerateFailed"))
-
-            except Exception as e:
-                logger.error(f"Report generation failed: {str(e)}")
-                task_manager.fail_task(task_id, str(e))
-
         trace_id = cls._executor.submit(
-            run_generate,
+            run_generate_report_task,
+            simulation_id,
+            report_id,
+            task_id,
+            graph_id,
+            simulation_requirement,
+            project.project_type or state.project_type or "default",
+            project.project_id,
+            current_locale,
             task_type="generate_report",
             idempotency_key=f"{simulation_id}:report",
             simulation_id=simulation_id,
@@ -307,6 +341,60 @@ class ReportAppService:
         }
 
     @classmethod
+    def _build_methodology_page(cls, simulation_id: str, report=None) -> str:
+        """Build methodology page markdown for injection into report downloads."""
+        from ...utils.disclaimer import get_methodology_limits
+
+        agent_count, run_count, mode = 0, 1, "quick"
+        random_seed, evidence_support = None, "none"
+
+        try:
+            config = cls._simulation_repo.get_simulation_config(simulation_id)
+            if config:
+                agent_count = config.get("core_persona_count", 8) + config.get("expanded_persona_count", 0)
+                run_count = config.get("max_rounds", 1)
+                mode = config.get("mode", "quick")
+                random_seed = config.get("random_seed")
+                evidence_support = config.get("evidence_support", "none")
+        except Exception:
+            pass
+
+        methodology = get_methodology_limits(
+            agent_count=agent_count,
+            run_count=run_count,
+            mode=mode,
+            random_seed=random_seed,
+            evidence_support=evidence_support,
+        )
+
+        limits_text = "\n".join("- " + l for l in methodology["limits"]) if methodology["limits"] else "- 无特殊限制"
+
+        # Filter forbidden language from methodology page text
+        from ...utils.disclaimer import filter_forbidden_language
+        display_label, _ = filter_forbidden_language(methodology['display_label'], agent_count)
+        limits_text, _ = filter_forbidden_language(limits_text, agent_count)
+
+        return f"""
+---
+
+## 方法论说明 / Methodology Statement
+
+| 项目 | 值 |
+|------|-----|
+| 样本量 (agent_count) | {methodology['agent_count']} |
+| 重复运行次数 (run_count) | {methodology['run_count']} |
+| 仿真模式 (simulation_mode) | {methodology['simulation_mode']} |
+| 置信水平 (confidence_level) | {methodology['confidence_level']} |
+| 可做统计推断 | {'是' if methodology['can_do_statistical_inference'] else '否'} |
+| 研究边界 | {display_label} |
+
+**限制说明：**
+{limits_text}
+
+> ⚠️ 本报告由 AI 消费者仿真系统生成。所有结论基于 LLM 推演，不代表真实市场数据。
+"""
+
+    @classmethod
     def get_report_download_info(cls, report_id: str) -> dict:
         """
         Return download file path/info for a report.
@@ -323,19 +411,69 @@ class ReportAppService:
         if not report:
             raise NotFoundError(t("api.reportNotFound", id=report_id))
 
+        report_simulation_id = getattr(report, "simulation_id", "")
+        methodology_page = ""
+        if isinstance(report_simulation_id, str) and report_simulation_id:
+            methodology_page = _call_class_hook(cls, "_build_methodology_page", report_simulation_id, report)
+
+        # P0-5.2: filter forbidden language on report content
+        from ...utils.disclaimer import filter_forbidden_language
+        agent_count_for_filter = (
+            _call_class_hook(cls, "_get_agent_count", report_simulation_id)
+            if isinstance(report_simulation_id, str) and report_simulation_id
+            else 8
+        )
+
         md_path = ReportManager._get_report_markdown_path(report_id)
 
         if os.path.exists(md_path):
+            with open(md_path, 'r', encoding='utf-8') as f:
+                content_with_methodology = f.read() + methodology_page
+            content_with_methodology, violations = filter_forbidden_language(
+                content_with_methodology, agent_count_for_filter
+            )
+            if violations:
+                logger.warning(
+                    "Forbidden language filtered in report %s: %s",
+                    report_id, violations,
+                )
+            if not methodology_page and not violations:
+                return {
+                    "path": md_path,
+                    "is_temp": False,
+                    "download_name": f"{report_id}.md",
+                    "content": None,
+                }
             return {
-                "path": md_path,
-                "is_temp": False,
+                "path": None,
+                "is_temp": True,
                 "download_name": f"{report_id}.md",
-                "content": None,
+                "content": content_with_methodology,
             }
 
+        full_content = (report.markdown_content or "") + methodology_page
+        full_content, violations = filter_forbidden_language(
+            full_content, agent_count_for_filter
+        )
+        if violations:
+            logger.warning(
+                "Forbidden language filtered in report %s: %s",
+                report_id, violations,
+            )
         return {
             "path": None,
             "is_temp": True,
             "download_name": f"{report_id}.md",
-            "content": report.markdown_content,
+            "content": full_content,
         }
+
+    @classmethod
+    def _get_agent_count(cls, simulation_id: str) -> int:
+        """Extract agent_count from simulation config for forbidden-language filtering."""
+        try:
+            config = cls._simulation_repo.get_simulation_config(simulation_id)
+            if config:
+                return config.get("core_persona_count", 8) + config.get("expanded_persona_count", 0)
+        except Exception:
+            pass
+        return 8  # conservative default — triggers filtering

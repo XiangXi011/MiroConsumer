@@ -38,13 +38,10 @@ class ReportConfidence(BaseModel):
 
 
 def _label_from_score(score: float) -> str:
-    if score >= 0.75:
-        return "high"
-    if score >= 0.5:
-        return "medium"
-    if score >= 0.25:
-        return "low"
-    return "unknown"
+    """Map score to label. Uses calibrated thresholds if available, else defaults."""
+    from .confidence_calibrator import get_thresholds
+    t = get_thresholds()
+    return t.label_for_score(score)
 
 
 def _source_quality_score(finding: Any, source: Optional[Any]) -> float:
@@ -273,6 +270,28 @@ def build_confidence_summary(report_confidence: ReportConfidence) -> Dict[str, A
         ],
         "low_confidence_findings": low_confidence_findings,
     }
+
+
+def compute_confidence(
+    source_quality: float,
+    evidence_sufficiency: float,
+    simulation_stability: float,
+    cross_run_consistency: float,
+    benchmark_alignment: float,
+    contradiction_count: int = 0,
+    fallback_count: int = 0,
+) -> float:
+    """Compute weighted confidence score with penalty terms."""
+    score = (
+        0.25 * source_quality
+        + 0.25 * evidence_sufficiency
+        + 0.20 * simulation_stability
+        + 0.15 * cross_run_consistency
+        + 0.15 * benchmark_alignment
+    )
+    score -= 0.05 * min(contradiction_count, 5)
+    score -= 0.03 * min(fallback_count, 10)
+    return max(0.0, min(1.0, round(score, 4)))
 
 
 def compute_comparison_confidence(

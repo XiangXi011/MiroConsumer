@@ -56,6 +56,13 @@
             <PropagationTimeline :context="reportContext" />
           </div>
 
+          <EvidenceGraphPanel
+            v-if="isConsumerMode"
+            :graph="evidenceGraph"
+            :loading="evidenceGraphLoading"
+            :error="evidenceGraphError"
+          />
+
           <!-- Research Assets / Comparison Workspace -->
           <ResearchAssetWorkspace
             :project-id="projectId"
@@ -476,6 +483,7 @@ import {
 } from '../api/report'
 import {
   getBranchComparison,
+  getReportEvidenceGraph,
 } from '../api/consumer'
 import {
   buildConsumerMetricCards,
@@ -502,6 +510,7 @@ import SocietyRunSummary from './consumer/SocietyRunSummary.vue'
 import ChannelFitPanel from './consumer/ChannelFitPanel.vue'
 import ChannelHeatmap from './consumer/ChannelHeatmap.vue'
 import PropagationTimeline from './consumer/PropagationTimeline.vue'
+import EvidenceGraphPanel from './consumer/EvidenceGraphPanel.vue'
 import { runConsumerResearchAction } from '../api/consumer'
 import {
   normalizeConsumerResearchActionResponse,
@@ -573,6 +582,9 @@ const leftPanel = ref(null)
 const rightPanel = ref(null)
 const logContent = ref(null)
 const showRawResult = reactive({})
+const evidenceGraph = ref(null)
+const evidenceGraphLoading = ref(false)
+const evidenceGraphError = ref('')
 
 // Consumer insight drawer state
 const showInsightDrawer = ref(false)
@@ -586,6 +598,32 @@ const branchComparisonFormatted = computed(() => {
   if (!branchComparisonRaw.value) return null
   return formatBranchComparison(branchComparisonRaw.value, t)
 })
+
+const loadEvidenceGraph = async () => {
+  if (!props.reportId || !isConsumerMode.value) {
+    evidenceGraph.value = null
+    evidenceGraphError.value = ''
+    evidenceGraphLoading.value = false
+    return
+  }
+
+  evidenceGraphLoading.value = true
+  evidenceGraphError.value = ''
+  try {
+    const res = await getReportEvidenceGraph(props.reportId)
+    if (res.success && res.data) {
+      evidenceGraph.value = res.data
+    } else {
+      evidenceGraph.value = null
+      evidenceGraphError.value = res.error || 'Evidence graph unavailable'
+    }
+  } catch (err) {
+    evidenceGraph.value = null
+    evidenceGraphError.value = err?.message || 'Evidence graph unavailable'
+  } finally {
+    evidenceGraphLoading.value = false
+  }
+}
 
 const projectId = computed(() => props.projectData?.project_id || props.projectData?.projectId || null)
 
@@ -851,6 +889,10 @@ const loadBranchComparison = async () => {
 watch(() => props.simulationId, () => {
   loadBranchComparison()
 })
+
+watch([() => props.reportId, isConsumerMode], () => {
+  loadEvidenceGraph()
+}, { immediate: true })
 
 // Toggle functions
 const toggleRawResult = (timestamp, event) => {
@@ -2603,6 +2645,7 @@ onMounted(() => {
     startPolling()
   }
   loadBranchComparison()
+  loadEvidenceGraph()
 })
 
 onUnmounted(() => {
@@ -2623,8 +2666,11 @@ watch(() => props.reportId, (newId) => {
     collapsedSections.value = new Set()
     isComplete.value = false
     startTime.value = null
+    evidenceGraph.value = null
+    evidenceGraphError.value = ''
     
     startPolling()
+    loadEvidenceGraph()
   }
 }, { immediate: true })
 </script>

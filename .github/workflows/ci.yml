@@ -26,7 +26,7 @@ jobs:
 
       - name: Run backend test suite
         working-directory: backend
-        run: uv run --python 3.12 pytest
+        run: uv run --python 3.12 pytest --cov=app --cov-report=term-missing
 
   frontend:
     name: Frontend Build And Tests
@@ -50,9 +50,9 @@ jobs:
         working-directory: frontend
         run: npm run build
 
-      - name: Run frontend node tests
+      - name: Run frontend tests
         working-directory: frontend
-        run: node --test tests/*.test.js tests/composables/*.test.js
+        run: npm test
 
   consumer-contract:
     name: Consumer API Contract
@@ -98,3 +98,44 @@ jobs:
           uv run --python 3.12 pytest
           tests/e2e/test_consumer_concept_test_golden_flow.py
           tests/e2e/test_consumer_golden_cases.py
+
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install pip-audit
+
+      - name: Run pip-audit
+        run: pip-audit
+
+      - name: Check for secrets
+        run: |
+          grep -r "SECRET_KEY=dev" .env* && echo "WARNING: Default secret key found" && exit 1 || true
+
+  benchmark:
+    name: Golden Case Benchmark
+    runs-on: ubuntu-latest
+    needs: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+      - name: Run golden case benchmark
+        run: |
+          cd backend
+          python -m pytest tests/e2e/test_consumer_golden_cases.py -v --tb=short -k "golden" || echo "Benchmark completed with non-zero exit (advisory)"
+        continue-on-error: true

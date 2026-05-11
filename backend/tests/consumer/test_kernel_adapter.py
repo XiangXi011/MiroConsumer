@@ -187,12 +187,12 @@ def test_engagement_formula_matches_current_code():
 # Persona pack integrity
 # ---------------------------------------------------------------------------
 
-EXPECTED_PERSONA_IDS = frozenset({"M01", "M02", "M03", "M04", "M05", "M06", "M07", "M08"})
+EXPECTED_PERSONA_IDS = frozenset({f"M{i:02d}" for i in range(1, 17)})
 
 
-def test_persona_pack_has_eight_personas():
+def test_persona_pack_has_sixteen_personas():
     personas = load_default_persona_pack()
-    assert len(personas) == 8
+    assert len(personas) == 16
     ids = {p["persona_id"] for p in personas}
     assert ids == EXPECTED_PERSONA_IDS
 

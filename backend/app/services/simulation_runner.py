@@ -24,6 +24,7 @@ from ..utils.logger import get_logger
 from ..utils.locale import get_locale, set_locale
 from ..utils.atomic_json import atomic_write_json
 from .consumer.hybrid_kernel import HybridSimulationKernel
+from .consumer.convergence_detector import ConvergenceDetector
 from .consumer.models import ResearchFinding
 from .consumer.orchestrator import ConsumerSimulationOrchestrator
 from .consumer.persona_pack import load_default_persona_pack, map_persona_to_agent_traits
@@ -541,6 +542,36 @@ class SimulationRunner:
         logger.info(f"消费者传播仿真启动: {simulation_id}")
         return state
 
+    @staticmethod
+    def _build_consumer_convergence_detector(
+        config: Dict[str, Any],
+        consumer_config: Optional[Dict[str, Any]] = None,
+    ) -> ConvergenceDetector:
+        raw_config: Dict[str, Any] = {}
+        for source in (config, consumer_config or {}):
+            candidate = (
+                source.get("convergence_config")
+                or source.get("convergence")
+                or {}
+            )
+            if isinstance(candidate, dict):
+                raw_config.update(candidate)
+
+        allowed_keys = {
+            "enabled",
+            "min_rounds",
+            "attitude_change_threshold",
+            "active_agent_ratio_threshold",
+            "event_distribution_change_threshold",
+            "community_coverage_threshold",
+        }
+        detector_kwargs = {
+            key: value
+            for key, value in raw_config.items()
+            if key in allowed_keys
+        }
+        return ConvergenceDetector(**detector_kwargs)
+
     @classmethod
     def _run_consumer_simulation(
         cls,
@@ -572,7 +603,6 @@ class SimulationRunner:
                 os.remove(output_path)
 
             kernel = HybridSimulationKernel()
-            orchestrator = ConsumerSimulationOrchestrator(output_path=output_path, kernel=kernel)
             graph_nodes = graph_payload.get("nodes", [])
             personas = load_default_persona_pack()
             state.rounds = []
@@ -580,6 +610,7 @@ class SimulationRunner:
             research_findings: List[ResearchFinding] = []
             task_type: Optional[str] = None
             consumer_brief: Dict[str, Any] = {}
+            consumer_config: Dict[str, Any] = {}
             consumer_config_path = os.path.join(cls.RUN_STATE_DIR, simulation_id, "consumer_config.json")
             if os.path.exists(consumer_config_path):
                 with open(consumer_config_path, "r", encoding="utf-8") as f:
@@ -589,6 +620,15 @@ class SimulationRunner:
                 consumer_brief = consumer_config.get("consumer_brief") or {}
                 if isinstance(consumer_brief, dict):
                     task_type = consumer_brief.get("task_type")
+
+            orchestrator = ConsumerSimulationOrchestrator(
+                output_path=output_path,
+                kernel=kernel,
+                convergence_detector=cls._build_consumer_convergence_detector(
+                    config=config,
+                    consumer_config=consumer_config,
+                ),
+            )
 
             society_config = dict(config.get("society_config") or {"mode": "quick"})
             if society_config.get("mode") in {"standard", "standard_plus", "large_society"}:
@@ -621,6 +661,7 @@ class SimulationRunner:
 
             previous_attitudes: Dict[str, str] = {}
             agent_states: Dict[str, PropagationState] = {}
+            previous_round_snapshots: Optional[List[Dict[str, Any]]] = None
 
             for round_num in range(state.total_rounds):
                 round_summary = RoundSummary(
@@ -628,6 +669,7 @@ class SimulationRunner:
                     start_time=datetime.now().isoformat(),
                     simulated_hour=int(((round_num + 1) / max(state.total_rounds, 1)) * state.total_simulation_hours),
                 )
+                current_round_snapshots: List[Dict[str, Any]] = []
 
                 for index, persona in enumerate(personas):
                     agent_traits = map_persona_to_agent_traits(persona)
@@ -671,6 +713,7 @@ class SimulationRunner:
                     )
                     snapshot["propagation_events"] = propagation_events
                     orchestrator.persist_round_snapshot(snapshot)
+                    current_round_snapshots.append(snapshot)
                     previous_attitudes[agent_id] = current_attitude
 
                     action = AgentAction(
@@ -699,7 +742,30 @@ class SimulationRunner:
                 state.simulated_hours = round_summary.simulated_hour
                 state.reddit_simulated_hours = round_summary.simulated_hour
                 state.rounds.append(round_summary)
+                convergence_result = orchestrator.check_convergence(
+                    round_index=round_num,
+                    current_state=current_round_snapshots,
+                    previous_state=previous_round_snapshots,
+                )
+                should_stop = bool(convergence_result.get("stop"))
+                if should_stop:
+                    state.society_metrics = dict(state.society_metrics or {})
+                    state.society_metrics["convergence"] = {
+                        "stopped": True,
+                        "round_index": round_num,
+                        "reason": convergence_result.get("reason", ""),
+                        "metrics": convergence_result.get("metrics", {}),
+                    }
+                    logger.info(
+                        "消费者传播仿真收敛提前停止: %s round=%s reason=%s",
+                        simulation_id,
+                        round_num,
+                        convergence_result.get("reason", ""),
+                    )
                 cls._save_run_state(state)
+                if should_stop:
+                    break
+                previous_round_snapshots = current_round_snapshots
 
             state.runner_status = RunnerStatus.COMPLETED
             state.reddit_running = False
@@ -2481,4 +2547,3 @@ class SimulationRunner:
             results = results[:limit]
         
         return results
-

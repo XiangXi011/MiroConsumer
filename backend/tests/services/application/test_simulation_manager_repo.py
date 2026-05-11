@@ -1,6 +1,7 @@
 """Tests verifying SimulationManager delegates artifact I/O to repository."""
 
 from typing import Any, Dict, List, Optional
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -122,6 +123,22 @@ class TestSimulationManagerDelegatesToRepo:
         manager.get_simulation_config("sim_1")
 
         assert "load_simulation_config:sim_1" in repo.calls
+
+    def test_get_simulation_config_uses_redis_cache_when_configured(self, monkeypatch):
+        repo = SpySimulationRepository()
+        manager = SimulationManager(repo=repo)
+        cache = MagicMock()
+        cache.get_or_set.return_value = {"cached": True}
+
+        monkeypatch.setattr(manager, "_get_cache", lambda: cache)
+
+        data = manager.get_simulation_config("sim_cache")
+
+        assert data == {"cached": True}
+        cache.get_or_set.assert_called_once()
+        args, kwargs = cache.get_or_set.call_args
+        assert args[0] == "simulation_config:v1:sim_cache"
+        assert kwargs["ttl"] == SimulationManager.CONFIG_CACHE_TTL_SECONDS
 
     def test_list_simulations_delegates_to_repo(self):
         repo = SpySimulationRepository()

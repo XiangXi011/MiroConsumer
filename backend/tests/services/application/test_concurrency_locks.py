@@ -73,6 +73,8 @@ class TestCreateLockManager:
         from app.services.application.concurrency import FileLockManager, create_lock_manager
 
         monkeypatch.setattr(Config, "_db_url_cache", "")
+        monkeypatch.setattr(Config, "_redis_url_cache", "")
+        monkeypatch.setattr(Config, "_lock_backend_cache", "auto", raising=False)
         mgr = create_lock_manager()
         assert isinstance(mgr, FileLockManager)
 
@@ -83,6 +85,8 @@ class TestCreateLockManager:
         )
 
         monkeypatch.setattr(Config, "_db_url_cache", "sqlite:///test.db")
+        monkeypatch.setattr(Config, "_redis_url_cache", "")
+        monkeypatch.setattr(Config, "_lock_backend_cache", "auto", raising=False)
         mgr = create_lock_manager()
         assert isinstance(mgr, SQLiteTransactionLockManager)
 
@@ -97,13 +101,57 @@ class TestCreateLockManager:
             "_db_url_cache",
             "postgresql+psycopg://user:pass@localhost/db",
         )
+        monkeypatch.setattr(Config, "_redis_url_cache", "")
+        monkeypatch.setattr(Config, "_lock_backend_cache", "auto", raising=False)
         mgr = create_lock_manager()
         assert isinstance(mgr, PostgresAdvisoryLockManager)
+
+    def test_auto_backend_prefers_redis_when_redis_url_is_configured(self, monkeypatch):
+        from app.services.application.concurrency import RedisLockManager, create_lock_manager
+
+        class FakeRedis:
+            def ping(self):
+                return True
+
+        monkeypatch.setattr(Config, "_db_url_cache", "")
+        monkeypatch.setattr(Config, "_redis_url_cache", "redis://localhost:6379/0")
+        monkeypatch.setattr(Config, "_lock_backend_cache", "auto", raising=False)
+        monkeypatch.setattr(
+            "app.services.application.concurrency.redis.Redis.from_url",
+            lambda url: FakeRedis(),
+        )
+
+        mgr = create_lock_manager()
+
+        assert isinstance(mgr, RedisLockManager)
+
+    def test_explicit_file_backend_uses_file_lock_even_with_redis_url(self, monkeypatch):
+        from app.services.application.concurrency import FileLockManager, create_lock_manager
+
+        monkeypatch.setattr(Config, "_db_url_cache", "postgresql+psycopg://user:pass@host/db")
+        monkeypatch.setattr(Config, "_redis_url_cache", "redis://localhost:6379/0")
+        monkeypatch.setattr(Config, "_lock_backend_cache", "file", raising=False)
+
+        mgr = create_lock_manager()
+
+        assert isinstance(mgr, FileLockManager)
+
+    def test_explicit_redis_backend_requires_redis_url(self, monkeypatch):
+        from app.services.application.concurrency import create_lock_manager
+
+        monkeypatch.setattr(Config, "_db_url_cache", "")
+        monkeypatch.setattr(Config, "_redis_url_cache", "")
+        monkeypatch.setattr(Config, "_lock_backend_cache", "redis", raising=False)
+
+        with pytest.raises(ValueError, match="REDIS_URL"):
+            create_lock_manager()
 
     def test_invalid_db_url_raises_value_error(self, monkeypatch):
         from app.services.application.concurrency import create_lock_manager
 
         monkeypatch.setattr(Config, "_db_url_cache", "mysql://bad")
+        monkeypatch.setattr(Config, "_redis_url_cache", "")
+        monkeypatch.setattr(Config, "_lock_backend_cache", "auto", raising=False)
         with pytest.raises(ValueError):
             create_lock_manager()
 
@@ -180,3 +228,78 @@ class TestPostgresAdvisoryLockManager:
         statements = [item[0] for item in engine.connection.statements]
         assert any("pg_try_advisory_lock" in statement for statement in statements)
         assert any("pg_advisory_unlock" in statement for statement in statements)
+
+
+class TestRedisLockManager:
+    def test_acquire_sets_namespaced_lock_with_token_and_ttl_then_releases(self):
+        from app.services.application.concurrency import RedisLockManager, simulation_run_lock
+
+        class FakeRedis:
+            def __init__(self):
+                self.set_calls = []
+                self.eval_calls = []
+
+            def ping(self):
+                return True
+
+            def set(self, key, token, nx=False, ex=None):
+                self.set_calls.append({"key": key, "token": token, "nx": nx, "ex": ex})
+                return True
+
+            def eval(self, script, numkeys, key, token):
+                self.eval_calls.append(
+                    {"script": script, "numkeys": numkeys, "key": key, "token": token}
+                )
+                return 1
+
+        redis_client = FakeRedis()
+        mgr = RedisLockManager(
+            redis_url="redis://localhost:6379/0",
+            redis_client=redis_client,
+            namespace="testlocks",
+        )
+
+        with mgr.acquire(simulation_run_lock, "sim_1", timeout_seconds=0):
+            pass
+
+        assert len(redis_client.set_calls) == 1
+        set_call = redis_client.set_calls[0]
+        assert set_call["key"].startswith("testlocks:simulation_run_lock:")
+        assert set_call["nx"] is True
+        assert set_call["ex"] >= 30
+        assert len(redis_client.eval_calls) == 1
+        assert redis_client.eval_calls[0]["key"] == set_call["key"]
+        assert redis_client.eval_calls[0]["token"] == set_call["token"]
+
+    def test_second_manager_conflicts_on_same_redis_lock(self):
+        from app.services.application.concurrency import RedisLockManager, branch_fork_lock
+
+        class SharedRedis:
+            def __init__(self):
+                self.held = {}
+
+            def ping(self):
+                return True
+
+            def set(self, key, token, nx=False, ex=None):
+                if nx and key in self.held:
+                    return False
+                self.held[key] = token
+                return True
+
+            def eval(self, script, numkeys, key, token):
+                if self.held.get(key) == token:
+                    del self.held[key]
+                    return 1
+                return 0
+
+        redis_client = SharedRedis()
+        mgr_a = RedisLockManager("redis://localhost:6379/0", redis_client=redis_client)
+        mgr_b = RedisLockManager("redis://localhost:6379/0", redis_client=redis_client)
+
+        with mgr_a.acquire(branch_fork_lock, "branch_1", timeout_seconds=0):
+            with pytest.raises(ConcurrencyConflictError) as exc_info:
+                with mgr_b.acquire(branch_fork_lock, "branch_1", timeout_seconds=0):
+                    pass
+
+        assert exc_info.value.to_response()["reason"] == "lock_timeout"

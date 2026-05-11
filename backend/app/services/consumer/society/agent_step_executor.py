@@ -147,6 +147,20 @@ class AgentStepExecutor:
             model="",
             latency_ms=0.0,
             reasoning_summary=f"shadow_batch:{len(agents_list)} agents",
+            perception_reasoning=(
+                f"input=shadow_batch; round_index={round_index}; "
+                f"agent_count={len(agents_list)}"
+            ),
+            decision_reasoning="reasoning_method=rule_state_machine; llm_invoked=False",
+            expression_reasoning=f"output_events={len(events)}",
+            reasoning_triplets=[
+                {
+                    "input": f"input=shadow_batch; round_index={round_index}; agent_count={len(agents_list)}",
+                    "evidence": "reasoning_method=rule_state_machine; llm_invoked=False",
+                    "conclusion": f"output_events={len(events)}",
+                }
+            ],
+            round_index=round_index,
         )
         return events, [trace]
 
@@ -203,6 +217,21 @@ class AgentStepExecutor:
         llm_invoked = bool(event.get("llm_invoked", False))
         reasoning_error = event.get("reasoning_error", "")
         quote = event.get("quote", "")
+        event_id = str(event.get("event_id", "") or "")
+        finding_id = AgentStepExecutor._first_value(
+            event.get("trigger_finding_ids")
+            or event.get("trigger_finding_id")
+            or event.get("related_finding_id")
+        )
+        source_input_refs = AgentStepExecutor._join_values(event.get("source_input_refs"))
+        claim = str(event.get("claim", "") or "")
+        event_type = str(
+            event.get("consumer_event_type")
+            or event.get("event_type")
+            or event.get("channel")
+            or ""
+        )
+        reasoning_method = str(event.get("reasoning_method", "") or "")
 
         fallback_reason = ""
         if backend == "template_fallback" and reasoning_error:
@@ -210,15 +239,79 @@ class AgentStepExecutor:
         elif backend == "template_fallback":
             fallback_reason = "unknown"
 
+        perception_reasoning = AgentStepExecutor._join_reasoning_parts(
+            [
+                f"claim={claim}" if claim else "",
+                f"agent_id={agent.agent_id}",
+                f"segment={agent.segment}",
+                f"source_input_refs={source_input_refs}" if source_input_refs else "",
+            ]
+        )
+        decision_reasoning = AgentStepExecutor._join_reasoning_parts(
+            [
+                f"event_type={event_type}" if event_type else "",
+                f"reasoning_method={reasoning_method}" if reasoning_method else "",
+                f"trust={event.get('trust')}" if event.get("trust") is not None else "",
+                (
+                    f"purchase_intent={event.get('purchase_intent')}"
+                    if event.get("purchase_intent") is not None
+                    else ""
+                ),
+            ]
+        )
+        expression_reasoning = f"quote={quote}" if quote else ""
+
         return ReasoningTrace(
             reasoning_backend=backend,
             llm_invoked=llm_invoked,
             source="society_runtime",
             fallback_reason=fallback_reason,
-            model="",
-            latency_ms=0.0,
+            model=str(event.get("model_version", "") or ""),
+            latency_ms=float(event.get("latency_ms", 0.0) or 0.0),
             reasoning_summary=str(quote) if quote else "",
+            perception_reasoning=perception_reasoning,
+            decision_reasoning=decision_reasoning,
+            expression_reasoning=expression_reasoning,
+            reasoning_triplets=[
+                {
+                    "input": perception_reasoning,
+                    "evidence": decision_reasoning,
+                    "conclusion": str(quote) if quote else expression_reasoning,
+                }
+            ],
+            related_finding_id=finding_id,
+            related_event_id=event_id,
+            agent_id=agent.agent_id,
+            round_index=round_index,
         )
+
+    @staticmethod
+    def _first_value(value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, (str, bytes)):
+            return str(value).strip()
+        if isinstance(value, Iterable):
+            for item in value:
+                text = str(item or "").strip()
+                if text:
+                    return text
+            return ""
+        return str(value).strip()
+
+    @staticmethod
+    def _join_values(value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, (str, bytes)):
+            return str(value).strip()
+        if isinstance(value, Iterable):
+            return ",".join(str(item).strip() for item in value if str(item or "").strip())
+        return str(value).strip()
+
+    @staticmethod
+    def _join_reasoning_parts(parts: Iterable[str]) -> str:
+        return "; ".join(part for part in parts if part)
 
 
 __all__ = ["AgentStepExecutor"]

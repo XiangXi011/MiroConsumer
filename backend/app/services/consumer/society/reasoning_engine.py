@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from typing import Any, Callable, Dict, Iterable, Mapping
 
+from ....utils.llm_governance import validate_llm_output, get_fallback_response
+from ....config import Config
 from ..event_ontology import ConsumerEventType
 from .population_models import ConsumerSocietyAgent
+
+logger = logging.getLogger(__name__)
 
 
 VALID_REASONING_MODES = {
@@ -93,7 +98,8 @@ class LayeredSocietyReasoningEngine:
         event["reasoning_method"] = reasoning_mode
         event["reasoning_backend"] = backend
         event["llm_invoked"] = False
-        event["reasoning_summary"] = f"{role} response to {claim}"
+        if Config.ENABLE_REASONING_TRACE:
+            event["reasoning_summary"] = f"{role} response to {claim}"
         return event
 
     def _llm_reason(
@@ -138,7 +144,21 @@ class LayeredSocietyReasoningEngine:
         requested_type = str(payload.get("consumer_event_type", event.get("consumer_event_type", "")))
         if requested_type in {item.value for item in ConsumerEventType}:
             event["consumer_event_type"] = requested_type
-        event["quote"] = str(payload.get("quote") or event.get("quote") or "")
+
+        # LLM 输出治理：校验 quote 和 reasoning_summary
+        quote = str(payload.get("quote") or event.get("quote") or "")
+        reasoning_summary = str(payload.get("reasoning_summary", ""))
+        quote_validation = validate_llm_output(quote, context="reasoning_engine.quote")
+        summary_validation = validate_llm_output(reasoning_summary, context="reasoning_engine.summary")
+
+        if not quote_validation["valid"]:
+            logger.warning("reasoning_engine quote 校验失败: %s", quote_validation["issues"])
+            quote = get_fallback_response("opinion")
+        if not summary_validation["valid"]:
+            logger.warning("reasoning_engine summary 校验失败: %s", summary_validation["issues"])
+            reasoning_summary = "（推理摘要生成失败）"
+
+        event["quote"] = quote
         event["trust"] = _clamp(payload.get("trust", event.get("trust", 0.5)))
         event["purchase_intent"] = _clamp(
             payload.get("purchase_intent", event.get("purchase_intent", 0.5))
@@ -147,7 +167,8 @@ class LayeredSocietyReasoningEngine:
         event["reasoning_method"] = reasoning_mode
         event["reasoning_backend"] = "llm"
         event["llm_invoked"] = True
-        event["reasoning_summary"] = str(payload.get("reasoning_summary", ""))
+        if Config.ENABLE_REASONING_TRACE:
+            event["reasoning_summary"] = reasoning_summary
         return event
 
     def _build_llm_client(self) -> Any:

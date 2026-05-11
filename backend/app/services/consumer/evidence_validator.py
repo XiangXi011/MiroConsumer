@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Mapping, Optional
 
 from pydantic import BaseModel
 
@@ -15,6 +15,8 @@ class EvidenceValidationResult(BaseModel):
     aligned_snippet_ids: List[str]
     missing_support_reasons: List[str]
     validator_notes: str
+    contradiction_flags: List[str] = []
+    evidence_gap: List[str] = []
 
 
 class EvidenceGatekeepingResult(BaseModel):
@@ -64,48 +66,62 @@ class EvidenceGatekeepingPolicy:
     })
 
 
+def _field_from(item: Any, key: str, default: Any = "") -> Any:
+    if isinstance(item, Mapping):
+        return item.get(key, default)
+    return getattr(item, key, default)
+
+
 def _has_evidence_snippets(finding: Any) -> bool:
-    snippets = (
-        finding.evidence_snippets
-        if hasattr(finding, "evidence_snippets")
-        else finding.get("evidence_snippets", [])
-    )
+    snippets = _field_from(finding, "evidence_snippets", [])
     return bool(snippets and any(str(s).strip() for s in snippets))
 
 
 def _has_snippet_id(finding: Any) -> bool:
-    sid = finding.snippet_id if hasattr(finding, "snippet_id") else finding.get("snippet_id", "")
+    sid = _field_from(finding, "snippet_id", "")
     return bool(sid)
 
 
 def _has_retrieval_trace(finding: Any) -> bool:
-    tid = (
-        finding.retrieval_trace_id
-        if hasattr(finding, "retrieval_trace_id")
-        else finding.get("retrieval_trace_id", "")
-    )
+    tid = _field_from(finding, "retrieval_trace_id", "")
     return bool(tid)
 
 
 def _snippet_id_from_finding(finding: Any) -> str:
-    return finding.snippet_id if hasattr(finding, "snippet_id") else finding.get("snippet_id", "")
+    return _field_from(finding, "snippet_id", "")
 
 
 def _trace_id_from_finding(finding: Any) -> str:
-    return (
-        finding.retrieval_trace_id
-        if hasattr(finding, "retrieval_trace_id")
-        else finding.get("retrieval_trace_id", "")
-    )
+    return _field_from(finding, "retrieval_trace_id", "")
 
 
 def _evidence_snippets_from_finding(finding: Any) -> List[str]:
-    snippets = (
-        finding.evidence_snippets
-        if hasattr(finding, "evidence_snippets")
-        else finding.get("evidence_snippets", [])
-    )
+    snippets = _field_from(finding, "evidence_snippets", [])
     return [s for s in snippets if isinstance(s, str) and s.strip()]
+def _detect_contradictions(atoms) -> List[str]:
+    """检测证据矛盾"""
+    contradictions = []
+    dict_atoms = [a for a in atoms if isinstance(a, dict)]
+    positive = [a for a in dict_atoms if a.get("support_level") in ("strong", "moderate")]
+    negative = [a for a in dict_atoms if a.get("support_level") in ("weak", "insufficient")]
+    if positive and negative:
+        contradictions.append("mixed_evidence")
+    return contradictions
+
+
+def _identify_gaps(atoms, claim: str = "") -> List[str]:
+    """识别证据缺口"""
+    gaps = []
+    if not atoms:
+        gaps.append("no_evidence")
+    elif len(atoms) < 2:
+        gaps.append("insufficient_evidence_count")
+    dict_atoms = [a for a in atoms if isinstance(a, dict)]
+    has_source_type = any(a.get("source_type") for a in dict_atoms)
+    if not has_source_type:
+        gaps.append("missing_source_type")
+    return gaps
+
 
 
 def validate_finding(
@@ -114,7 +130,7 @@ def validate_finding(
     chunks: Optional[List[Any]] = None,
 ) -> EvidenceValidationResult:
     """Validate whether a finding is supported by its cited evidence."""
-    finding_id = finding.finding_id if hasattr(finding, "finding_id") else finding.get("finding_id", "")
+    finding_id = _field_from(finding, "finding_id", "")
 
     has_snippets = _has_evidence_snippets(finding)
     has_snippet_id = _has_snippet_id(finding)
@@ -123,14 +139,14 @@ def validate_finding(
     trace_by_id: Dict[str, Any] = {}
     if traces:
         for t in traces:
-            tid = t.trace_id if hasattr(t, "trace_id") else t.get("trace_id", "")
+            tid = _field_from(t, "trace_id", "")
             if tid:
                 trace_by_id[tid] = t
 
     chunk_by_id: Dict[str, Any] = {}
     if chunks:
         for c in chunks:
-            cid = c.chunk_id if hasattr(c, "chunk_id") else c.get("chunk_id", "")
+            cid = _field_from(c, "chunk_id", "")
             if cid:
                 chunk_by_id[cid] = c
 
@@ -151,7 +167,7 @@ def validate_finding(
     trace_aligned = False
     if has_trace and trace_id in trace_by_id:
         trace = trace_by_id[trace_id]
-        trace_chunk_ids = trace.chunk_ids if hasattr(trace, "chunk_ids") else trace.get("chunk_ids", [])
+        trace_chunk_ids = _field_from(trace, "chunk_ids", [])
         for tcid in trace_chunk_ids:
             if tcid in chunk_by_id:
                 trace_aligned = True
@@ -195,6 +211,11 @@ def validate_finding(
     notes_parts.append(f"Aligned snippets: {len(aligned_snippet_ids)}")
     if missing_support_reasons:
         notes_parts.append(f"Missing: {', '.join(missing_support_reasons)}")
+    # Compute contradiction_flags and evidence_gap
+    atoms = evidence_snippets if evidence_snippets else []
+    claim = _field_from(finding, "finding_text", "") or _field_from(finding, "summary", "")
+    contradiction_flags = _detect_contradictions(atoms)
+    evidence_gap = _identify_gaps(atoms, claim)
 
     return EvidenceValidationResult(
         finding_id=finding_id,
@@ -203,6 +224,8 @@ def validate_finding(
         aligned_snippet_ids=aligned_snippet_ids,
         missing_support_reasons=missing_support_reasons,
         validator_notes="; ".join(notes_parts),
+        contradiction_flags=contradiction_flags,
+        evidence_gap=evidence_gap,
     )
 
 
@@ -245,11 +268,11 @@ def _source_from_finding(finding: Any, sources: Optional[List[Any]] = None) -> O
     """Look up a finding's source from the provided source list."""
     if not sources:
         return None
-    source_id = finding.source_id if hasattr(finding, "source_id") else finding.get("source_id", "")
+    source_id = _field_from(finding, "source_id", "")
     if not source_id:
         return None
     for s in sources:
-        sid = s.source_id if hasattr(s, "source_id") else s.get("source_id", "")
+        sid = _field_from(s, "source_id", "")
         if sid == source_id:
             return s
     return None
@@ -271,7 +294,7 @@ def apply_evidence_gatekeeping(
 
     violations: List[str] = []
 
-    finding_type = finding.finding_type if hasattr(finding, "finding_type") else finding.get("finding_type", "")
+    finding_type = _field_from(finding, "finding_type", "")
     is_high_stakes = finding_type in policy.high_stakes_finding_types
 
     # 1. Check validation status gates
@@ -298,7 +321,7 @@ def apply_evidence_gatekeeping(
 
     # 4. Check source-tier minimums
     if source is not None:
-        trust_tier = source.trust_tier if hasattr(source, "trust_tier") else source.get("trust_tier", 3)
+        trust_tier = _field_from(source, "trust_tier", 3)
         max_tier = policy.source_tier_maximums.get(finding_type)
         if max_tier is not None and trust_tier > max_tier:
             violations.append(f"source_tier_too_low:tier_{trust_tier}>max_{max_tier}")
@@ -352,7 +375,7 @@ def apply_evidence_gatekeeping_to_findings(
     validation_by_id = {v.finding_id: v for v in validation_results}
     results: List[EvidenceGatekeepingResult] = []
     for finding in findings:
-        finding_id = finding.finding_id if hasattr(finding, "finding_id") else finding.get("finding_id", "")
+        finding_id = _field_from(finding, "finding_id", "")
         validation = validation_by_id.get(finding_id)
         if validation is None:
             validation = EvidenceValidationResult(
@@ -402,7 +425,7 @@ def filter_allowed_findings(
     }
     return [
         f for f in findings
-        if (f.finding_id if hasattr(f, "finding_id") else f.get("finding_id", "")) in allowed_ids
+        if _field_from(f, "finding_id", "") in allowed_ids
     ]
 
 

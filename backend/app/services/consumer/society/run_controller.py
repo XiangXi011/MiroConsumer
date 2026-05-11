@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Any, Dict, Iterable, List, Mapping
 
 from ....utils.atomic_json import atomic_write_json
+from ....utils.metrics import record_simulation_run, set_active_runs
 from ..reasoning_trace import ReasoningTrace, write_reasoning_traces
 from .agent_step_executor import AgentStepExecutor
 from .budget_manager import SocietyBudgetManager
@@ -18,6 +19,7 @@ from .profile_generator import ConsumerProfileGenerator
 from .progress_buffer import ProgressBuffer
 from .report_adapter import SocietyReportAdapter
 from .round_scheduler import RoundScheduler
+from ..runtime.control import RuntimeControlLayer, EarlyStopConfig
 from .state_store import SocietyStateStore
 
 
@@ -33,6 +35,7 @@ class RunController:
         reasoning_engine: Any,
         quality_checker: Any,
         channel_runtime: ConsumerChannelRuntime,
+        dry_run: bool = False,
     ):
         self.store = store
         self.population_factory = population_factory
@@ -41,6 +44,11 @@ class RunController:
         self.reasoning_engine = reasoning_engine
         self.quality_checker = quality_checker
         self.channel_runtime = channel_runtime
+        self.dry_run = dry_run
+        self.runtime_control = RuntimeControlLayer(EarlyStopConfig(
+            enabled=True, patience=3, min_rounds=3,
+            event_threshold=5, attitude_change_threshold=0.01,
+        ))
 
     def run(
         self,
@@ -51,6 +59,11 @@ class RunController:
         brief_context: Mapping[str, Any],
         research_findings: Iterable[Any],
     ) -> Dict[str, Any]:
+        if self.dry_run:
+            return self._dry_run_preview(simulation_id, config, persona_pack, brief_context)
+
+        record_simulation_run()
+        set_active_runs(1)
         started_at = datetime.now().isoformat()
         self.store.ensure_started(simulation_id)
         research_findings_list = list(research_findings or [])
@@ -97,6 +110,13 @@ class RunController:
         all_events: List[Dict[str, Any]] = []
         snapshots: List[ConsumerSocietySnapshot] = []
         reasoning_traces: List[ReasoningTrace] = []
+        previous_event_distribution: Dict[str, float] = {}
+        convergence_status: Dict[str, Any] = {
+            "stopped": False,
+            "round_index": -1,
+            "reason": "not_started",
+            "metrics": {},
+        }
         claims = brief_context.get("claims", []) if isinstance(brief_context, Mapping) else []
         if not isinstance(claims, list):
             claims = [str(claims)]
@@ -168,7 +188,53 @@ class RunController:
                 )
             )
             self.store.write_round_snapshot(simulation_id, snapshots[-1])
+
+            # RuntimeControl: save checkpoint and check early stop
+            avg_attitude = metrics.get("avg_attitude", 0.5)
+            agent_states = {a.agent_id: dict(a.state) for a in population}
+            self.runtime_control.save_checkpoint(
+                round_id=round_index,
+                state={"agents": agent_states, "events": round_events},
+                metrics={"avg_attitude": avg_attitude, "new_events": len(round_events)},
+            )
+            should_stop, reason = self.runtime_control.should_early_stop(
+                round_id=round_index,
+                current_metrics={"avg_attitude": avg_attitude, "new_events": len(round_events)},
+            )
+            convergence_metrics = self._round_convergence_metrics(
+                round_events=round_events,
+                population=population,
+                previous_event_distribution=previous_event_distribution,
+            )
+            convergence_status = {
+                "stopped": bool(should_stop),
+                "round_index": round_index,
+                "reason": reason if should_stop else "not_converged",
+                "metrics": convergence_metrics,
+            }
+
             progress_buffer.round_completed(round_index)
+
+            # B3: Save graph snapshot for this round
+            try:
+                graph_snapshot = {
+                    "round_id": round_index,
+                    "node_count": len(population),
+                    "event_count": len(round_events),
+                    "metrics": metrics,
+                }
+                snapshot_dir = self.store.society_dir(simulation_id) / "graph_snapshots"
+                snapshot_dir.mkdir(parents=True, exist_ok=True)
+                snapshot_path = snapshot_dir / f"graph_snapshot_round_{round_index}.json"
+                atomic_write_json(snapshot_path, graph_snapshot)
+            except Exception:
+                pass  # non-critical
+
+            if should_stop:
+                import logging
+                logging.getLogger(__name__).info(f"Early stop triggered at round {round_index}: {reason}")
+                break
+            previous_event_distribution = convergence_metrics["current_event_type_distribution"]
 
         # Count backends from all events for config payload
         backend_counts: Dict[str, int] = {}
@@ -182,7 +248,20 @@ class RunController:
         template_fallback_count = sum(1 for e in all_events if e.get("reasoning_backend") == "template_fallback")
         failed_count = sum(1 for e in all_events if e.get("reasoning_backend") == "template_fallback" and "reasoning_error" in e)
 
-        final_metrics = snapshots[-1].metrics if snapshots else {}
+        final_metrics = dict(snapshots[-1].metrics if snapshots else {})
+        if convergence_status["reason"] == "not_started":
+            convergence_status = {
+                "stopped": False,
+                "round_index": -1,
+                "reason": "no_rounds_completed",
+                "metrics": {},
+            }
+        elif not convergence_status["stopped"]:
+            convergence_status = {
+                **convergence_status,
+                "reason": "max_rounds_completed",
+            }
+        final_metrics["convergence"] = convergence_status
         channel_result = self.channel_runtime.run(
             population=population,
             society_events=all_events,
@@ -235,7 +314,146 @@ class RunController:
             failed_count=failed_count,
         )
 
+        set_active_runs(0)
+
+        # P1-7.7: Run drift detection against baseline metrics if available
+        drift_report = None
+        try:
+            from ..drift_detector import DriftDetector
+            baseline_path = self.store.society_dir(simulation_id) / "baseline_metrics.json"
+            if baseline_path.exists():
+                import json
+                with open(baseline_path, "r", encoding="utf-8") as f:
+                    baseline_metrics = json.load(f)
+                detector = DriftDetector()
+                drift_report = detector.generate_drift_report(baseline_metrics, final_metrics)
+                drift_path = self.store.society_dir(simulation_id) / "drift_report.json"
+                atomic_write_json(drift_path, drift_report.to_dict())
+        except Exception:
+            pass  # non-critical — drift report is advisory
+
         return SocietyReportAdapter(base_dir=self.store.base_dir).build_report_context(simulation_id)
+
+    def _dry_run_preview(
+        self,
+        simulation_id: str,
+        config: ConsumerSocietyRunConfig,
+        persona_pack: Iterable[Mapping[str, Any]],
+        brief_context: Mapping[str, Any],
+    ) -> Dict[str, Any]:
+        """快速预览：只执行2轮，不调用LLM"""
+        personas = list(persona_pack) if persona_pack else []
+        population = self.population_factory.build_population(personas[:5], config)
+        graph_preview = {
+            "nodes": len(population),
+            "edges": max(0, len(population) * (len(population) - 1) // 4),
+        }
+        return {
+            "dry_run": True,
+            "simulation_id": simulation_id,
+            "preview_rounds": 2,
+            "estimated_duration": "2 minutes",
+            "mode": config.mode,
+            "persona_preview": [
+                getattr(p, "to_prompt_description", lambda: str(p))()
+                for p in population[:5]
+            ],
+            "graph_preview": graph_preview,
+            "target_population_size": config.target_population_size,
+            "max_rounds": config.max_rounds,
+            "enabled_channels": list(config.enabled_channels),
+        }
+
+    def resume_from_checkpoint(self, round_id: int = -1):
+        """Resume simulation from a saved checkpoint."""
+        cp = self.runtime_control.get_resume_point(round_id)
+        if cp:
+            return {"resume_from": cp.round_id, "state": cp.agent_states}
+        return None
+
+    @staticmethod
+    def _round_convergence_metrics(
+        *,
+        round_events: Iterable[Mapping[str, Any]],
+        population: Iterable[ConsumerSocietyAgent],
+        previous_event_distribution: Mapping[str, float],
+    ) -> Dict[str, Any]:
+        events = list(round_events)
+        event_distribution = RunController._event_type_distribution(events)
+        event_change_rate = RunController._distribution_difference(
+            event_distribution,
+            previous_event_distribution,
+        )
+        community_coverage = RunController._community_coverage(events, population)
+        return {
+            "event_type_distribution_change_rate": round(event_change_rate, 6),
+            "current_event_type_distribution": event_distribution,
+            "previous_event_type_distribution": dict(previous_event_distribution),
+            **community_coverage,
+        }
+
+    @staticmethod
+    def _event_type_distribution(events: Iterable[Mapping[str, Any]]) -> Dict[str, float]:
+        counts: Dict[str, int] = {}
+        total = 0
+        for event in events:
+            label = str(
+                event.get("consumer_event_type")
+                or event.get("event_type")
+                or event.get("type")
+                or ""
+            ).strip()
+            if not label:
+                continue
+            counts[label] = counts.get(label, 0) + 1
+            total += 1
+        if total == 0:
+            return {}
+        return {
+            label: round(count / total, 6)
+            for label, count in sorted(counts.items())
+        }
+
+    @staticmethod
+    def _distribution_difference(
+        current_distribution: Mapping[str, float],
+        previous_distribution: Mapping[str, float],
+    ) -> float:
+        labels = set(current_distribution) | set(previous_distribution)
+        if not labels:
+            return 0.0
+        return 0.5 * sum(
+            abs(current_distribution.get(label, 0.0) - previous_distribution.get(label, 0.0))
+            for label in labels
+        )
+
+    @staticmethod
+    def _community_coverage(
+        events: Iterable[Mapping[str, Any]],
+        population: Iterable[ConsumerSocietyAgent],
+    ) -> Dict[str, Any]:
+        all_communities = {
+            str(agent.segment).strip()
+            for agent in population
+            if str(agent.segment).strip()
+        }
+        active_communities = {
+            str(event.get("segment", "") or "").strip()
+            for event in events
+            if str(event.get("segment", "") or "").strip()
+        }
+        total_community_count = len(all_communities)
+        active_community_count = len(active_communities & all_communities)
+        ratio = (
+            active_community_count / total_community_count
+            if total_community_count > 0
+            else 0.0
+        )
+        return {
+            "community_coverage_ratio": round(ratio, 6),
+            "active_community_count": active_community_count,
+            "total_community_count": total_community_count,
+        }
 
     @staticmethod
     def _progress(

@@ -84,3 +84,61 @@ def test_audit_chain_api_returns_chain(monkeypatch):
     assert payload["data"]["complete"] is True
     assert payload["data"]["chain"][-1]["type"] == "trace"
     assert payload["data"]["chain"][-1]["resource_id"] == "trace_1"
+
+
+def test_evidence_graph_api_returns_finding_evidence_source_graph(monkeypatch):
+    import app.services.application.audit_chain_service as audit_module
+
+    report = Report(
+        report_id="report_graph_api",
+        simulation_id="sim_1",
+        graph_id="g1",
+        simulation_requirement="req",
+        status=ReportStatus.COMPLETED,
+        report_context={
+            "source_catalog": [
+                {
+                    "source_id": "src_1",
+                    "label": "Research Upload",
+                    "uri": "file://research.md",
+                    "source_type": "upload",
+                    "trust_tier": 2,
+                }
+            ],
+            "enriched_findings": [
+                {
+                    "finding_id": "finding_1",
+                    "finding_type": "risk_signal",
+                    "summary": "Claim needs support",
+                    "source_id": "src_1",
+                    "evidence_preview": "A respondent asked for proof.",
+                    "confidence_label": "low",
+                    "confidence_score": 0.4,
+                }
+            ],
+        },
+    )
+
+    class StubRepo:
+        def get_report(self, report_id):
+            return report
+
+    monkeypatch.setattr(
+        audit_module,
+        "create_repository_bundle",
+        lambda: type("Bundle", (), {"report_repo": StubRepo()})(),
+    )
+
+    response = _create_test_app().test_client().get(
+        "/api/consumer/reports/report_graph_api/evidence-graph"
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["success"] is True
+    data = payload["data"]
+    assert data["report_id"] == "report_graph_api"
+    assert data["node_count"] == 3
+    assert data["edge_count"] == 2
+    assert any(node["type"] == "finding" and node["low_confidence"] for node in data["nodes"])
+    assert {edge["type"] for edge in data["edges"]} == {"supported_by", "sourced_from"}

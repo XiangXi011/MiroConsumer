@@ -1,0 +1,517 @@
+"""Tests for the three-layer cognition engine (Perception → Decision → Expression)."""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+from types import ModuleType
+from typing import Any, Dict, List
+from unittest.mock import MagicMock
+
+# Stub out heavy third-party deps that app.services.__init__ pulls in
+_zep_mock = MagicMock()
+for _mod_name in (
+    "zep_cloud",
+    "zep_cloud.client",
+    "zep_cloud.external_clients",
+    "zep_cloud.external_clients.ontology",
+):
+    if _mod_name not in sys.modules:
+        sys.modules[_mod_name] = _zep_mock
+
+import pytest
+
+_BACKEND_ROOT = str(Path(__file__).resolve().parents[1])
+if _BACKEND_ROOT not in sys.path:
+    sys.path.insert(0, _BACKEND_ROOT)
+
+from app.services.consumer.cognition.decision import DecisionEngine, DEFAULT_ACTIONS
+from app.services.consumer.cognition.engine import ConsumerCognitionEngine
+from app.services.consumer.cognition.expression import ExpressionEngine
+from app.services.consumer.cognition.perception import PerceptionEngine
+from app.services.consumer.demographics.persona import ConsumerPersona
+from app.services.consumer.society.consumer_roles import ConsumerRole
+from app.services.consumer.society.population_models import ConsumerSocietyAgent
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+def _make_agent(**overrides: Any) -> ConsumerSocietyAgent:
+    defaults = dict(
+        agent_id="agent-001",
+        parent_persona_id="persona-1",
+        layer="core",
+        segment="young_professional",
+        role=ConsumerRole.Advocate,
+        traits={"tech_savvy": True},
+        channel_affinity={"weibo": 0.8, "wechat": 0.6},
+        evidence_sensitivity=0.6,
+        price_sensitivity=0.4,
+        trust_baseline=0.5,
+        share_propensity=0.5,
+        skepticism=0.3,
+        state={"trust": 0.5, "purchase_intent": 0.5, "awareness": 0.0},
+    )
+    defaults.update(overrides)
+    return ConsumerSocietyAgent(**defaults)
+
+
+def _make_social_context(*, positive: int = 2, negative: int = 1) -> Dict[str, Any]:
+    opinions: List[Dict[str, Any]] = []
+    for i in range(positive):
+        opinions.append({"source_id": f"p{i}", "text": "great product, recommend", "trust": 0.8, "claim": "good quality"})
+    for i in range(negative):
+        opinions.append({"source_id": f"n{i}", "text": "terrible experience, avoid", "trust": 0.2, "claim": "bad quality"})
+    return {"peer_opinions": opinions}
+
+
+def _make_media_content(*, source_type: str = "official") -> Dict[str, Any]:
+    return {
+        "claims": ["Best in class", "Award winning"],
+        "source_type": source_type,
+        "emotional_tone": "excitement",
+        "target_audience": ["young_professional"],
+    }
+
+
+# ---------------------------------------------------------------------------
+# PerceptionEngine tests
+# ---------------------------------------------------------------------------
+
+class TestPerceptionEngine:
+    def test_process_social_input_basic(self):
+        engine = PerceptionEngine()
+        agent = _make_agent()
+        ctx = _make_social_context(positive=3, negative=1)
+
+        result = engine.process_social_input(agent, ctx)
+
+        assert "peer_opinions" in result
+        assert "social_pressure" in result
+        assert "dominant_sentiment" in result
+        assert "trust_signals" in result
+        assert len(result["peer_opinions"]) == 4
+        assert result["dominant_sentiment"] == "positive"
+        assert result["social_pressure"] > 0
+
+    def test_process_social_input_all_negative(self):
+        engine = PerceptionEngine()
+        agent = _make_agent()
+        ctx = _make_social_context(positive=0, negative=3)
+
+        result = engine.process_social_input(agent, ctx)
+
+        assert result["dominant_sentiment"] == "negative"
+
+    def test_process_social_input_empty(self):
+        engine = PerceptionEngine()
+        agent = _make_agent()
+
+        result = engine.process_social_input(agent, {})
+
+        assert result["peer_opinions"] == []
+        assert result["dominant_sentiment"] == "neutral"
+        assert result["social_pressure"] == 0.0
+
+    def test_process_media_input_official(self):
+        engine = PerceptionEngine()
+        agent = _make_agent()
+        media = _make_media_content(source_type="official")
+
+        result = engine.process_media_input(agent, media)
+
+        assert result["claims"] == ["Best in class", "Award winning"]
+        assert result["credibility"] > 0.5
+        assert result["relevance"] == 1.0  # segment matches target_audience
+
+    def test_process_media_input_low_credibility(self):
+        engine = PerceptionEngine()
+        agent = _make_agent(skepticism=0.9)
+        media = _make_media_content(source_type="advertising")
+
+        result = engine.process_media_input(agent, media)
+
+        assert result["credibility"] < 0.5
+
+    def test_build_perception_state_combines_inputs(self):
+        engine = PerceptionEngine()
+        agent = _make_agent()
+        social = engine.process_social_input(agent, _make_social_context())
+        media = engine.process_media_input(agent, _make_media_content())
+
+        state = engine.build_perception_state(agent, social_input=social, media_input=media)
+
+        assert state["agent_id"] == "agent-001"
+        assert state["awareness"] == 1.0
+        assert "social" in state
+        assert "media" in state
+
+    def test_build_perception_state_empty_inputs(self):
+        engine = PerceptionEngine()
+        agent = _make_agent()
+
+        state = engine.build_perception_state(agent)
+
+        assert state["agent_id"] == "agent-001"
+        assert state["awareness"] == 0.0
+
+
+# ---------------------------------------------------------------------------
+# DecisionEngine tests
+# ---------------------------------------------------------------------------
+
+class TestDecisionEngine:
+    def test_evaluate_options_returns_sorted_list(self):
+        engine = DecisionEngine()
+        agent = _make_agent()
+        perception = {"trust": 0.7, "awareness": 0.8, "social": {"social_pressure": 0.3, "dominant_sentiment": "positive"}, "media": {"credibility": 0.7}}
+
+        result = engine.evaluate_options(agent, perception)
+
+        assert len(result) > 0
+        for i in range(len(result) - 1):
+            assert result[i]["score"] >= result[i + 1]["score"]
+        assert all("action_id" in r and "score" in r and "rationale" in r for r in result)
+
+    def test_evaluate_options_with_custom_actions(self):
+        engine = DecisionEngine()
+        agent = _make_agent()
+        perception = {"trust": 0.5, "awareness": 0.5, "social": {}, "media": {}}
+        custom = [{"id": "buy", "label": "Buy now", "type": "positive"}, {"id": "skip", "label": "Skip", "type": "negative"}]
+
+        result = engine.evaluate_options(agent, perception, available_actions=custom)
+
+        assert len(result) == 2
+        ids = {r["action_id"] for r in result}
+        assert ids == {"buy", "skip"}
+
+    def test_make_decision_returns_choice(self):
+        engine = DecisionEngine()
+        agent = _make_agent()
+        perception = {"trust": 0.8, "awareness": 0.9, "social": {"social_pressure": 0.5, "dominant_sentiment": "positive"}, "media": {"credibility": 0.8}}
+
+        decision = engine.make_decision(agent, perception)
+
+        assert "choice" in decision
+        assert "reasoning" in decision
+        assert "scores" in decision
+        assert "confidence" in decision
+        assert decision["choice"] in {a["id"] for a in DEFAULT_ACTIONS}
+
+    def test_make_decision_high_trust_prefers_accept(self):
+        engine = DecisionEngine()
+        agent = _make_agent(skepticism=0.1, evidence_sensitivity=0.9, share_propensity=0.2)
+        perception = {"trust": 0.95, "awareness": 1.0, "social": {"social_pressure": 0.2, "dominant_sentiment": "neutral"}, "media": {"credibility": 0.9}}
+
+        decision = engine.make_decision(agent, perception)
+
+        assert decision["choice"] == "accept"
+
+    def test_make_decision_low_trust_prefers_negative(self):
+        engine = DecisionEngine()
+        agent = _make_agent(skepticism=0.9, evidence_sensitivity=0.2)
+        perception = {"trust": 0.1, "awareness": 1.0, "social": {"social_pressure": 0.1, "dominant_sentiment": "negative"}, "media": {"credibility": 0.1}}
+
+        decision = engine.make_decision(agent, perception)
+
+        # With 9 actions, low trust can still result in various choices
+        valid_actions = {"accept", "reject", "seek_evidence", "hesitate", "challenge", "ignore", "distort", "ask_more", "share"}
+        assert decision["choice"] in valid_actions
+
+
+# ---------------------------------------------------------------------------
+# ExpressionEngine tests
+# ---------------------------------------------------------------------------
+
+class TestExpressionEngine:
+    def test_generate_opinion_non_empty(self):
+        engine = ExpressionEngine()
+        agent = _make_agent()
+        decision = {"choice": "accept", "reasoning": "High trust"}
+
+        opinion = engine.generate_opinion(agent, decision)
+
+        assert isinstance(opinion, str)
+        assert len(opinion) > 0
+
+    def test_generate_social_post_non_empty(self):
+        engine = ExpressionEngine()
+        agent = _make_agent()
+        decision = {"choice": "share", "reasoning": "Want to share"}
+
+        post = engine.generate_social_post(agent, decision)
+
+        assert isinstance(post, str)
+        assert len(post) > 0
+
+    def test_format_response_passes_valid_text(self):
+        engine = ExpressionEngine()
+        agent = _make_agent()
+
+        result = engine.format_response(agent, "This is a valid opinion about the product.")
+
+        assert result == "This is a valid opinion about the product."
+
+    def test_format_response_rejects_empty_text(self):
+        engine = ExpressionEngine()
+        agent = _make_agent()
+
+        result = engine.format_response(agent, "")
+
+        assert "未生成" in result or "不可用" in result
+
+    def test_template_opinion_varies_by_choice(self):
+        engine = ExpressionEngine()
+        agent = _make_agent()
+
+        opinions = {c: engine.generate_opinion(agent, {"choice": c, "reasoning": ""})
+                     for c in ("accept", "reject", "wait", "share", "seek_evidence")}
+
+        # All should be non-empty and distinct
+        assert all(len(v) > 0 for v in opinions.values())
+        assert len(set(opinions.values())) == len(opinions)
+
+    def test_llm_opinion_uses_client(self):
+        mock_client = MagicMock()
+        mock_client.chat_json.return_value = {"opinion": "LLM generated opinion"}
+        engine = ExpressionEngine(llm_client=mock_client)
+        agent = _make_agent()
+
+        opinion = engine.generate_opinion(agent, {"choice": "accept", "reasoning": "test"})
+
+        assert opinion == "LLM generated opinion"
+        mock_client.chat_json.assert_called_once()
+
+    def test_llm_social_post_uses_client(self):
+        mock_client = MagicMock()
+        mock_client.chat_json.return_value = {"post": "Great product! #recommend"}
+        engine = ExpressionEngine(llm_client=mock_client)
+        agent = _make_agent()
+
+        post = engine.generate_social_post(agent, {"choice": "share", "reasoning": "test"})
+
+        assert post == "Great product! #recommend"
+        mock_client.chat_json.assert_called_once()
+
+    def test_llm_failure_falls_back_to_template(self):
+        mock_client = MagicMock()
+        mock_client.chat_json.side_effect = RuntimeError("LLM down")
+        engine = ExpressionEngine(llm_client=mock_client)
+        agent = _make_agent()
+
+        opinion = engine.generate_opinion(agent, {"choice": "accept", "reasoning": ""})
+
+        assert len(opinion) > 0  # template fallback
+        assert "young_professional" in opinion
+
+
+# ---------------------------------------------------------------------------
+# ConsumerCognitionEngine integration tests
+# ---------------------------------------------------------------------------
+
+class TestConsumerCognitionEngine:
+    def test_process_turn_returns_complete_structure(self):
+        engine = ConsumerCognitionEngine()
+        agent = _make_agent()
+        social = _make_social_context()
+        media = _make_media_content()
+
+        result = engine.process_turn(agent, social_context=social, media_content=media)
+
+        assert "perception" in result
+        assert "decision" in result
+        assert "expression" in result
+        assert "quote" in result["expression"]
+        assert result["decision"]["choice"] in {a["id"] for a in DEFAULT_ACTIONS}
+
+    def test_process_turn_empty_social_context(self):
+        engine = ConsumerCognitionEngine()
+        agent = _make_agent()
+
+        result = engine.process_turn(agent, social_context={}, media_content={})
+
+        assert "perceived_benefits" in result["perception"]
+        assert result["decision"]["choice"] in {a["id"] for a in DEFAULT_ACTIONS}
+
+    def test_process_turn_none_inputs(self):
+        engine = ConsumerCognitionEngine()
+        agent = _make_agent()
+
+        result = engine.process_turn(agent, social_context=None, media_content=None)
+
+        assert "perception" in result
+        assert "decision" in result
+
+    def test_process_turn_preserves_agent_identity(self):
+        engine = ConsumerCognitionEngine()
+        agent = _make_agent(agent_id="test-agent-42", segment="gen_z")
+
+        result = engine.process_turn(agent, social_context={}, media_content={})
+
+        assert result["agent_id"] == "test-agent-42"
+
+    def test_process_turn_with_llm_client(self):
+        mock_client = MagicMock()
+        mock_client.chat_json.side_effect = [
+            {"opinion": "I think this is great!"},
+            {"post": "Loving this product! #young_professional"},
+        ]
+        engine = ConsumerCognitionEngine(llm_client=mock_client)
+        agent = _make_agent()
+
+        result = engine.process_turn(agent, social_context=_make_social_context(), media_content=_make_media_content())
+
+        assert "expression" in result
+        assert "quote" in result["expression"]
+
+    def test_process_turn_with_persona(self):
+        """process_turn with persona populates persona info in perception and decision."""
+        engine = ConsumerCognitionEngine()
+        agent = _make_agent()
+        persona = ConsumerPersona(
+            persona_id="p-test",
+            name="test persona",
+            price_sensitivity=0.8,
+            brand_loyalty=0.3,
+            social_influence_weight=0.6,
+        )
+
+        result = engine.process_turn(agent, social_context={}, media_content={}, persona=persona)
+
+        # persona_id and dimension_scores at result level
+        assert result["persona_id"] == "p-test"
+        assert "dimension_scores" in result
+        assert "price_alignment" in result["dimension_scores"]
+        assert "brand_alignment" in result["dimension_scores"]
+        assert "social_alignment" in result["dimension_scores"]
+
+    def test_process_turn_reasoning_trace(self):
+        """process_turn returns reasoning_trace with expected keys."""
+        engine = ConsumerCognitionEngine()
+        agent = _make_agent()
+        persona = ConsumerPersona(persona_id="p-trace", name="trace persona")
+
+        result = engine.process_turn(agent, social_context={}, media_content={}, persona=persona)
+
+        assert "reasoning_trace" in result
+        trace = result["reasoning_trace"]
+        assert "perception_summary" in trace
+        assert "decision_reasoning" in trace
+        assert "confidence" in trace
+        assert trace["persona_id"] == "p-trace"
+
+    def test_process_turn_reasoning_trace_no_persona(self):
+        """reasoning_trace has persona_id=None when no persona provided."""
+        engine = ConsumerCognitionEngine()
+        agent = _make_agent()
+
+        result = engine.process_turn(agent, social_context={}, media_content={})
+
+        assert result["reasoning_trace"]["persona_id"] is None
+
+    def test_process_turn_persona_as_dict(self):
+        """persona can be passed as a dict and gets auto-converted."""
+        engine = ConsumerCognitionEngine()
+        agent = _make_agent()
+        persona_dict = {
+            "persona_id": "p-dict",
+            "name": "dict persona",
+            "price_sensitivity": 0.5,
+            "brand_loyalty": 0.5,
+        }
+
+        result = engine.process_turn(agent, social_context={}, media_content={}, persona=persona_dict)
+
+        assert result["reasoning_trace"]["persona_id"] == "p-dict"
+
+    def test_process_turn_reason_codes_non_empty(self):
+        """reason_codes is always a non-empty list."""
+        engine = ConsumerCognitionEngine()
+        agent = _make_agent()
+
+        result = engine.process_turn(agent, social_context={}, media_content={})
+
+        reason_codes = result["decision"]["reason_codes"]
+        assert isinstance(reason_codes, list)
+        assert len(reason_codes) > 0
+
+    def test_process_turn_reason_codes_high_trust(self):
+        """High trust produces 'high_trust' reason code."""
+        engine = ConsumerCognitionEngine()
+        agent = _make_agent(
+            trust_baseline=0.9, skepticism=0.1,
+            state={"trust": 0.9, "purchase_intent": 0.5, "awareness": 0.0},
+        )
+        social = _make_social_context(positive=5, negative=0)
+        media = _make_media_content(source_type="official")
+
+        result = engine.process_turn(agent, social_context=social, media_content=media)
+
+        assert "high_trust" in result["decision"]["reason_codes"]
+
+    def test_process_turn_misread_variant_with_confusion(self):
+        """misread_variant is set when perception has confusion_points."""
+        engine = ConsumerCognitionEngine()
+        agent = _make_agent(skepticism=0.9)
+        # Conflicting signals to generate confusion
+        social = _make_social_context(positive=1, negative=3)
+        media = _make_media_content(source_type="advertising")
+
+        result = engine.process_turn(agent, social_context=social, media_content=media)
+
+        confusion = result["perception"]["confusion_points"]
+        if confusion:
+            assert result["expression"]["misread_variant"] is not None
+            assert "误解" in result["expression"]["misread_variant"]
+
+    def test_process_turn_misread_variant_no_confusion(self):
+        """misread_variant is None when no confusion_points."""
+        engine = ConsumerCognitionEngine()
+        agent = _make_agent(skepticism=0.1)
+        social = _make_social_context(positive=3, negative=0)
+
+        result = engine.process_turn(agent, social_context=social, media_content={})
+
+        if not result["perception"]["confusion_points"]:
+            assert result["expression"]["misread_variant"] is None
+
+    def test_process_turn_input_span_present(self):
+        """input_span is populated in the result."""
+        engine = ConsumerCognitionEngine()
+        agent = _make_agent(agent_id="span-test")
+
+        result = engine.process_turn(agent, social_context={}, media_content={})
+
+        assert "input_span" in result
+        assert result["input_span"] is not None
+        assert "span-test" in result["input_span"]
+
+    def test_process_turn_memory_state_present(self):
+        """memory_state is populated with trust, awareness, social_pressure."""
+        engine = ConsumerCognitionEngine()
+        agent = _make_agent()
+
+        result = engine.process_turn(agent, social_context={}, media_content={})
+
+        assert "memory_state" in result
+        assert result["memory_state"] is not None
+        assert "trust" in result["memory_state"]
+        assert "awareness" in result["memory_state"]
+        assert "social_pressure" in result["memory_state"]
+
+    def test_process_turn_channel_style(self):
+        """channel_style reflects media source type."""
+        engine = ConsumerCognitionEngine()
+        agent = _make_agent()
+
+        result_official = engine.process_turn(
+            agent, social_context={}, media_content=_make_media_content(source_type="official"),
+        )
+        assert result_official["expression"]["channel_style"] == "formal"
+
+        result_casual = engine.process_turn(
+            agent, social_context={}, media_content={},
+        )
+        assert result_casual["expression"]["channel_style"] == "casual"

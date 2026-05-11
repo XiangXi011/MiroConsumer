@@ -106,7 +106,7 @@ def _bounded_neighbor_edges(
             influence_weight = round((source.share_propensity + target.share_propensity) / 2, 4)
             exposure_frequency = _exposure_frequency(graph_key, trust_weight, influence_weight)
             misread_probability = _misread_probability(source, target, graph_key)
-            edge_id = hashlib.sha1(
+            edge_id = hashlib.sha256(
                 f"{seed}:{graph_key}:{source_id}:{target_id}".encode("utf-8")
             ).hexdigest()[:14]
             edges.append(
@@ -126,7 +126,7 @@ def _bounded_neighbor_edges(
 
 
 def _score(seed: int, *parts: str) -> float:
-    digest = hashlib.sha1(":".join([str(seed), *parts]).encode("utf-8")).hexdigest()
+    digest = hashlib.sha256(":".join([str(seed), *parts]).encode("utf-8")).hexdigest()
     raw = int(digest[:8], 16) / 0xFFFFFFFF
     return round(0.25 + raw * 0.7, 4)
 

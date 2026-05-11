@@ -4,22 +4,37 @@ Step2: Zep实体读取与过滤、OASIS模拟准备与运行（全程自动化�
 """
 
 import os
-from flask import request, jsonify, send_file
+from flask import request, jsonify, send_file, g
 
 from . import simulation_bp, api_error_payload
 from ..config import Config
+from ..utils.error_codes import ErrorCodes, error_response
 from ..services.zep_entity_reader import ZepEntityReader
 from ..services.oasis_profile_generator import OasisProfileGenerator
 from ..services.simulation_manager import SimulationManager, SimulationStatus
 from ..services.simulation_runner import SimulationRunner
 from ..services.consumer.society.state_store import SocietyStateStore
 from ..utils.logger import get_logger
+from ..utils.request_validator import safe_get_json
 from ..utils.locale import t
+from ..utils.validators import validate_simulation_params
+from ..utils.disclaimer import SIMULATION_DISCLAIMER
 from ..models.project import ProjectManager
 from ..services.application.simulation_app_service import SimulationAppService
 from ..services.application.branch_app_service import BranchAppService
 from ..services.application.consumer_app_service import ConsumerAppService
 from ..contracts.errors import ConcurrencyConflictError
+from ..contracts.simulation_contracts import (
+    CreateSimulationRequest,
+    ExportRequest,
+    PrepareSimulationRequest,
+    StartSimulationRequest,
+    StopSimulationRequest,
+)
+from pydantic import ValidationError as PydanticValidationError
+from ..auth.middleware import require_permission
+from ..auth.tenant_guard import TenantAccessDenied, TenantGuard, tenant_forbidden_response
+from ..middleware.rate_limiter import export_rate_limit
 
 logger = get_logger('miroconsumer.api.simulation')
 
@@ -58,6 +73,14 @@ def _check_simulation_prepared(simulation_id: str):
     return SimulationAppService.check_prepared(simulation_id)
 
 
+def _guard_simulation_state(state):
+    try:
+        TenantGuard.assert_simulation_access(state)
+    except TenantAccessDenied:
+        return jsonify(tenant_forbidden_response()[0]), tenant_forbidden_response()[1]
+    return None
+
+
 # Interview prompt 优化前缀
 # 添加此前缀可以避免Agent调用工具，直接用文本回复
 INTERVIEW_PROMPT_PREFIX = "结合你的人设、所有的过往记忆与行动，不调用任何工具直接用文本回复我："
@@ -84,6 +107,7 @@ def optimize_interview_prompt(prompt: str) -> str:
 # ============== 实体读取接口 ==============
 
 @simulation_bp.route('/entities/<graph_id>', methods=['GET'])
+@require_permission('simulation.read')
 def get_graph_entities(graph_id: str):
     """
     获取图谱中的所有实体（已过滤）
@@ -125,6 +149,7 @@ def get_graph_entities(graph_id: str):
 
 
 @simulation_bp.route('/entities/<graph_id>/<entity_uuid>', methods=['GET'])
+@require_permission('simulation.read')
 def get_entity_detail(graph_id: str, entity_uuid: str):
     """获取单个实体的详细信息"""
     try:
@@ -154,6 +179,7 @@ def get_entity_detail(graph_id: str, entity_uuid: str):
 
 
 @simulation_bp.route('/entities/<graph_id>/by-type/<entity_type>', methods=['GET'])
+@require_permission('simulation.read')
 def get_entities_by_type(graph_id: str, entity_type: str):
     """获取指定类型的所有实体"""
     try:
@@ -189,6 +215,7 @@ def get_entities_by_type(graph_id: str, entity_type: str):
 # ============== 模拟管理接口 ==============
 
 @simulation_bp.route('/create', methods=['POST'])
+@require_permission('simulation.run')
 def create_simulation():
     """
     创建新的模拟
@@ -218,8 +245,52 @@ def create_simulation():
         }
     """
     try:
-        data = request.get_json() or {}
+        raw_data = request.get_json() or {}
+
+        try:
+            validated = CreateSimulationRequest(**raw_data)
+            data = validated.model_dump()
+        except PydanticValidationError as e:
+            return jsonify({"success": False, "error": "VALIDATION_ERROR", "details": e.errors()}), 400
+
+        errors = validate_simulation_params(data)
+        if errors:
+            return jsonify({
+                "success": False,
+                "error": "参数校验失败",
+                "details": errors
+            }), 400
+
+        # Authenticated requests inherit the actor tenant; auth-bypassed legacy flows stay tenantless.
+        current_user = getattr(g, 'current_user', None)
+        data['tenant_id'] = getattr(current_user, 'tenant_id', '') if current_user else ''
+
+        # Simulation creation is also bounded by the owning project's tenant.
+        project_id = data.get('project_id', '')
+        if project_id:
+            project = ProjectManager.get_project(project_id)
+            if project:
+                try:
+                    TenantGuard.assert_project_access(project, current_user)
+                except TenantAccessDenied:
+                    return jsonify(tenant_forbidden_response()[0]), tenant_forbidden_response()[1]
+
+        # Idempotency check: return an existing accessible simulation for the project.
+        if project_id:
+            manager = SimulationManager()
+            existing_sims = [
+                sim for sim in manager.list_simulations(project_id=project_id)
+                if TenantGuard.can_access_tenant(getattr(g, 'current_user', None), getattr(sim, 'tenant_id', None))
+            ]
+            if existing_sims:
+                return jsonify({
+                    "success": True,
+                    "data": existing_sims[0].to_dict(),
+                    "message": "仿真已存在（幂等返回）"
+                }), 200
+
         result = SimulationAppService.create_simulation(data)
+        result["disclaimer"] = SIMULATION_DISCLAIMER
         return jsonify({
             "success": True,
             "data": result
@@ -232,6 +303,7 @@ def create_simulation():
 
 
 @simulation_bp.route('/prepare', methods=['POST'])
+@require_permission('simulation.run')
 def prepare_simulation():
     """
     准备模拟环境（异步任务，LLM智能生成所有参数）
@@ -273,7 +345,13 @@ def prepare_simulation():
         }
     """
     try:
-        data = request.get_json() or {}
+        raw_data = request.get_json() or {}
+
+        try:
+            validated = PrepareSimulationRequest(**raw_data)
+            data = validated.model_dump()
+        except PydanticValidationError as e:
+            return jsonify({"success": False, "error": "VALIDATION_ERROR", "details": e.errors()}), 400
 
         simulation_id = data.get('simulation_id')
         if not simulation_id:
@@ -297,10 +375,12 @@ def prepare_simulation():
 
 
 @simulation_bp.route('/prepare/status', methods=['POST'])
+@require_permission('simulation.read')
 def get_prepare_status():
     """查询准备任务进度"""
     try:
-        data = request.get_json() or {}
+        data = safe_get_json()
+        if isinstance(data, tuple): return data
         result = SimulationAppService.get_prepare_status(
             task_id=data.get('task_id'),
             simulation_id=data.get('simulation_id'),
@@ -314,6 +394,7 @@ def get_prepare_status():
 
 
 @simulation_bp.route('/<simulation_id>', methods=['GET'])
+@require_permission('simulation.read')
 def get_simulation(simulation_id: str):
     """获取模拟状态"""
     try:
@@ -325,7 +406,12 @@ def get_simulation(simulation_id: str):
                 "success": False,
                 "error": t('api.simulationNotFound', id=simulation_id)
             }), 404
-        
+
+        # 租户隔离检查
+        denied = _guard_simulation_state(state)
+        if denied:
+            return denied
+
         result = state.to_dict()
         
         # 如果模拟已准备好，附加运行说明
@@ -342,7 +428,43 @@ def get_simulation(simulation_id: str):
         return jsonify(api_error_payload(str(e))), 500
 
 
+@simulation_bp.route('/<simulation_id>/export', methods=['GET'])
+@require_permission('report.export')
+@export_rate_limit
+def export_simulation(simulation_id):
+    """导出仿真结果"""
+    try:
+        validated = ExportRequest(format=request.args.get('format', 'json'))
+    except PydanticValidationError as e:
+        return jsonify({"success": False, "error": "VALIDATION_ERROR", "details": e.errors()}), 400
+    format_type = validated.format
+
+    manager = SimulationManager()
+    state = manager.get_simulation(simulation_id)
+    if not state:
+        return error_response(ErrorCodes.SIMULATION_NOT_FOUND)
+    denied = _guard_simulation_state(state)
+    if denied:
+        return denied
+
+    result = state.to_dict()
+
+    if format_type == 'csv':
+        from ..utils.export import export_metrics_to_csv
+        csv_data = export_metrics_to_csv(result.get('metrics', []))
+        return csv_data, 200, {'Content-Type': 'text/csv', 'Content-Disposition': f'attachment; filename=sim_{simulation_id}.csv'}
+    elif format_type == 'manifest':
+        from ..utils.export import export_simulation_manifest
+        methodology = result.get('methodology', {})
+        manifest_data = export_simulation_manifest(result, methodology)
+        return manifest_data, 200, {'Content-Type': 'application/json', 'Content-Disposition': f'attachment; filename=manifest_{simulation_id}.json'}
+    else:
+        from ..utils.export import export_to_json
+        return export_to_json(result), 200, {'Content-Type': 'application/json'}
+
+
 @simulation_bp.route('/list', methods=['GET'])
+@require_permission('simulation.read')
 def list_simulations():
     """
     列出所有模拟
@@ -355,7 +477,15 @@ def list_simulations():
         
         manager = SimulationManager()
         simulations = manager.list_simulations(project_id=project_id)
-        
+
+        # 租户过滤
+        current_user = getattr(g, 'current_user', None)
+        if current_user and simulations:
+            simulations = [
+                s for s in simulations
+                if TenantGuard.can_access_tenant(current_user, getattr(s, 'tenant_id', None))
+            ]
+
         return jsonify({
             "success": True,
             "data": [s.to_dict() for s in simulations],
@@ -427,6 +557,7 @@ def _get_report_id_for_simulation(simulation_id: str) -> str:
 
 
 @simulation_bp.route('/history', methods=['GET'])
+@require_permission('simulation.read')
 def get_simulation_history():
     """
     获取历史模拟列表（带项目详情）
@@ -466,7 +597,12 @@ def get_simulation_history():
         
         manager = SimulationManager()
         simulations = manager.list_simulations()[:limit]
-        
+
+        # 租户过滤
+        current_tenant = getattr(g, 'current_tenant', None)
+        if current_tenant and simulations:
+            simulations = [s for s in simulations if getattr(s, 'tenant_id', None) == current_tenant or not getattr(s, 'tenant_id', None)]
+
         # 增强模拟数据，只从 Simulation 文件读取
         enriched_simulations = []
         for sim in simulations:
@@ -537,6 +673,7 @@ def get_simulation_history():
 
 
 @simulation_bp.route('/<simulation_id>/profiles', methods=['GET'])
+@require_permission('simulation.read')
 def get_simulation_profiles(simulation_id: str):
     """
     获取模拟的Agent Profile
@@ -571,6 +708,7 @@ def get_simulation_profiles(simulation_id: str):
 
 
 @simulation_bp.route('/<simulation_id>/profiles/realtime', methods=['GET'])
+@require_permission('simulation.read')
 def get_simulation_profiles_realtime(simulation_id: str):
     """
     实时获取模拟的Agent Profile（用于在生成过程中实时查看进度）
@@ -677,6 +815,7 @@ def get_simulation_profiles_realtime(simulation_id: str):
 
 
 @simulation_bp.route('/<simulation_id>/consumer-summary', methods=['GET'])
+@require_permission('simulation.read')
 def get_consumer_summary(simulation_id: str):
     """读取消费者传播快照并返回结构化摘要。
 
@@ -699,10 +838,12 @@ def get_consumer_summary(simulation_id: str):
 
 
 @simulation_bp.route('/<simulation_id>/branches', methods=['POST'])
+@require_permission('simulation.run')
 def create_branch(simulation_id: str):
     """Create a new branch for a consumer simulation."""
     try:
-        data = request.get_json() or {}
+        data = safe_get_json()
+        if isinstance(data, tuple): return data
         result = BranchAppService.create_branch(
             simulation_id=simulation_id,
             name=data.get('name', ''),
@@ -719,6 +860,7 @@ def create_branch(simulation_id: str):
 
 
 @simulation_bp.route('/<simulation_id>/branches', methods=['GET'])
+@require_permission('project.read')
 def list_branches(simulation_id: str):
     """List all branches for a simulation."""
     try:
@@ -735,6 +877,7 @@ def list_branches(simulation_id: str):
 
 
 @simulation_bp.route('/<simulation_id>/interventions', methods=['GET'])
+@require_permission('project.read')
 def list_interventions_for_simulation(simulation_id: str):
     """List interventions for a simulation (across all branches or filtered by branch_id)."""
     try:
@@ -752,10 +895,12 @@ def list_interventions_for_simulation(simulation_id: str):
 
 
 @simulation_bp.route('/<simulation_id>/branches/<branch_id>/interventions', methods=['POST'])
+@require_permission('simulation.run')
 def add_intervention(simulation_id: str, branch_id: str):
     """Add an intervention to a branch."""
     try:
-        data = request.get_json() or {}
+        data = safe_get_json()
+        if isinstance(data, tuple): return data
         result = BranchAppService.add_intervention(
             simulation_id=simulation_id,
             branch_id=branch_id,
@@ -772,6 +917,7 @@ def add_intervention(simulation_id: str, branch_id: str):
 
 
 @simulation_bp.route('/<simulation_id>/branches/<branch_id>/interventions', methods=['GET'])
+@require_permission('project.read')
 def list_interventions_for_branch(simulation_id: str, branch_id: str):
     """List interventions for a specific branch."""
     try:
@@ -788,6 +934,7 @@ def list_interventions_for_branch(simulation_id: str, branch_id: str):
 
 
 @simulation_bp.route('/<simulation_id>/branches/<branch_id>/comparison', methods=['GET'])
+@require_permission('project.read')
 def get_branch_comparison(simulation_id: str, branch_id: str):
     """Fetch branch comparison context with base-vs-branch summaries."""
     try:
@@ -801,10 +948,11 @@ def get_branch_comparison(simulation_id: str, branch_id: str):
 
 
 @simulation_bp.route('/<simulation_id>/branches/<branch_id>/resume', methods=['POST'])
+@require_permission('simulation.run')
 def resume_branch(simulation_id: str, branch_id: str):
     """Run or resume a branch simulation (consumer_test only)."""
     try:
-        data = request.get_json(silent=True) or {}
+        data = safe_get_json(required=False)
         result = BranchAppService.resume_branch(
             simulation_id=simulation_id,
             branch_id=branch_id,
@@ -819,6 +967,7 @@ def resume_branch(simulation_id: str, branch_id: str):
 
 
 @simulation_bp.route('/<simulation_id>/branches/<branch_id>/status', methods=['GET'])
+@require_permission('simulation.read')
 def get_branch_run_status_route(simulation_id: str, branch_id: str):
     """Get branch simulation run status."""
     try:
@@ -832,6 +981,7 @@ def get_branch_run_status_route(simulation_id: str, branch_id: str):
 
 
 @simulation_bp.route('/<simulation_id>/config/realtime', methods=['GET'])
+@require_permission('simulation.read')
 def get_simulation_config_realtime(simulation_id: str):
     """
     实时获取模拟配置（用于在生成过程中实时查看进度）
@@ -948,6 +1098,7 @@ def get_simulation_config_realtime(simulation_id: str):
 
 
 @simulation_bp.route('/<simulation_id>/config', methods=['GET'])
+@require_permission('simulation.read')
 def get_simulation_config(simulation_id: str):
     """
     获取模拟配置（LLM智能生成的完整配置）
@@ -980,6 +1131,8 @@ def get_simulation_config(simulation_id: str):
 
 
 @simulation_bp.route('/<simulation_id>/config/download', methods=['GET'])
+@export_rate_limit
+@require_permission('report.export')
 def download_simulation_config(simulation_id: str):
     """下载模拟配置文件"""
     try:
@@ -1005,6 +1158,8 @@ def download_simulation_config(simulation_id: str):
 
 
 @simulation_bp.route('/script/<script_name>/download', methods=['GET'])
+@export_rate_limit
+@require_permission('report.export')
 def download_simulation_script(script_name: str):
     """
     下载模拟运行脚本文件（通用脚本，位于 backend/scripts/）
@@ -1055,6 +1210,7 @@ def download_simulation_script(script_name: str):
 # ============== Profile生成接口（独立使用） ==============
 
 @simulation_bp.route('/generate-profiles', methods=['POST'])
+@require_permission('simulation.run')
 def generate_profiles():
     """
     直接从图谱生成OASIS Agent Profile（不创建模拟）
@@ -1068,7 +1224,8 @@ def generate_profiles():
         }
     """
     try:
-        data = request.get_json() or {}
+        data = safe_get_json()
+        if isinstance(data, tuple): return data
         
         graph_id = data.get('graph_id')
         if not graph_id:
@@ -1125,6 +1282,7 @@ def generate_profiles():
 # ============== 模拟运行控制接口 ==============
 
 @simulation_bp.route('/start', methods=['POST'])
+@require_permission('simulation.run')
 def start_simulation():
     """
     开始运行模拟
@@ -1166,7 +1324,13 @@ def start_simulation():
         }
     """
     try:
-        data = request.get_json() or {}
+        raw_data = request.get_json() or {}
+
+        try:
+            validated = StartSimulationRequest(**raw_data)
+            data = validated.model_dump()
+        except PydanticValidationError as e:
+            return jsonify({"success": False, "error": "VALIDATION_ERROR", "details": e.errors()}), 400
 
         simulation_id = data.get('simulation_id')
         if not simulation_id:
@@ -1190,6 +1354,7 @@ def start_simulation():
 
 
 @simulation_bp.route('/stop', methods=['POST'])
+@require_permission('simulation.run')
 def stop_simulation():
     """
     停止模拟
@@ -1210,15 +1375,21 @@ def stop_simulation():
         }
     """
     try:
-        data = request.get_json() or {}
-        
+        raw_data = request.get_json() or {}
+
+        try:
+            validated = StopSimulationRequest(**raw_data)
+            data = validated.model_dump()
+        except PydanticValidationError as e:
+            return jsonify({"success": False, "error": "VALIDATION_ERROR", "details": e.errors()}), 400
+
         simulation_id = data.get('simulation_id')
         if not simulation_id:
             return jsonify({
                 "success": False,
                 "error": t('api.requireSimulationId')
             }), 400
-        
+
         run_state = SimulationRunner.stop_simulation(simulation_id)
         
         # 更新模拟状态
@@ -1251,6 +1422,7 @@ def stop_simulation():
 # ============== 实时状态监控接口 ==============
 
 @simulation_bp.route('/<simulation_id>/run-status', methods=['GET'])
+@require_permission('simulation.read')
 def get_run_status(simulation_id: str):
     """
     获取模拟运行实时状态（用于前端轮询）
@@ -1305,6 +1477,7 @@ def get_run_status(simulation_id: str):
 
 
 @simulation_bp.route('/<simulation_id>/run-status/detail', methods=['GET'])
+@require_permission('simulation.read')
 def get_run_status_detail(simulation_id: str):
     """
     获取模拟运行详细状态（包含所有动作）
@@ -1402,6 +1575,7 @@ def get_run_status_detail(simulation_id: str):
 
 
 @simulation_bp.route('/<simulation_id>/actions', methods=['GET'])
+@require_permission('simulation.read')
 def get_simulation_actions(simulation_id: str):
     """
     获取模拟中的Agent动作历史
@@ -1452,6 +1626,7 @@ def get_simulation_actions(simulation_id: str):
 
 
 @simulation_bp.route('/<simulation_id>/timeline', methods=['GET'])
+@require_permission('simulation.read')
 def get_simulation_timeline(simulation_id: str):
     """
     获取模拟时间线（按轮次汇总）
@@ -1488,6 +1663,7 @@ def get_simulation_timeline(simulation_id: str):
 
 
 @simulation_bp.route('/<simulation_id>/agent-stats', methods=['GET'])
+@require_permission('simulation.read')
 def get_agent_stats(simulation_id: str):
     """
     获取每个Agent的统计信息
@@ -1513,6 +1689,7 @@ def get_agent_stats(simulation_id: str):
 # ============== 数据库查询接口 ==============
 
 @simulation_bp.route('/<simulation_id>/posts', methods=['GET'])
+@require_permission('simulation.read')
 def get_simulation_posts(simulation_id: str):
     """
     获取模拟中的帖子
@@ -1587,6 +1764,7 @@ def get_simulation_posts(simulation_id: str):
 
 
 @simulation_bp.route('/<simulation_id>/comments', methods=['GET'])
+@require_permission('simulation.read')
 def get_simulation_comments(simulation_id: str):
     """
     获取模拟中的评论（仅Reddit）
@@ -1660,6 +1838,7 @@ def get_simulation_comments(simulation_id: str):
 # ============== Interview 采访接口 ==============
 
 @simulation_bp.route('/interview', methods=['POST'])
+@require_permission('simulation.run')
 def interview_agent():
     """
     采访单个Agent
@@ -1711,7 +1890,8 @@ def interview_agent():
         }
     """
     try:
-        data = request.get_json() or {}
+        data = safe_get_json()
+        if isinstance(data, tuple): return data
         
         simulation_id = data.get('simulation_id')
         agent_id = data.get('agent_id')
@@ -1785,6 +1965,7 @@ def interview_agent():
 
 
 @simulation_bp.route('/interview/batch', methods=['POST'])
+@require_permission('simulation.run')
 def interview_agents_batch():
     """
     批量采访多个Agent
@@ -1829,7 +2010,8 @@ def interview_agents_batch():
         }
     """
     try:
-        data = request.get_json() or {}
+        data = safe_get_json()
+        if isinstance(data, tuple): return data
 
         simulation_id = data.get('simulation_id')
         interviews = data.get('interviews')
@@ -1919,6 +2101,7 @@ def interview_agents_batch():
 
 
 @simulation_bp.route('/interview/all', methods=['POST'])
+@require_permission('simulation.run')
 def interview_all_agents():
     """
     全局采访 - 使用相同问题采访所有Agent
@@ -1952,7 +2135,8 @@ def interview_all_agents():
         }
     """
     try:
-        data = request.get_json() or {}
+        data = safe_get_json()
+        if isinstance(data, tuple): return data
 
         simulation_id = data.get('simulation_id')
         prompt = data.get('prompt')
@@ -2018,6 +2202,7 @@ def interview_all_agents():
 
 
 @simulation_bp.route('/interview/history', methods=['POST'])
+@require_permission('simulation.read')
 def get_interview_history():
     """
     获取Interview历史记录
@@ -2052,7 +2237,8 @@ def get_interview_history():
         }
     """
     try:
-        data = request.get_json() or {}
+        data = safe_get_json()
+        if isinstance(data, tuple): return data
         
         simulation_id = data.get('simulation_id')
         platform = data.get('platform')  # 不指定则返回两个平台的历史
@@ -2086,6 +2272,7 @@ def get_interview_history():
 
 
 @simulation_bp.route('/env-status', methods=['POST'])
+@require_permission('simulation.read')
 def get_env_status():
     """
     获取模拟环境状态
@@ -2110,7 +2297,8 @@ def get_env_status():
         }
     """
     try:
-        data = request.get_json() or {}
+        data = safe_get_json()
+        if isinstance(data, tuple): return data
         
         simulation_id = data.get('simulation_id')
         
@@ -2147,6 +2335,7 @@ def get_env_status():
 
 
 @simulation_bp.route('/close-env', methods=['POST'])
+@require_permission('simulation.run')
 def close_simulation_env():
     """
     关闭模拟环境
@@ -2173,7 +2362,8 @@ def close_simulation_env():
         }
     """
     try:
-        data = request.get_json() or {}
+        data = safe_get_json()
+        if isinstance(data, tuple): return data
         
         simulation_id = data.get('simulation_id')
         timeout = data.get('timeout', 30)

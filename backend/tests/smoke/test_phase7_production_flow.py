@@ -1,9 +1,11 @@
 """Phase 7 production smoke tests."""
 
 import json
+import os
 import subprocess
 from pathlib import Path
 
+import pytest
 from flask import Flask
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -20,6 +22,21 @@ from app.services.report_agent import Report, ReportStatus
 
 
 ROOT = Path(__file__).resolve().parents[3]
+
+
+def _docker_daemon_ready():
+    try:
+        completed = subprocess.run(
+            ["docker", "info"],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=20,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return completed.returncode == 0
 
 
 def _create_app():
@@ -193,3 +210,44 @@ def test_smoke_consumer_flow_run_smoke_checks():
         assert "repository_backend" in step
         assert "task_status" in step
         assert "response_schema" in step
+
+
+@pytest.mark.skipif(
+    os.environ.get("RUN_DOCKER_SMOKES") != "1" or not _docker_daemon_ready(),
+    reason="Set RUN_DOCKER_SMOKES=1 and start Docker daemon to run real Redis smoke.",
+)
+def test_real_redis_lock_contention_smoke():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "smoke_consumer_flow", ROOT / "scripts/smoke_consumer_flow.py"
+    )
+    scf = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(scf)
+
+    result = scf.run_real_redis_lock_smoke()
+
+    assert result["summary"]["status"] == "passed"
+    assert result["steps"][0]["name"] == "real_redis_lock_contention"
+    assert result["steps"][0]["response_schema"]["contention_reason"] == "lock_timeout"
+
+
+@pytest.mark.skipif(
+    os.environ.get("RUN_DOCKER_SMOKES") != "1" or not _docker_daemon_ready(),
+    reason="Set RUN_DOCKER_SMOKES=1 and start Docker daemon to run real PostgreSQL EXPLAIN smoke.",
+)
+def test_postgres_jsonb_gin_explain_smoke():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "smoke_consumer_flow", ROOT / "scripts/smoke_consumer_flow.py"
+    )
+    scf = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(scf)
+
+    result = scf.run_postgres_explain_smoke()
+
+    assert result["summary"]["status"] == "passed"
+    assert result["steps"][0]["name"] == "postgres_jsonb_gin_explain"
+    assert result["steps"][0]["response_schema"]["index_name"] == "ix_projects_data_gin"
+    assert "ix_projects_data_gin" in result["steps"][0]["response_schema"]["plan"]

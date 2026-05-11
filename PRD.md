@@ -108,6 +108,31 @@ MiroConsumer 通用仿真底座继续保留并主导：
 - 只有在传播阶段，且 Agent 具备“高搜索倾向 / 高认知”等画像特征时，才允许检索深层风险信息
 - 每轮传播 Prompt 都必须置顶 `Pinned BusinessBrief Summary`
 
+### 5.2 理论依据
+
+以下理论用于为传播事件分类、可见性分层与社会角色映射提供概念参照。这里的理论引用服务于机制设计，不表示对原理论的严格学术复现；仿真设计基于工程近似，非严格学术复现。
+
+#### 5.2.1 Rogers 创新扩散理论（Diffusion of Innovations）
+
+- 核心观点：创新是否被接受，取决于相对优势、兼容性、复杂度、可试用性与可观察性；扩散过程通常会经历从早期试探到逐步采纳的分化。
+- 对应设计点：`propagation_events` 中的 `positive_relay` 与 `skeptical_challenge` 分类，用于区分正面传播、认可扩散与带有保留的质疑挑战。
+- 工程近似声明：当前实现仅以事件标签和态度变化近似创新采纳路径，不重建真实人群的连续采纳曲线或群体统计分布。
+- 参考文献：Rogers, E. M. (2003). *Diffusion of Innovations* (5th ed.). Free Press.
+
+#### 5.2.2 Katz & Lazarsfeld 两级传播理论（Two-Step Flow）
+
+- 核心观点：信息往往先到达意见领袖，再经由这些中介角色进行重述、过滤或放大后传递给更广泛受众；传播效果很大程度上受中间角色影响。
+- 对应设计点：`social_topology` 中的 `bridge` / `amplifier` 角色，用于描述跨群体转运信息、放大共识或提高可见度的节点。
+- 工程近似声明：当前实现把桥接与放大角色当作可观测的拓扑与行为标签，不严格复现真实意见领袖网络或其时间序列影响链。
+- 参考文献：Katz, E., & Lazarsfeld, P. F. (1955). *Personal Influence: The Part Played by People in the Flow of Mass Communications*. Free Press.
+
+#### 5.2.3 Granovetter 弱连接理论（Strength of Weak Ties）
+
+- 核心观点：弱连接更容易跨越不同社群，把新信息从一个圈层带到另一个圈层，因此对创新扩散和跨群传播尤其重要。
+- 对应设计点：信息分层传播中的 `Propagation_Only` 层级，用于让信息可被继续传播，但不自动赋予深层证据访问权。
+- 工程近似声明：当前实现只用可见性层级近似弱连接的跨群扩散效应，不表示对真实网络中连接强度、频次或结构位置的严格测量。
+- 参考文献：Granovetter, M. S. (1973). The Strength of Weak Ties. *American Journal of Sociology*, 78(6), 1360-1380.
+
 ## 6. 输出定义
 
 Phase 1 的核心输出是《消费者传播测试报告》，至少回答：
@@ -389,6 +414,7 @@ Phase 4B 在既有 `consumer_test` 主链路上扩展了 3 类新的消费者测
 ### 7.5 当前已知限制
 
 - `auto_enrich` 已升级为双源 research 底座的一部分：当前包含 `Lane B` 外部检索 provider 与 deterministic fallback；若需更强的真实全网预研能力，后续仍建议替换为更稳定的外部 provider
+- 仿真设计基于工程近似，非严格学术复现；本 PRD 中的理论引用仅用于指导传播事件分类、可见性分层与社会角色映射，不构成真实社会传播结果的统计代表性声明
 - Kimi For Coding 响应较慢，单个 profile 约 `3-5` 分钟，`4` 个 profile 的完整 prepare 约 `21` 分钟
 - 小规模 profile（如 `4` 个）可稳定运行；更大规模场景建议切换更快的模型
 - `project_vs_project` 对比当前优先基于项目 research artifacts 与发现差异；若项目没有完整 run-level 结果，其接受度字段会保守显示

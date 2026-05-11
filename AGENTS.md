@@ -1,43 +1,24 @@
 # Agent Operating Rules
 
-## Delegating To Claude Code
+## Delegation Policy
 
-Every task in this repository must load and follow:
+Claude Code delegation is **optional**, not the default. Codex is the default executor for file edits, command execution, and verification tasks. Codex retains responsibility for framing, execution choice, audit, and final communication with the user.
 
-```text
-C:\Users\05537\.agents\skills\delegating-to-claude-code\SKILL.md
+Claude Code should only be used when the user explicitly asks for it, or when Codex deliberately chooses to delegate a bounded, well-scoped task. Any work delegated to Claude Code must remain bounded and be audited by Codex before it is considered complete.
+
+## File Operations
+
+When creating or editing files, use `exec_command` with shell commands like:
+- `printf 'content' > file` for new files
+- `cat > file << 'EOF'` for multi-line files
+- `sed -i '' 's/old/new/' file` for edits
+
+Do NOT use `apply_patch` tool - it does not work with this API provider.
+Always verify file creation with `ls -la` or `cat` after writing.
+
+## Testing
+
+Always run tests after making changes:
+```bash
+cd ~/MiroConsumer-phase5 && python -m pytest backend/tests/ -x -q
 ```
-
-Codex owns:
-
-- problem framing
-- decomposition and task ordering
-- safety checks
-- audit of Claude Code output
-- final communication with the user
-
-Claude Code owns bounded execution work:
-
-- file edits
-- command execution
-- targeted tests
-- verification artifact collection
-
-For implementation, editing, or verification tasks, Codex must invoke:
-
-```powershell
-python "C:\Users\05537\.agents\skills\delegating-to-claude-code\invoke_claude_executor.py" `
-  --cwd "<repository-or-worktree-path>" `
-  --task "<bounded execution task>" `
-  --allowed-path "<allowed path>"
-```
-
-Codex must inspect the resulting diff and rerun critical checks before reporting completion.
-
-## Timeout Policy
-
-Codex must not use a 300-second timeout for Claude Code delegation. The default timeout for delegated implementation, editing, or verification work is at least 900 seconds.
-
-For broad implementation work, full regression checks, documentation generation, or multi-file verification, Codex must use at least 1800 seconds or split the work into smaller delegated tasks with separate audits.
-
-This rule is repository-wide and applies to all future tasks unless the user explicitly disables Claude Code delegation for a specific task.

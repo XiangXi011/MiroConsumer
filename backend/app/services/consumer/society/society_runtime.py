@@ -154,6 +154,23 @@ class ConsumerSocietyRuntime:
         llm_invoked = bool(event.get("llm_invoked", False))
         reasoning_error = event.get("reasoning_error", "")
         quote = event.get("quote", "")
+        perception_reasoning = "; ".join(
+            part for part in [
+                f"claim={event.get('claim', '')}" if event.get("claim") else "",
+                f"agent_id={agent.agent_id}",
+                f"segment={agent.segment}",
+            ]
+            if part
+        )
+        decision_reasoning = "; ".join(
+            part for part in [
+                f"backend={backend}",
+                f"llm_invoked={llm_invoked}",
+                f"reasoning_error={reasoning_error}" if reasoning_error else "",
+            ]
+            if part
+        )
+        expression_reasoning = f"quote={quote}" if quote else ""
 
         fallback_reason = ""
         if backend == "template_fallback" and reasoning_error:
@@ -169,6 +186,16 @@ class ConsumerSocietyRuntime:
             model="",
             latency_ms=0.0,
             reasoning_summary=str(quote) if quote else "",
+            perception_reasoning=perception_reasoning,
+            decision_reasoning=decision_reasoning,
+            expression_reasoning=expression_reasoning,
+            reasoning_triplets=[
+                {
+                    "input": perception_reasoning,
+                    "evidence": decision_reasoning,
+                    "conclusion": str(quote) if quote else expression_reasoning,
+                }
+            ],
         )
 
 

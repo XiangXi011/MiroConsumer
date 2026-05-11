@@ -24,5 +24,6 @@ export const {
   compareResearchSnapshots,
   listComparisons,
   getComparison,
+  getReportEvidenceGraph,
   runConsumerResearchAction,
 } = createConsumerApi(service)

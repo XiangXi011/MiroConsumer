@@ -32,6 +32,82 @@ def test_scoring_extracts_representative_quotes():
     assert bundle.top_risk_quotes[0]["quote"].startswith("Low sugar")
 
 
+def test_voc_bundle_reports_diversity_and_coverage_metrics():
+    events = [
+        {
+            "quote": "This concept fits my commute",
+            "engagement": 10,
+            "bucket": "resonance",
+            "agent_id": "advocate",
+            "segment": "urban",
+        },
+        {
+            "quote": "I need proof before trusting the sugar claim",
+            "engagement": 7,
+            "bucket": "risk",
+            "agent_id": "skeptic",
+            "segment": "family",
+        },
+        {
+            "quote": "I thought this meant it works for every scene",
+            "engagement": 4,
+            "bucket": "question",
+            "agent_id": "minority",
+            "segment": "small-town",
+        },
+    ]
+
+    bundle = ConsumerScoringService().build_evidence_bundle(events)
+    metrics = bundle.to_dict()["voc_diversity_metrics"]
+
+    assert metrics["total_quote_count"] == 3
+    assert metrics["selected_quote_count"] == 3
+    assert metrics["unique_agent_count"] == 3
+    assert metrics["selected_unique_agent_count"] == 3
+    assert metrics["agent_coverage_ratio"] == 1.0
+    assert metrics["segment_coverage_ratio"] == 1.0
+    assert metrics["bucket_coverage_ratio"] == 1.0
+
+
+def test_voc_selection_keeps_minority_quote_when_high_engagement_quotes_repeat():
+    repeated_quote = "Low sugar needs proof before I trust it"
+    events = [
+        {
+            "quote": repeated_quote,
+            "engagement": 100,
+            "bucket": "risk",
+            "agent_id": "a1",
+            "segment": "mainstream",
+        },
+        {
+            "quote": repeated_quote,
+            "engagement": 90,
+            "bucket": "risk",
+            "agent_id": "a2",
+            "segment": "mainstream",
+        },
+        {
+            "quote": repeated_quote,
+            "engagement": 80,
+            "bucket": "risk",
+            "agent_id": "a3",
+            "segment": "mainstream",
+        },
+        {
+            "quote": "My rural store may not stock this, so convenience is my blocker",
+            "engagement": 3,
+            "bucket": "risk",
+            "agent_id": "minority-agent",
+            "segment": "rural",
+        },
+    ]
+
+    bundle = ConsumerScoringService().build_evidence_bundle(events)
+
+    assert any("rural store" in item["quote"] for item in bundle.top_risk_quotes)
+    assert bundle.to_dict()["voc_diversity_metrics"]["minority_agent_retained"] is True
+
+
 def test_summary_tracks_attitude_shift():
     summary = ConsumerScoringService().summarize(
         initial_labels=["positive", "neutral", "negative"],

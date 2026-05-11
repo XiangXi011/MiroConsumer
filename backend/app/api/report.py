@@ -5,20 +5,50 @@ Report API路由
 
 import os
 import tempfile
-from flask import request, jsonify, send_file
+from flask import request, jsonify, send_file, g
 
 from . import report_bp, api_error_payload
 from ..config import Config
 from ..services.report_agent import ReportManager
 from ..utils.logger import get_logger
+from ..utils.request_validator import safe_get_json
 from ..utils.locale import t
+from ..utils.disclaimer import REPORT_DISCLAIMER, get_methodology_limits
 from ..services.application.report_app_service import ReportAppService
 from ..services.application.benchmark_app_service import BenchmarkAppService
 from ..services.application.research_asset_app_service import ResearchAssetAppService
 from ..services.application.comparison_app_service import ComparisonAppService
 from ..contracts.errors import ConcurrencyConflictError
+from ..utils.pagination import paginate_query
+from ..auth.middleware import require_permission
+from ..auth.tenant_guard import TenantAccessDenied, TenantGuard, tenant_forbidden_response
+from ..middleware.rate_limiter import export_rate_limit
+from ..repositories import SimulationRepository
+from ..repositories.factory import create_repository_bundle
 
 logger = get_logger('miroconsumer.api.report')
+
+
+_repo_bundle = create_repository_bundle()
+_simulation_repo: SimulationRepository = _repo_bundle.simulation_repo
+
+
+def _build_methodology_limits(simulation_id: str) -> dict:
+    """Load society config and compute methodology limits for a simulation."""
+    try:
+        config = _simulation_repo.get_simulation_config(simulation_id)
+        if not config:
+            return get_methodology_limits(8, 1, "quick")
+        agent_count = config.get("core_persona_count", 8) + config.get("expanded_persona_count", 0)
+        run_count = config.get("max_rounds", 1)
+        mode = config.get("mode", "quick")
+        random_seed = config.get("random_seed")
+        evidence_support = config.get("evidence_support", "none")
+        return get_methodology_limits(agent_count, run_count, mode,
+                                      random_seed=random_seed,
+                                      evidence_support=evidence_support)
+    except Exception:
+        return get_methodology_limits(8, 1, "quick")
 
 
 def _status_from_value_error(e: ValueError) -> int:
@@ -46,9 +76,30 @@ def _value_error_response(e: ValueError):
     return jsonify(payload), _status_from_value_error(e)
 
 
+def _guard_report_access(report):
+    """Guard a report by the tenant of its owning simulation."""
+    if not report:
+        return None
+    target_tenant_id = None
+    if getattr(report, "simulation_id", ""):
+        from ..services.simulation_manager import SimulationManager
+        sim = SimulationManager().get_simulation(report.simulation_id)
+        target_tenant_id = getattr(sim, "tenant_id", None) if sim else None
+    try:
+        TenantGuard.require_same_tenant(
+            target_tenant_id,
+            target_type="report",
+            target_id=getattr(report, "report_id", None),
+        )
+    except TenantAccessDenied:
+        return jsonify(tenant_forbidden_response()[0]), tenant_forbidden_response()[1]
+    return None
+
+
 # ============== 报告生成接口 ==============
 
 @report_bp.route('/generate', methods=['POST'])
+@require_permission('report.generate')
 def generate_report():
     """
     生成模拟分析报告（异步任务）
@@ -74,7 +125,8 @@ def generate_report():
         }
     """
     try:
-        data = request.get_json() or {}
+        data = safe_get_json()
+        if isinstance(data, tuple): return data
 
         simulation_id = data.get('simulation_id')
         if not simulation_id:
@@ -87,7 +139,9 @@ def generate_report():
         result = ReportAppService.generate_report(simulation_id, force_regenerate=force_regenerate)
         return jsonify({
             "success": True,
-            "data": result
+            "data": result,
+            "disclaimer": REPORT_DISCLAIMER,
+            "methodology_limits": _build_methodology_limits(simulation_id),
         })
 
     except ValueError as e:
@@ -99,6 +153,7 @@ def generate_report():
 
 
 @report_bp.route('/generate/status', methods=['POST'])
+@require_permission('report.read')
 def get_generate_status():
     """
     查询报告生成任务进度
@@ -121,7 +176,8 @@ def get_generate_status():
         }
     """
     try:
-        data = request.get_json() or {}
+        data = safe_get_json()
+        if isinstance(data, tuple): return data
 
         task_id = data.get('task_id')
         simulation_id = data.get('simulation_id')
@@ -152,6 +208,7 @@ def get_generate_status():
 # ============== 报告获取接口 ==============
 
 @report_bp.route('/<report_id>', methods=['GET'])
+@require_permission('report.read')
 def get_report(report_id: str):
     """
     获取报告详情
@@ -179,9 +236,18 @@ def get_report(report_id: str):
                 "error": t('api.reportNotFound', id=report_id)
             }), 404
 
+        # 租户隔离检查
+        denied = _guard_report_access(report)
+        if denied:
+            return denied
+
+        methodology_limits = _build_methodology_limits(report.simulation_id)
+
         return jsonify({
             "success": True,
-            "data": report.to_dict()
+            "data": report.to_dict(),
+            "disclaimer": REPORT_DISCLAIMER,
+            "methodology_limits": methodology_limits,
         })
 
     except Exception as e:
@@ -190,6 +256,7 @@ def get_report(report_id: str):
 
 
 @report_bp.route('/by-simulation/<simulation_id>', methods=['GET'])
+@require_permission('report.read')
 def get_report_by_simulation(simulation_id: str):
     """
     根据模拟ID获取报告
@@ -212,11 +279,16 @@ def get_report_by_simulation(simulation_id: str):
                 "error": t('api.noReportForSim', id=simulation_id),
                 "has_report": False
             }), 404
+        denied = _guard_report_access(report)
+        if denied:
+            return denied
 
         return jsonify({
             "success": True,
             "data": report.to_dict(),
-            "has_report": True
+            "has_report": True,
+            "disclaimer": REPORT_DISCLAIMER,
+            "methodology_limits": _build_methodology_limits(simulation_id),
         })
 
     except Exception as e:
@@ -225,34 +297,61 @@ def get_report_by_simulation(simulation_id: str):
 
 
 @report_bp.route('/list', methods=['GET'])
+@require_permission('report.read')
 def list_reports():
     """
-    列出所有报告
+    列出所有报告（分页）
 
     Query参数：
         simulation_id: 按模拟ID过滤（可选）
         limit: 返回数量限制（默认50）
+        page: 页码（默认1）
+        per_page: 每页条数（默认20，上限100）
 
     返回：
         {
             "success": true,
             "data": [...],
-            "count": 10
+            "count": 10,
+            "pagination": { "page": 1, "per_page": 20, "total": 10, "pages": 1 }
         }
     """
     try:
         simulation_id = request.args.get('simulation_id')
         limit = request.args.get('limit', 50, type=int)
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 20, type=int)
 
         reports = ReportManager.list_reports(
             simulation_id=simulation_id,
             limit=limit
         )
 
+        # 租户过滤
+        current_user = getattr(g, 'current_user', None)
+        if current_user and reports:
+            from ..services.simulation_manager import SimulationManager
+            sim_manager = SimulationManager()
+            filtered = []
+            for r in reports:
+                sim = sim_manager.get_simulation(r.simulation_id)
+                if sim and TenantGuard.can_access_tenant(current_user, getattr(sim, 'tenant_id', None)):
+                    filtered.append(r)
+            reports = filtered
+
+        report_dicts = []
+        for r in reports:
+            d = r.to_dict()
+            d["methodology_limits"] = _build_methodology_limits(r.simulation_id)
+            report_dicts.append(d)
+        result = paginate_query(report_dicts, page=page, per_page=per_page)
+
         return jsonify({
             "success": True,
-            "data": [r.to_dict() for r in reports],
-            "count": len(reports)
+            "data": result["items"],
+            "count": len(result["items"]),
+            "pagination": result["pagination"],
+            "disclaimer": REPORT_DISCLAIMER
         })
 
     except Exception as e:
@@ -261,6 +360,8 @@ def list_reports():
 
 
 @report_bp.route('/<report_id>/download', methods=['GET'])
+@require_permission('report.export')
+@export_rate_limit
 def download_report(report_id: str):
     """
     下载报告（Markdown格式）
@@ -268,10 +369,20 @@ def download_report(report_id: str):
     返回Markdown文件
     """
     try:
+        report = ReportManager.get_report(report_id)
+        if not report:
+            return jsonify({
+                "success": False,
+                "error": t('api.reportNotFound', id=report_id)
+            }), 404
+        denied = _guard_report_access(report)
+        if denied:
+            return denied
+
         info = ReportAppService.get_report_download_info(report_id)
 
         if info["is_temp"]:
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.md', encoding='utf-8', delete=False) as f:
                 f.write(info["content"])
                 temp_path = f.name
 
@@ -299,6 +410,7 @@ def download_report(report_id: str):
 
 
 @report_bp.route('/<report_id>', methods=['DELETE'])
+@require_permission('report.generate')
 def delete_report(report_id: str):
     """删除报告"""
     try:
@@ -323,6 +435,7 @@ def delete_report(report_id: str):
 # ============== Report Agent对话接口 ==============
 
 @report_bp.route('/chat', methods=['POST'])
+@require_permission('report.read')
 def chat_with_report_agent():
     """
     与Report Agent对话
@@ -350,7 +463,8 @@ def chat_with_report_agent():
         }
     """
     try:
-        data = request.get_json() or {}
+        data = safe_get_json()
+        if isinstance(data, tuple): return data
 
         simulation_id = data.get('simulation_id')
         message = data.get('message')
@@ -393,6 +507,7 @@ def chat_with_report_agent():
 # ============== 报告进度与分章节接口 ==============
 
 @report_bp.route('/<report_id>/progress', methods=['GET'])
+@require_permission('report.read')
 def get_report_progress(report_id: str):
     """
     获取报告生成进度（实时）
@@ -430,6 +545,7 @@ def get_report_progress(report_id: str):
 
 
 @report_bp.route('/<report_id>/sections', methods=['GET'])
+@require_permission('report.read')
 def get_report_sections(report_id: str):
     """
     获取已生成的章节列表（分章节输出）
@@ -468,6 +584,7 @@ def get_report_sections(report_id: str):
 
 
 @report_bp.route('/<report_id>/section/<int:section_index>', methods=['GET'])
+@require_permission('report.read')
 def get_single_section(report_id: str, section_index: int):
     """
     获取单个章节内容
@@ -510,6 +627,7 @@ def get_single_section(report_id: str, section_index: int):
 # ============== 报告状态检查接口 ==============
 
 @report_bp.route('/check/<simulation_id>', methods=['GET'])
+@require_permission('report.read')
 def check_report_status(simulation_id: str):
     """
     检查模拟是否有报告，以及报告状态
@@ -544,6 +662,7 @@ def check_report_status(simulation_id: str):
 # ============== Agent 日志接口 ==============
 
 @report_bp.route('/<report_id>/agent-log', methods=['GET'])
+@require_permission('audit.read')
 def get_agent_log(report_id: str):
     """
     获取 Report Agent 的详细执行日志
@@ -599,6 +718,7 @@ def get_agent_log(report_id: str):
 
 
 @report_bp.route('/<report_id>/agent-log/stream', methods=['GET'])
+@require_permission('audit.read')
 def stream_agent_log(report_id: str):
     """
     获取完整的 Agent 日志（一次性获取全部）
@@ -631,6 +751,7 @@ def stream_agent_log(report_id: str):
 # ============== 控制台日志接口 ==============
 
 @report_bp.route('/<report_id>/console-log', methods=['GET'])
+@require_permission('audit.read')
 def get_console_log(report_id: str):
     """
     获取 Report Agent 的控制台输出日志
@@ -673,6 +794,7 @@ def get_console_log(report_id: str):
 
 
 @report_bp.route('/<report_id>/console-log/stream', methods=['GET'])
+@require_permission('audit.read')
 def stream_console_log(report_id: str):
     """
     获取完整的控制台日志（一次性获取全部）
@@ -705,6 +827,7 @@ def stream_console_log(report_id: str):
 # ============== 工具调用接口（供调试使用）==============
 
 @report_bp.route('/tools/search', methods=['POST'])
+@require_permission('report.read')
 def search_graph_tool():
     """
     图谱搜索工具接口（供调试使用）
@@ -717,7 +840,8 @@ def search_graph_tool():
         }
     """
     try:
-        data = request.get_json() or {}
+        data = safe_get_json()
+        if isinstance(data, tuple): return data
 
         graph_id = data.get('graph_id')
         query = data.get('query')
@@ -749,6 +873,7 @@ def search_graph_tool():
 
 
 @report_bp.route('/tools/statistics', methods=['POST'])
+@require_permission('report.read')
 def get_graph_statistics_tool():
     """
     图谱统计工具接口（供调试使用）
@@ -759,7 +884,8 @@ def get_graph_statistics_tool():
         }
     """
     try:
-        data = request.get_json() or {}
+        data = safe_get_json()
+        if isinstance(data, tuple): return data
 
         graph_id = data.get('graph_id')
 
@@ -787,6 +913,8 @@ def get_graph_statistics_tool():
 # ============== 研究资产接口 ==============
 
 @report_bp.route('/research-assets/export', methods=['POST'])
+@require_permission('asset.export')
+@export_rate_limit
 def export_research_asset():
     """
     Export a research asset pack from a consumer simulation.
@@ -803,7 +931,8 @@ def export_research_asset():
         { "success": true, "data": assetPack }
     """
     try:
-        data = request.get_json() or {}
+        data = safe_get_json()
+        if isinstance(data, tuple): return data
         project_id = data.get('project_id')
         simulation_id = data.get('simulation_id')
         branch_id = data.get('branch_id')
@@ -830,6 +959,7 @@ def export_research_asset():
 
 
 @report_bp.route('/research-assets', methods=['GET'])
+@require_permission('project.read')
 def list_research_assets():
     """
     List research asset packs for a project.
@@ -856,6 +986,7 @@ def list_research_assets():
 
 
 @report_bp.route('/research-assets/<asset_id>', methods=['GET'])
+@require_permission('project.read')
 def get_research_asset(asset_id: str):
     """
     Get a single research asset pack.
@@ -877,6 +1008,7 @@ def get_research_asset(asset_id: str):
 # ============== 对比快照接口 ==============
 
 @report_bp.route('/compare', methods=['POST'])
+@require_permission('report.generate')
 def create_comparison_snapshot():
     """
     Create a persisted comparison snapshot.
@@ -890,7 +1022,8 @@ def create_comparison_snapshot():
         { "success": true, "data": comparisonSnapshot }
     """
     try:
-        data = request.get_json() or {}
+        data = safe_get_json()
+        if isinstance(data, tuple): return data
         snapshot = ComparisonAppService.create_comparison(data)
         return jsonify({"success": True, "data": snapshot})
 
@@ -902,6 +1035,7 @@ def create_comparison_snapshot():
 
 
 @report_bp.route('/comparisons', methods=['GET'])
+@require_permission('report.read')
 def list_comparison_snapshots():
     """
     List comparison snapshots.
@@ -928,6 +1062,7 @@ def list_comparison_snapshots():
 
 
 @report_bp.route('/comparisons/<comparison_id>', methods=['GET'])
+@require_permission('report.read')
 def get_comparison_snapshot(comparison_id: str):
     """
     Get a single comparison snapshot.
@@ -949,6 +1084,7 @@ def get_comparison_snapshot(comparison_id: str):
 # ============== 基准测试接口 ==============
 
 @report_bp.route('/benchmarks/register', methods=['POST'])
+@require_permission('report.generate')
 def register_benchmark_route():
     """
     Register a new benchmark case.
@@ -965,7 +1101,8 @@ def register_benchmark_route():
         { "success": true, "data": benchmark }
     """
     try:
-        data = request.get_json() or {}
+        data = safe_get_json()
+        if isinstance(data, tuple): return data
         result = BenchmarkAppService.register_benchmark(
             name=data.get("name"),
             source_pack_lineage=data.get("source_pack_lineage"),
@@ -981,6 +1118,7 @@ def register_benchmark_route():
 
 
 @report_bp.route('/benchmarks', methods=['GET'])
+@require_permission('report.read')
 def list_benchmarks_route():
     """
     List all registered benchmarks.
@@ -997,6 +1135,7 @@ def list_benchmarks_route():
 
 
 @report_bp.route('/benchmarks/<benchmark_id>', methods=['GET'])
+@require_permission('report.read')
 def get_benchmark_route(benchmark_id: str):
     """
     Get a single benchmark by ID.
@@ -1015,6 +1154,7 @@ def get_benchmark_route(benchmark_id: str):
 
 
 @report_bp.route('/benchmarks/<benchmark_id>/replay', methods=['POST'])
+@require_permission('report.generate')
 def replay_benchmark_route(benchmark_id: str):
     """
     Replay a benchmark against the current simulation report context.
@@ -1030,7 +1170,8 @@ def replay_benchmark_route(benchmark_id: str):
         { "success": true, "data": replayResult }
     """
     try:
-        data = request.get_json() or {}
+        data = safe_get_json()
+        if isinstance(data, tuple): return data
         report_context = data.get("report_context")
         if not report_context:
             return jsonify({"success": False, "error": "report_context is required"}), 400
@@ -1050,6 +1191,7 @@ def replay_benchmark_route(benchmark_id: str):
 
 
 @report_bp.route('/benchmark-replays/<replay_id>', methods=['GET'])
+@require_permission('report.read')
 def get_replay_result_route(replay_id: str):
     """
     Get a single replay result by ID.

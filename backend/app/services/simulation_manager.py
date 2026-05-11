@@ -104,6 +104,8 @@ class SimulationState:
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
     updated_at: str = field(default_factory=lambda: datetime.now().isoformat())
 
+    tenant_id: str = ""
+
     error: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
@@ -129,6 +131,7 @@ class SimulationState:
             "reddit_status": self.reddit_status,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
+            "tenant_id": self.tenant_id,
             "error": self.error,
         }
 
@@ -156,6 +159,9 @@ class SimulationManager:
         os.path.dirname(__file__),
         "../../uploads/simulations",
     )
+    CONFIG_CACHE_TTL_SECONDS = 120
+    _config_cache: Optional[Any] = None
+    _config_cache_url: Optional[str] = None
 
     def __init__(self, repo: Optional["SimulationRepository"] = None):
         os.makedirs(self.SIMULATION_DATA_DIR, exist_ok=True)
@@ -164,6 +170,26 @@ class SimulationManager:
             from ..repositories.filesystem import FilesystemSimulationRepository
             repo = FilesystemSimulationRepository()
         self._repo = repo
+
+    @classmethod
+    def _config_cache_key(cls, simulation_id: str) -> str:
+        return f"simulation_config:v1:{simulation_id}"
+
+    def _get_cache(self) -> Optional[Any]:
+        redis_url = Config.REDIS_URL
+        if not redis_url:
+            return None
+        if self.__class__._config_cache is None or self.__class__._config_cache_url != redis_url:
+            from .application.redis_cache import RedisCache
+            self.__class__._config_cache = RedisCache(redis_url=redis_url)
+            self.__class__._config_cache_url = redis_url
+        return self.__class__._config_cache
+
+    def _save_simulation_config(self, simulation_id: str, config: Dict[str, Any]) -> None:
+        self._repo.save_simulation_config(simulation_id, config)
+        cache = self._get_cache()
+        if cache is not None:
+            cache.delete(self._config_cache_key(simulation_id))
 
     def _get_simulation_dir(self, simulation_id: str) -> str:
         sim_dir = os.path.join(self.SIMULATION_DATA_DIR, simulation_id)
@@ -408,7 +434,7 @@ class SimulationManager:
                 total=3,
             )
 
-        self._repo.save_simulation_config(
+        self._save_simulation_config(
             state.simulation_id,
             sim_params.to_dict(),
         )
@@ -564,7 +590,7 @@ class SimulationManager:
             document_text=document_text,
             agent_configs=agent_configs,
         )
-        self._repo.save_simulation_config(state.simulation_id, config_payload)
+        self._save_simulation_config(state.simulation_id, config_payload)
         research_findings = resolve_research_findings(
             brief,
             provider=default_auto_research_provider,
@@ -889,6 +915,13 @@ class SimulationManager:
         return self._repo.get_profiles(simulation_id, platform)
 
     def get_simulation_config(self, simulation_id: str) -> Optional[Dict[str, Any]]:
+        cache = self._get_cache()
+        if cache is not None:
+            return cache.get_or_set(
+                self._config_cache_key(simulation_id),
+                lambda: self._repo.load_simulation_config(simulation_id),
+                ttl=self.CONFIG_CACHE_TTL_SECONDS,
+            )
         return self._repo.load_simulation_config(simulation_id)
 
     def get_prepare_manifest(self, simulation_id: str) -> Optional[Dict[str, Any]]:

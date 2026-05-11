@@ -1,4 +1,4 @@
-"""SQLAlchemy metadata and repository implementations.
+﻿"""SQLAlchemy metadata and repository implementations.
 
 Table definitions use the generic JSON type so the schema works with both
 SQLite and PostgreSQL without requiring a PostgreSQL server in tests.
@@ -39,7 +39,7 @@ from ..contracts.errors import ConcurrencyConflictError
 
 metadata = MetaData()
 
-# ── Shared column helpers ──────────────────────────────────────
+# 鈹€鈹€ Shared column helpers 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 
 def _shared_columns():
@@ -62,7 +62,7 @@ def _json_type():
     return JSON().with_variant(JSONB, "postgresql")
 
 
-# ── 20 table definitions ───────────────────────────────────────
+# 鈹€鈹€ 20 table definitions 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 projects = Table(
     "projects",
@@ -265,7 +265,7 @@ locks = Table(
 )
 
 
-# ── Helper utilities ───────────────────────────────────────────
+# 鈹€鈹€ Helper utilities 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 
 def _generate_id(prefix: str = "") -> str:
@@ -336,7 +336,7 @@ def _delete_simulation_tree(session: Session, simulation_ids: List[str]) -> None
     session.execute(delete(simulations).where(simulations.c.id.in_(simulation_ids)))
 
 
-# ── SQLAlchemy repository implementations ──────────────────────
+# 鈹€鈹€ SQLAlchemy repository implementations 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 class SQLAlchemyProjectRepository(ProjectRepository):
     def __init__(self, session_factory: Optional[sessionmaker] = None) -> None:
@@ -589,6 +589,7 @@ class SQLAlchemySimulationRepository(SimulationRepository):
             reddit_status=data.get("reddit_status", "not_started"),
             created_at=data.get("created_at", ""),
             updated_at=data.get("updated_at", ""),
+            tenant_id=data.get("tenant_id", ""),
             error=data.get("error"),
         ), row["version"])
 
@@ -657,6 +658,7 @@ class SQLAlchemySimulationRepository(SimulationRepository):
         project_type: str = "default",
         enable_twitter: bool = True,
         enable_reddit: bool = True,
+        tenant_id: str = "",
     ) -> Any:
         from ..services.simulation_manager import SimulationState, SimulationStatus
         simulation_id = f"sim_{uuid.uuid4().hex[:12]}"
@@ -670,6 +672,7 @@ class SQLAlchemySimulationRepository(SimulationRepository):
             enable_twitter=enable_twitter,
             enable_reddit=enable_reddit,
             status=SimulationStatus.CREATED,
+            tenant_id=tenant_id,
         )
         self.save_simulation(state)
         return state

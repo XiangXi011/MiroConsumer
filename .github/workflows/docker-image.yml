@@ -1,4 +1,4 @@
-name: Build and push Docker image
+﻿name: Build and push Docker image
 
 on:
   push:
@@ -39,11 +39,32 @@ jobs:
             type=sha
             type=raw,value=latest
 
-      - name: Build and push
+      - name: Build local image
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          load: true
+          push: false
+          tags: |
+            miroconsumer:${{ github.sha }}
+            ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: miroconsumer:${{ github.sha }}
+          format: 'table'
+          exit-code: '1'
+          severity: 'HIGH,CRITICAL'
+
+      - name: Push image
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r tag; do
+            if [[ -n "$tag" ]]; then
+              docker push "$tag"
+            fi
+          done <<< "${{ steps.meta.outputs.tags }}"

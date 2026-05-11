@@ -29,11 +29,15 @@ class _ClassProperty:
         return self.fget(cls)
 
 
+WEAK_SECRET_KEYS = {'dev-only-change-me', 'dev-secret', 'secret', 'change-me', 'miroconsumer', 'miro-secret-key-change-in-production'}
+
+
 class Config:
     """Flask配置类"""
 
     # Flask配置
     SECRET_KEY = os.environ.get('SECRET_KEY', '')
+    JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY', '')
     DEBUG = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
     CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:3000')
 
@@ -49,7 +53,19 @@ class Config:
     ZEP_API_KEY = os.environ.get('ZEP_API_KEY')
 
     # 文件上传配置
-    MAX_CONTENT_LENGTH = 50 * 1024 * 1024  # 50MB
+    MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB
+
+    RATE_LIMIT_ENABLED = os.environ.get('RATE_LIMIT_ENABLED', 'false').lower() == 'true'
+    RATE_LIMIT_PER_MINUTE = int(os.environ.get('RATE_LIMIT_PER_MINUTE', '60'))
+    RATE_LIMIT_BACKEND = os.environ.get('RATE_LIMIT_BACKEND', 'memory').lower()
+    AUTH_RATE_LIMIT_PER_MINUTE = int(os.environ.get('AUTH_RATE_LIMIT_PER_MINUTE', '10'))
+    EXPORT_RATE_LIMIT_PER_MINUTE = int(os.environ.get('EXPORT_RATE_LIMIT_PER_MINUTE', '10'))
+    AUDIT_LOG_PATH = os.environ.get('AUDIT_LOG_PATH', '')
+    LOG_FORMAT = os.environ.get('LOG_FORMAT', 'json')
+    SECURITY_HEADERS_ENABLED = os.environ.get('SECURITY_HEADERS_ENABLED', 'true').lower() == 'true'
+    CSP_POLICY = os.environ.get('CSP_POLICY', '')
+    ENABLE_REASONING_TRACE = os.environ.get('ENABLE_REASONING_TRACE', 'true').lower() == 'true'
+    SENTRY_DSN = os.environ.get('SENTRY_DSN', '')
     UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), '../uploads')
     ALLOWED_EXTENSIONS = {'pdf', 'md', 'txt', 'markdown'}
 
@@ -83,6 +99,8 @@ class Config:
     # Queue configuration
     _queue_backend_cache = None
     _redis_url_cache = None
+    _lock_backend_cache = None
+    _rq_queue_name_cache = None
     _queue_retry_limit_cache = None
     _queue_visibility_timeout_cache = None
 
@@ -116,6 +134,18 @@ class Config:
         if cls._redis_url_cache is not None:
             return cls._redis_url_cache
         return os.environ.get('REDIS_URL', '')
+
+    @_ClassProperty
+    def LOCK_BACKEND(cls):
+        if cls._lock_backend_cache is not None:
+            return cls._lock_backend_cache
+        return os.environ.get('LOCK_BACKEND', 'auto')
+
+    @_ClassProperty
+    def RQ_QUEUE_NAME(cls):
+        if cls._rq_queue_name_cache is not None:
+            return cls._rq_queue_name_cache
+        return os.environ.get('RQ_QUEUE_NAME', 'default')
 
     @_ClassProperty
     def QUEUE_RETRY_LIMIT(cls):
@@ -235,6 +265,14 @@ class Config:
                 errors.append(f"DB_URL unsupported scheme: {db_url.split('://')[0] if '://' in db_url else db_url}")
 
         queue_backend = cls.QUEUE_BACKEND
+        valid_rate_limit_backends = ('memory', 'redis')
+        if cls.RATE_LIMIT_BACKEND not in valid_rate_limit_backends:
+            errors.append(f"RATE_LIMIT_BACKEND must be one of {valid_rate_limit_backends}, got: {cls.RATE_LIMIT_BACKEND}")
+        if cls.RATE_LIMIT_ENABLED and cls.RATE_LIMIT_BACKEND == 'redis' and not cls.REDIS_URL:
+            errors.append("REDIS_URL is required when RATE_LIMIT_BACKEND=redis")
+        if cls.RATE_LIMIT_ENABLED and cls.RATE_LIMIT_BACKEND == 'memory' and not (cls.DEBUG or getattr(cls, 'TESTING', False)):
+            errors.append("memory rate limiter is not allowed in production")
+
         valid_backends = ('thread', 'sqlite', 'rq')
         if queue_backend not in valid_backends:
             errors.append(f"QUEUE_BACKEND must be one of {valid_backends}, got: {queue_backend}")
@@ -242,8 +280,21 @@ class Config:
         if queue_backend == 'rq' and not cls.REDIS_URL:
             errors.append("REDIS_URL is required when QUEUE_BACKEND=rq")
 
-        if not cls.DEBUG and not cls.SECRET_KEY:
-            errors.append("SECRET_KEY is required in production")
+        lock_backend = cls.LOCK_BACKEND
+        valid_lock_backends = ('auto', 'redis', 'file', 'db')
+        if lock_backend not in valid_lock_backends:
+            errors.append(f"LOCK_BACKEND must be one of {valid_lock_backends}, got: {lock_backend}")
+        if lock_backend == 'redis' and not cls.REDIS_URL:
+            errors.append("REDIS_URL is required when LOCK_BACKEND=redis")
+
+        if not cls.DEBUG:
+            sk = cls.SECRET_KEY
+            if not sk:
+                errors.append("SECRET_KEY is required in production")
+            elif sk in WEAK_SECRET_KEYS:
+                errors.append("SECRET_KEY must not use a default/weak value")
+            elif len(sk) < 32:
+                errors.append(f"SECRET_KEY must be >= 32 bytes, got {len(sk)}")
 
         storage_backend = cls.STORAGE_BACKEND
         valid_storage_backends = ('local', 's3')

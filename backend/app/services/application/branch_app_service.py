@@ -24,6 +24,17 @@ from .task_executor import TaskExecutor, create_task_executor
 logger = get_logger("miroconsumer.app_service.branch")
 
 
+def run_branch_simulation_task(
+    simulation_id: str,
+    branch_id: str,
+    config: Dict[str, Any],
+    locale: str,
+) -> None:
+    """Importable RQ target for branch simulation runs."""
+    set_locale(locale)
+    SimulationRunner.run_branch_simulation(simulation_id, branch_id, config)
+
+
 class BranchAppService:
     """Application service for branch and intervention orchestration."""
 
@@ -233,12 +244,12 @@ class BranchAppService:
 
         current_locale = get_locale()
 
-        def run_branch():
-            set_locale(current_locale)
-            SimulationRunner.run_branch_simulation(simulation_id, branch_id, config)
-
         cls._executor.submit(
-            run_branch,
+            run_branch_simulation_task,
+            simulation_id,
+            branch_id,
+            config,
+            current_locale,
             task_type="resume_branch",
             idempotency_key=f"{simulation_id}:branch:{branch_id}:resume",
             simulation_id=simulation_id,

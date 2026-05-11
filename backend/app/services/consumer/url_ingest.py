@@ -9,8 +9,9 @@ from __future__ import annotations
 import re
 from html.parser import HTMLParser
 from typing import Callable, List, Optional, Tuple
+from http.client import HTTPConnection, HTTPSConnection
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.parse import urlparse, urlunparse
 
 from .document_ingest import DocumentIngestService
 from .models import ConsumerBusinessBrief, ResearchSourceLane, ResearchSourceType
@@ -63,19 +64,33 @@ def _extract_text_from_html(html: str) -> str:
 
 
 def _default_fetch_url(url: str, timeout: int = 15) -> str:
-    req = Request(
-        url,
-        headers={
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/120.0.0.0 Safari/537.36"
-            )
-        },
-    )
-    with urlopen(req, timeout=timeout) as response:
-        content_type = response.headers.get("Content-Type", "").lower()
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"}:
+        raise ValueError(f"Unsupported URL scheme: {parsed.scheme or 'missing'}")
+    if not parsed.hostname:
+        raise ValueError("URL host is required")
+
+    path = urlunparse(("", "", parsed.path or "/", parsed.params, parsed.query, ""))
+    connection_cls = HTTPSConnection if parsed.scheme == "https" else HTTPConnection
+    connection = connection_cls(parsed.hostname, parsed.port, timeout=timeout)
+    try:
+        connection.request(
+            "GET",
+            path,
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/120.0.0.0 Safari/537.36"
+                )
+            },
+        )
+        response = connection.getresponse()
+        content_type = (response.getheader("Content-Type") or "").lower()
         data = response.read()
+
+        if response.status >= 400:
+            raise HTTPError(url, response.status, response.reason, response.headers, None)
 
         if "application/pdf" in content_type or url.lower().endswith(".pdf"):
             # PDF support deferred; lightweight HTML/text fetcher only
@@ -88,6 +103,8 @@ def _default_fetch_url(url: str, timeout: int = 15) -> str:
 
         html = data.decode(charset, errors="replace")
         return _extract_text_from_html(html)
+    finally:
+        connection.close()
 
 
 FetchUrlFn = Callable[[str], str]

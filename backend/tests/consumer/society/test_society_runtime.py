@@ -93,8 +93,13 @@ def test_society_runtime_production_mode_schema_ranges(tmp_path, monkeypatch):
     assert result["society_mode"] == "standard"
     assert result["society_agents_count"] == 252
     assert isinstance(result["society_metrics"], dict)
+    convergence = result["society_metrics"]["convergence"]
+    assert convergence["stopped"] is False
+    assert convergence["reason"] == "max_rounds_completed"
+    assert "event_type_distribution_change_rate" in convergence["metrics"]
+    assert "community_coverage_ratio" in convergence["metrics"]
     for key, value in result["society_metrics"].items():
-        if key != "cascade_depth":
+        if key not in {"cascade_depth", "convergence"}:
             assert 0.0 <= value <= 1.0
 
 

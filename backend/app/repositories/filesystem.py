@@ -155,6 +155,7 @@ class FilesystemSimulationRepository(SimulationRepository):
             reddit_status=data.get("reddit_status", "not_started"),
             created_at=data.get("created_at", datetime.now().isoformat()),
             updated_at=data.get("updated_at", datetime.now().isoformat()),
+            tenant_id=data.get("tenant_id", ""),
             error=data.get("error"),
         )
 
@@ -177,6 +178,7 @@ class FilesystemSimulationRepository(SimulationRepository):
         project_type: str = "default",
         enable_twitter: bool = True,
         enable_reddit: bool = True,
+        tenant_id: str = "",
     ) -> Any:
         import uuid
 
@@ -191,6 +193,7 @@ class FilesystemSimulationRepository(SimulationRepository):
             enable_twitter=enable_twitter,
             enable_reddit=enable_reddit,
             status=SimulationStatus.CREATED,
+            tenant_id=tenant_id,
         )
         self.save_simulation(state)
         return state
