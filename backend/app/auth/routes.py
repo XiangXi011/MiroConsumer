@@ -157,7 +157,12 @@ def create_api_key():
     if isinstance(data, tuple):
         return data
     user_id = data.get("user_id", g.current_user.user_id)
-    scopes = set(data.get("scopes", []))
+    repository = get_auth_repository()
+    target_user = repository.get_user(user_id)
+    if not target_user:
+        return jsonify({"success": False, "error": "NOT_FOUND", "message": "User not found"}), 404
+    requested_scopes = data.get("scopes")
+    scopes = set(requested_scopes) if requested_scopes is not None else set(ROLE_PERMISSIONS.get(target_user.role, set()))
 
     raw_key, key_id, key_hash = generate_api_key()
     api_key = APIKey(

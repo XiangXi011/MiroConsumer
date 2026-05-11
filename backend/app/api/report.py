@@ -76,6 +76,26 @@ def _value_error_response(e: ValueError):
     return jsonify(payload), _status_from_value_error(e)
 
 
+def _guard_report_access(report):
+    """Guard a report by the tenant of its owning simulation."""
+    if not report:
+        return None
+    target_tenant_id = None
+    if getattr(report, "simulation_id", ""):
+        from ..services.simulation_manager import SimulationManager
+        sim = SimulationManager().get_simulation(report.simulation_id)
+        target_tenant_id = getattr(sim, "tenant_id", None) if sim else None
+    try:
+        TenantGuard.require_same_tenant(
+            target_tenant_id,
+            target_type="report",
+            target_id=getattr(report, "report_id", None),
+        )
+    except TenantAccessDenied:
+        return jsonify(tenant_forbidden_response()[0]), tenant_forbidden_response()[1]
+    return None
+
+
 # ============== 报告生成接口 ==============
 
 @report_bp.route('/generate', methods=['POST'])
@@ -217,12 +237,9 @@ def get_report(report_id: str):
             }), 404
 
         # 租户隔离检查
-        current_tenant = getattr(g, 'current_tenant', None)
-        if current_tenant and report.simulation_id:
-            from ..services.simulation_manager import SimulationManager
-            sim = SimulationManager().get_simulation(report.simulation_id)
-            if sim and sim.tenant_id and sim.tenant_id != current_tenant:
-                return jsonify({"success": False, "error": "FORBIDDEN", "message": "Access denied: tenant mismatch"}), 403
+        denied = _guard_report_access(report)
+        if denied:
+            return denied
 
         methodology_limits = _build_methodology_limits(report.simulation_id)
 
@@ -262,6 +279,9 @@ def get_report_by_simulation(simulation_id: str):
                 "error": t('api.noReportForSim', id=simulation_id),
                 "has_report": False
             }), 404
+        denied = _guard_report_access(report)
+        if denied:
+            return denied
 
         return jsonify({
             "success": True,
@@ -308,14 +328,14 @@ def list_reports():
         )
 
         # 租户过滤
-        current_tenant = getattr(g, 'current_tenant', None)
-        if current_tenant and reports:
+        current_user = getattr(g, 'current_user', None)
+        if current_user and reports:
             from ..services.simulation_manager import SimulationManager
             sim_manager = SimulationManager()
             filtered = []
             for r in reports:
                 sim = sim_manager.get_simulation(r.simulation_id)
-                if sim and (not sim.tenant_id or sim.tenant_id == current_tenant):
+                if sim and TenantGuard.can_access_tenant(current_user, getattr(sim, 'tenant_id', None)):
                     filtered.append(r)
             reports = filtered
 
@@ -349,10 +369,20 @@ def download_report(report_id: str):
     返回Markdown文件
     """
     try:
+        report = ReportManager.get_report(report_id)
+        if not report:
+            return jsonify({
+                "success": False,
+                "error": t('api.reportNotFound', id=report_id)
+            }), 404
+        denied = _guard_report_access(report)
+        if denied:
+            return denied
+
         info = ReportAppService.get_report_download_info(report_id)
 
         if info["is_temp"]:
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.md', encoding='utf-8', delete=False) as f:
                 f.write(info["content"])
                 temp_path = f.name
 

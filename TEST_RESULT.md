@@ -7,22 +7,22 @@ Branch: phase7/gatekeeper-comprehensive-fixes
 
 | Command | Result |
 |---|---|
-| `cd backend && uv run --python 3.12 pytest --cov=app --cov-report=term-missing` | Pass: 1915 passed, 3 skipped, coverage 73%. |
-| `cd frontend && npm ci && npm run build && npm test` | Pass: npm audit 0 vulnerabilities, Vite build success, 25 test files / 288 tests passed. |
-| `bandit -r backend/app/ -ll --skip B101` | Pass: no issues identified; no files skipped; no `#nosec` skips. |
+| `cd backend && uv run --python 3.12 pytest tests/e2e/test_consumer_concept_test_golden_flow.py::test_consumer_concept_test_golden_flow_is_structurally_complete -q` | Pass: 1 passed. Reproduced and fixed the report tenant guard regression in the golden flow. |
+| `cd backend && uv run --python 3.12 pytest tests/security/test_api_tenant_permissions.py tests/test_auth.py tests/security/test_tenant_isolation.py tests/security/test_permissions.py -q` | Pass: 38 passed. Covers API tenant isolation, runtime permission checks, auth, and tenant guard contracts. |
+| `cd backend && uv run --python 3.12 pytest --cov=app --cov-report=term-missing` | Pass: 1922 passed, 3 skipped, 32 warnings; total coverage 73%. |
+| `cd frontend && npm ci && npm run build && npm test` | Pass: npm audit found 0 vulnerabilities; Vite build succeeded; 25 test files / 288 tests passed. |
+| `bandit -r backend/app/ -ll --skip B101` | Pass: no medium/high issues identified; no files skipped; no `#nosec` skips. |
 | `pip-audit` | Pass: no known vulnerabilities found. |
-| `cd backend && uv run --python 3.12 --with pip-audit pip-audit` | Pass: no known vulnerabilities found in backend project environment; local project package skipped because it is not on PyPI. |
-| `cd backend && uv run --python 3.12 pytest tests/security/test_bandit_regressions.py tests/consumer/test_url_ingest.py tests/consumer/society/test_network_topology.py tests/consumer/society/test_population_factory.py tests/consumer/society/test_society_runtime_checkpointing.py tests/utils/test_llm_client.py -q` | Pass: 37 passed. |
-| `cd frontend && npm test -- navigation.test.js` | Pass: 2 passed. |
+| `cd frontend && npm test -- navigation.test.js` | Pass: 2 passed. Confirms router no longer references stale `Process.vue`, create success navigation, error render, and no alert behavior. |
 
 ## Blocked
 
 | Command | Result |
 |---|---|
-| `docker build -t miroconsumer:test .` | Blocked: Docker CLI is installed, but Docker Desktop daemon is unavailable. `docker info` fails with missing `npipe:////./pipe/dockerDesktopLinuxEngine`; `com.docker.service` is stopped and cannot be started without elevated permissions. |
-| `trivy image --severity HIGH,CRITICAL --exit-code 1 miroconsumer:test` | Blocked by the same Docker daemon issue and missing local image. Trivy installation attempts via Chocolatey and Go were blocked by non-admin lock/permission and network TLS/proxy failures. CI workflow uses pinned Trivy action and has a pytest contract test. |
+| `docker build -t miroconsumer:test .` | Blocked by local host environment: Docker CLI cannot connect to `npipe:////./pipe/dockerDesktopLinuxEngine`; Docker Desktop Linux engine pipe is missing / daemon is not reachable. |
+| `trivy image --severity HIGH,CRITICAL --exit-code 1 miroconsumer:test` | Blocked by local host environment: `trivy` is not installed or not on PATH, so PowerShell reports `The term 'trivy' is not recognized`. The image scan also depends on the Docker image that could not be built locally. |
 
 ## Notes
 
-- Docker Desktop WSL distribution reports `docker-desktop` running, but Windows Docker CLI cannot connect to either `desktop-linux` or `default` daemon pipes.
-- The Docker workflow is still repaired and covered by `backend/tests/ci/test_docker_workflow.py`; local image build/scan must be rerun on a host with Docker service access.
+- Docker/Trivy were attempted after the passing backend, frontend, Bandit, and pip-audit checks. The remaining failure is host tooling availability, not a test skip or security-check downgrade.
+- CI workflow coverage for Docker build-before-push and pinned Trivy scan ordering remains covered by backend CI contract tests.

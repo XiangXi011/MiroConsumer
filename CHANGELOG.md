@@ -9,24 +9,28 @@
 - TenantGuard with tenant-scoped admin behavior and explicit `super_admin` cross-tenant auditing.
 - JSONL security audit logger with recursive secret redaction.
 - `/ready` readiness endpoint and OpenAPI Bearer JWT plus `X-API-Key` security schemes.
+- API-level tenant isolation and runtime permission regression tests, including cross-tenant audit behavior and API key scope denial.
+- Root `SECURITY.md` and `DEPLOYMENT.md` pointers to the detailed docs.
 - CI contract tests for Docker image build/Trivy scan ordering.
 - Bandit regression tests for hash primitives and URL scheme validation.
 
 ### Changed
 - Auth API schemas now require `password`; user-id-only login is rejected.
 - Project, graph, simulation, report, export, and admin-sensitive routes now enforce tenant and permission checks consistently.
+- Simulation creation now checks the owning project's tenant and keeps auth-bypassed legacy resources tenantless instead of inventing a `default` tenant.
 - Frontend Step1 simulation creation renders component error state instead of browser alerts and keeps success navigation to `Simulation`.
 - Docker image workflow now builds a local image, scans it with pinned `aquasecurity/trivy-action@v0.36.0`, then pushes only after scan success.
 - Dependency lock now applies uv override constraints to replace vulnerable transitive packages pinned by legacy OASIS dependencies.
 
 ### Fixed
+- Deprecated the stale `Process.vue` route path by deleting the unused view and covering router references in Vitest.
 - Removed stale `Process.vue` environment-setup TODO alert from the routed process flow.
 - Replaced Bandit-flagged MD5/SHA1 uses with SHA-256 for deterministic non-secret identifiers.
 - Replaced raw `urlopen` ingestion with HTTP/HTTPS-only connection handling.
 
 ### Security
-- `bandit -r backend/app/ -ll --skip B101` reports no issues and no `#nosec` skips.
-- `pip-audit` and backend project `uv run --with pip-audit pip-audit` report no known vulnerabilities.
+- `bandit -r backend/app/ -ll --skip B101` reports no medium/high issues and no `#nosec` skips.
+- `pip-audit` reports no known vulnerabilities.
 
 ## [0.7.0] - 2026-05-07
 

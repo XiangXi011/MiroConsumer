@@ -53,19 +53,23 @@ def init_auth(app, auth_repository=None):
         if request.path in public_paths:
             g.current_user = None
             g.current_tenant = None
+            g.current_api_key = None
             return None
 
         if not request.path.startswith("/api/"):
             g.current_user = None
             g.current_tenant = None
+            g.current_api_key = None
             return None
 
         if _auth_bypass_enabled():
             g.current_user = None
             g.current_tenant = None
+            g.current_api_key = None
             return None
 
         repository = get_auth_repository()
+        g.current_api_key = None
         user = _authenticate_api_key(repository) or _authenticate_jwt(repository)
 
         if not user or not user.is_active:
@@ -94,7 +98,10 @@ def _authenticate_api_key(repository: AuthRepository):
         return None
     if not verify_api_key(api_key, api_key_record.key_hash):
         return None
-    return repository.get_user(api_key_record.user_id)
+    user = repository.get_user(api_key_record.user_id)
+    if user:
+        g.current_api_key = api_key_record
+    return user
 
 
 def _authenticate_jwt(repository: AuthRepository):
@@ -168,6 +175,30 @@ def require_permission(permission):
                     "success": False,
                     "error": "FORBIDDEN",
                     "message": f"Permission '{permission}' required. Your role '{user.role}' does not have this permission.",
+                }), 403
+
+            api_key_record = getattr(g, "current_api_key", None)
+            if api_key_record is not None and permission not in set(api_key_record.scopes or set()):
+                audit_event(
+                    event_type="auth.permission_denied",
+                    actor_user_id=user.user_id,
+                    actor_tenant_id=user.tenant_id,
+                    target_type="endpoint",
+                    target_id=f"{request.method} {request.path}",
+                    ip=request.remote_addr,
+                    user_agent=request.headers.get("User-Agent"),
+                    success=False,
+                    reason="missing_api_key_scope",
+                    details={
+                        "permission": permission,
+                        "key_id": getattr(api_key_record, "key_id", None),
+                        "scopes": sorted(api_key_record.scopes or set()),
+                    },
+                )
+                return jsonify({
+                    "success": False,
+                    "error": "FORBIDDEN",
+                    "message": f"API key scope '{permission}' required.",
                 }), 403
 
             return f(*args, **kwargs)

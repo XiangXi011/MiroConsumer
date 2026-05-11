@@ -32,11 +32,11 @@ The Phase7 P0/P1 code repair set is implemented and covered by backend/frontend/
 
 ## Verification Snapshot
 
-- Backend: `1915 passed, 3 skipped`, coverage 73%.
+- Backend: `1922 passed, 3 skipped`, coverage 73%.
 - Frontend: build success; `25 passed`, `288 tests`.
 - Bandit: no issues identified; no `#nosec` skips.
-- pip-audit: no known vulnerabilities for both the bare tool command and the backend project environment.
-- Docker local build/scan: blocked by unavailable Docker daemon, documented in `TEST_RESULT.md`.
+- pip-audit: no known vulnerabilities found.
+- Docker local build/scan: blocked by unavailable Docker daemon and missing local Trivy CLI, documented in `TEST_RESULT.md`.
 
 ## Residual Risk
 

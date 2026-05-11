@@ -261,11 +261,21 @@ def create_simulation():
                 "details": errors
             }), 400
 
-        # 注入租户ID
-        data['tenant_id'] = getattr(g, 'current_tenant', 'default') or 'default'
+        # Authenticated requests inherit the actor tenant; auth-bypassed legacy flows stay tenantless.
+        current_user = getattr(g, 'current_user', None)
+        data['tenant_id'] = getattr(current_user, 'tenant_id', '') if current_user else ''
 
-        # 幂等检查：同 project_id 已有仿真则直接返回
+        # Simulation creation is also bounded by the owning project's tenant.
         project_id = data.get('project_id', '')
+        if project_id:
+            project = ProjectManager.get_project(project_id)
+            if project:
+                try:
+                    TenantGuard.assert_project_access(project, current_user)
+                except TenantAccessDenied:
+                    return jsonify(tenant_forbidden_response()[0]), tenant_forbidden_response()[1]
+
+        # Idempotency check: return an existing accessible simulation for the project.
         if project_id:
             manager = SimulationManager()
             existing_sims = [
@@ -398,10 +408,9 @@ def get_simulation(simulation_id: str):
             }), 404
 
         # 租户隔离检查
-        if state.tenant_id:
-            current_tenant = getattr(g, 'current_tenant', None)
-            if current_tenant and state.tenant_id != current_tenant:
-                return jsonify({"success": False, "error": "FORBIDDEN", "message": "Access denied: tenant mismatch"}), 403
+        denied = _guard_simulation_state(state)
+        if denied:
+            return denied
 
         result = state.to_dict()
         
@@ -470,9 +479,12 @@ def list_simulations():
         simulations = manager.list_simulations(project_id=project_id)
 
         # 租户过滤
-        current_tenant = getattr(g, 'current_tenant', None)
-        if current_tenant and simulations:
-            simulations = [s for s in simulations if getattr(s, 'tenant_id', None) == current_tenant or not getattr(s, 'tenant_id', None)]
+        current_user = getattr(g, 'current_user', None)
+        if current_user and simulations:
+            simulations = [
+                s for s in simulations
+                if TenantGuard.can_access_tenant(current_user, getattr(s, 'tenant_id', None))
+            ]
 
         return jsonify({
             "success": True,

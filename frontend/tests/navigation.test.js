@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { dirname } from 'node:path'
@@ -11,13 +11,13 @@ function source(path) {
 }
 
 describe('process navigation', () => {
-  test('router uses MainView for process route and stale Process alert is gone', () => {
+  test('router uses MainView for process route and does not reference stale Process view', () => {
     const router = source('src/router/index.js')
-    const process = source('src/views/Process.vue')
+    const staleProcessPath = join(root, 'src/views/Process.vue')
 
     expect(router).toContain("import('../views/MainView.vue')")
-    expect(process).not.toContain('环境搭建功能开发中')
-    expect(process).not.toContain('alert(')
+    expect(router).not.toContain('Process.vue')
+    expect(existsSync(staleProcessPath)).toBe(false)
   })
 
   test('Step1 creates simulation and navigates without alert-based errors', () => {
