@@ -1,5 +1,44 @@
-FROM miroconsumer-backend AS worker
+# Canonical CI builds the worker with: docker build -f Dockerfile.backend --target worker .
+# This compatibility Dockerfile remains standalone for local tooling that still points here.
+FROM python:3.12-slim AS builder
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/app/backend/.venv/bin:${PATH}"
+
+COPY --from=ghcr.io/astral-sh/uv:0.9.26 /uv /uvx /bin/
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends build-essential gcc \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app/backend
+
+COPY backend/pyproject.toml backend/uv.lock ./
+RUN uv sync --frozen --no-dev
+
+COPY backend ./
+
+FROM python:3.12-slim AS worker
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH="/app/backend" \
+    PATH="/app/backend/.venv/bin:${PATH}"
+
+RUN groupadd --gid 10001 miroconsumer \
+    && useradd --uid 10001 --gid miroconsumer --create-home --home-dir /app --shell /usr/sbin/nologin miroconsumer \
+    && mkdir -p /app/backend \
+    && chown -R miroconsumer:miroconsumer /app
+
+WORKDIR /app/backend
+
+COPY --from=builder --chown=miroconsumer:miroconsumer /app/backend/.venv ./.venv
+COPY --from=builder --chown=miroconsumer:miroconsumer /app/backend/app ./app
+COPY --from=builder --chown=miroconsumer:miroconsumer /app/backend/alembic ./alembic
+COPY --from=builder --chown=miroconsumer:miroconsumer /app/backend/scripts ./scripts
+COPY --from=builder --chown=miroconsumer:miroconsumer /app/backend/pyproject.toml /app/backend/uv.lock ./
+
+USER miroconsumer
 
 CMD ["python", "-m", "app.worker"]

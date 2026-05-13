@@ -2,7 +2,7 @@ import { test } from 'vitest'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
-import { buildRepresentativeCardView, extractConsumerItems } from '../src/utils/consumerInterview.js'
+import { buildRepresentativeCardView, extractConsumerItems } from '../src/utils/consumerInterview.ts'
 
 test('buildRepresentativeCardView formats complete representative card fields', () => {
   const view = buildRepresentativeCardView({
@@ -49,7 +49,7 @@ test('RepresentativeConsumerCard.vue displays role, segment, channel, quote, att
 })
 
 test('consumer interview channel labels use Phase 6H channel ontology only', () => {
-  const util = readFileSync(new URL('../src/utils/consumerInterview.js', import.meta.url), 'utf-8')
+  const util = readFileSync(new URL('../src/utils/consumerInterview.ts', import.meta.url), 'utf-8')
   for (const forbidden of ['twitter', 'reddit', 'weibo', 'bilibili']) {
     assert.ok(!util.includes(forbidden), `consumerInterview.js must not include legacy channel ${forbidden}`)
   }

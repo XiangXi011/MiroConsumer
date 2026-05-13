@@ -83,17 +83,22 @@ def setup_logger(name: str = 'miroconsumer', level: int = logging.DEBUG) -> logg
         'task_id=%(task_id)s'
     )
 
-    detailed_formatter = logging.Formatter(
-        f'[%(asctime)s] %(levelname)s [%(name)s.%(funcName)s:%(lineno)d] {trace_format} %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
-    
-    simple_formatter = logging.Formatter(
-        f'[%(asctime)s] %(levelname)s: {trace_format} %(message)s',
-        datefmt='%H:%M:%S'
-    )
-    
-    # 1. 文件处理器 - 详细日志（按日期命名，带轮转）
+    if os.environ.get('LOG_FORMAT', 'json').lower() == 'json':
+        from .structured_logger import StructuredFormatter
+        json_formatter = StructuredFormatter(service=os.environ.get('SERVICE_NAME', 'backend'))
+        detailed_formatter = json_formatter
+        simple_formatter = json_formatter
+    else:
+        detailed_formatter = logging.Formatter(
+            f'[%(asctime)s] %(levelname)s [%(name)s.%(funcName)s:%(lineno)d] {trace_format} %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        )
+        
+        simple_formatter = logging.Formatter(
+            f'[%(asctime)s] %(levelname)s: {trace_format} %(message)s',
+            datefmt='%H:%M:%S'
+        )
+        # 1. 文件处理器 - 详细日志（按日期命名，带轮转）
     log_filename = datetime.now().strftime('%Y-%m-%d') + '.log'
     file_handler = RotatingFileHandler(
         os.path.join(LOG_DIR, log_filename),

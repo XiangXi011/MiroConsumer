@@ -8,7 +8,7 @@ import {
   buildSocietyRunSummaryItems,
   buildSocietyRunDiagnosticItems,
   formatSocietyDelta,
-} from '../src/utils/societyRunSummary.js'
+} from '../src/utils/societyRunSummary.ts'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -138,7 +138,7 @@ test('buildSocietyRunDiagnosticItems returns empty array when only irrelevant ke
 })
 
 test('societyRunSummary.js exports diagnostic labels', () => {
-  const path = join(__dirname, '../src/utils/societyRunSummary.js')
+  const path = join(__dirname, '../src/utils/societyRunSummary.ts')
   const content = readFileSync(path, 'utf-8')
 
   for (const label of ['Phase6J Status', 'Error Code', 'Blocking Stage', 'Next Action']) {

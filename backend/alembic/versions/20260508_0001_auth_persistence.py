@@ -3,6 +3,7 @@
 Revision ID: 20260508_0001_auth_persistence
 Revises: 7a1_initial_20_tables
 Create Date: 2026-05-08 00:00:00.000000
+Revision rationale: add durable users and API keys for permission and tenant isolation tests.
 
 """
 from typing import Sequence, Union

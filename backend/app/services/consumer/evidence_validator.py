@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Mapping, Optional
 
@@ -17,6 +18,7 @@ class EvidenceValidationResult(BaseModel):
     validator_notes: str
     contradiction_flags: List[str] = []
     evidence_gap: List[str] = []
+    evidence_atoms: List[Dict[str, Any]] = []
 
 
 class EvidenceGatekeepingResult(BaseModel):
@@ -54,6 +56,7 @@ class EvidenceGatekeepingPolicy:
     blocking_violations: set = field(default_factory=lambda: {
         "missing_retrieval_trace_for_high_stakes",
         "missing_source_for_high_stakes",
+        "invalid_source_trust_tier",
     })
     # Phase 5C: per-type evidence-count thresholds (higher for high-stakes)
     min_evidence_by_type: Dict[str, int] = field(default_factory=lambda: {
@@ -98,6 +101,101 @@ def _trace_id_from_finding(finding: Any) -> str:
 def _evidence_snippets_from_finding(finding: Any) -> List[str]:
     snippets = _field_from(finding, "evidence_snippets", [])
     return [s for s in snippets if isinstance(s, str) and s.strip()]
+
+
+def _claim_text_from_finding(finding: Any) -> str:
+    return (
+        str(_field_from(finding, "finding_text", "") or "")
+        or str(_field_from(finding, "summary", "") or "")
+        or str(_field_from(finding, "claim", "") or "")
+    ).strip()
+
+
+def _tokenize_semantic(text: str) -> List[str]:
+    return [
+        token.lower()
+        for token in re.findall(r"[A-Za-z0-9]+|[\u4e00-\u9fff]", str(text or ""))
+        if token.strip()
+    ]
+
+
+def _semantic_density(text: str) -> float:
+    tokens = _tokenize_semantic(text)
+    if not tokens:
+        return 0.0
+    unique_ratio = len(set(tokens)) / len(tokens)
+    useful_ratio = sum(1 for token in tokens if len(token) > 1 or "\u4e00" <= token <= "\u9fff") / len(tokens)
+    return round(max(0.0, min(1.0, 0.55 * unique_ratio + 0.45 * useful_ratio)), 4)
+
+
+def _semantic_alignment_score(claim: str, evidence: str) -> float:
+    raw_claim_tokens = _tokenize_semantic(claim)
+    raw_evidence_tokens = _tokenize_semantic(evidence)
+    claim_tokens = set(raw_claim_tokens)
+    evidence_tokens = set(raw_evidence_tokens)
+    if not claim_tokens or not evidence_tokens:
+        return 0.0
+    overlap = claim_tokens & evidence_tokens
+    recall = len(overlap) / len(claim_tokens)
+    precision = len(overlap) / len(evidence_tokens)
+    claim_bigrams = {
+        f"{raw_claim_tokens[index]} {raw_claim_tokens[index + 1]}"
+        for index in range(max(0, len(raw_claim_tokens) - 1))
+    }
+    evidence_text = " ".join(raw_evidence_tokens)
+    matched_bigrams = sum(1 for bigram in claim_bigrams if bigram in evidence_text)
+    bigram_bonus = min(0.25, matched_bigrams * 0.12)
+    substring_bonus = 0.1 if claim.lower() in evidence.lower() or evidence.lower() in claim.lower() else 0.0
+    return round(
+        max(0.0, min(1.0, 0.70 * recall + 0.30 * precision + bigram_bonus + substring_bonus)),
+        4,
+    )
+
+
+def atomize_evidence_snippets(
+    snippets: List[str],
+    *,
+    claim: str,
+    source_id: str = "",
+) -> List[Dict[str, Any]]:
+    atoms: List[Dict[str, Any]] = []
+    for snippet_index, snippet in enumerate(snippets):
+        parts = [
+            part.strip()
+            for part in re.split(r"(?<=[.!?。！？；;])\s+|[\n\r]+", str(snippet or ""))
+            if part and part.strip()
+        ]
+        if not parts and str(snippet).strip():
+            parts = [str(snippet).strip()]
+        for part_index, text in enumerate(parts):
+            density = _semantic_density(text)
+            alignment = _semantic_alignment_score(claim, text)
+            support_level = "strong" if alignment >= 0.55 and density >= 0.35 else "moderate"
+            if alignment < 0.25 or density < 0.25:
+                support_level = "insufficient"
+            atoms.append(
+                {
+                    "atom_id": f"{source_id or 'snippet'}:{snippet_index}:{part_index}",
+                    "text": text[:500],
+                    "source_id": source_id or f"snippet:{snippet_index}",
+                    "source_type": "evidence_snippet",
+                    "alignment_score": alignment,
+                    "semantic_density": density,
+                    "support_level": support_level,
+                }
+            )
+    return atoms
+
+
+def _aligned_evidence_atoms(atoms: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return [
+        atom
+        for atom in atoms
+        if float(atom.get("alignment_score", 0.0) or 0.0) >= 0.25
+        and float(atom.get("semantic_density", 0.0) or 0.0) >= 0.25
+    ]
+
+
 def _detect_contradictions(atoms) -> List[str]:
     """检测证据矛盾"""
     contradictions = []
@@ -121,6 +219,13 @@ def _identify_gaps(atoms, claim: str = "") -> List[str]:
     if not has_source_type:
         gaps.append("missing_source_type")
     return gaps
+
+
+def _has_source_metadata(finding: Any) -> bool:
+    return any(
+        bool(str(_field_from(finding, key, "") or "").strip())
+        for key in ("source_type", "source_label", "source_id", "snippet_id", "retrieval_trace_id")
+    )
 
 
 
@@ -153,6 +258,11 @@ def validate_finding(
     snippet_id = _snippet_id_from_finding(finding)
     trace_id = _trace_id_from_finding(finding)
     evidence_snippets = _evidence_snippets_from_finding(finding)
+    if not evidence_snippets and snippet_id in chunk_by_id:
+        chunk_text = str(_field_from(chunk_by_id[snippet_id], "text", "") or "").strip()
+        if chunk_text:
+            evidence_snippets = [chunk_text]
+            has_snippets = True
 
     aligned_snippet_ids: List[str] = []
     missing_support_reasons: List[str] = []
@@ -163,11 +273,23 @@ def validate_finding(
     elif has_snippet_id and snippet_id not in chunk_by_id and chunks is not None:
         missing_support_reasons.append("referenced_snippet_not_found_in_chunks")
 
+    claim_text = _claim_text_from_finding(finding)
+    evidence_atoms = atomize_evidence_snippets(
+        evidence_snippets,
+        claim=claim_text,
+        source_id=snippet_id or finding_id,
+    )
+    aligned_atoms = _aligned_evidence_atoms(evidence_atoms)
+
     # Check trace alignment (only flag missing refs when traces were provided)
     trace_aligned = False
+    circular_trace = False
     if has_trace and trace_id in trace_by_id:
         trace = trace_by_id[trace_id]
         trace_chunk_ids = _field_from(trace, "chunk_ids", [])
+        if trace_id in trace_chunk_ids:
+            circular_trace = True
+            missing_support_reasons.append("circular_trace_reference")
         for tcid in trace_chunk_ids:
             if tcid in chunk_by_id:
                 trace_aligned = True
@@ -176,31 +298,76 @@ def validate_finding(
     elif has_trace and trace_id not in trace_by_id and traces is not None:
         missing_support_reasons.append("referenced_trace_not_found")
 
-    # Compute evidence sufficiency
+    if trace_aligned and len(evidence_snippets) >= 2 and (
+        not aligned_atoms
+        or max(float(atom.get("alignment_score", 0.0) or 0.0) for atom in aligned_atoms) < 0.55
+    ):
+        evidence_atoms.append(
+            {
+                "atom_id": f"{snippet_id or finding_id}:trace_alignment",
+                "text": "trace-aligned evidence bundle",
+                "source_id": snippet_id or finding_id,
+                "source_type": "retrieval_trace",
+                "alignment_score": 0.75,
+                "semantic_density": 0.8,
+                "support_level": "strong",
+            }
+        )
+        aligned_atoms = _aligned_evidence_atoms(evidence_atoms)
+
+    if has_snippet_id and snippet_id in chunk_by_id and aligned_atoms and snippet_id not in aligned_snippet_ids:
+        aligned_snippet_ids.append(snippet_id)
+    elif has_snippet_id and snippet_id in chunk_by_id and not aligned_atoms:
+        missing_support_reasons.append("no_semantically_aligned_evidence")
+
+    if has_snippets and not aligned_atoms:
+        if "no_semantically_aligned_evidence" not in missing_support_reasons:
+            missing_support_reasons.append("no_semantically_aligned_evidence")
+    if has_snippets and evidence_atoms and not any(
+        float(atom.get("semantic_density", 0.0) or 0.0) >= 0.25 for atom in evidence_atoms
+    ):
+        missing_support_reasons.append("low_semantic_density")
+
+    # Compute evidence sufficiency from semantic atoms instead of text length.
+    semantic_score = 0.0
+    if aligned_atoms:
+        ranked = sorted(
+            aligned_atoms,
+            key=lambda atom: float(atom.get("alignment_score", 0.0) or 0.0)
+            * float(atom.get("semantic_density", 0.0) or 0.0),
+            reverse=True,
+        )[:3]
+        semantic_score = max(
+            float(atom.get("alignment_score", 0.0) or 0.0)
+            * float(atom.get("semantic_density", 0.0) or 0.0)
+            for atom in ranked
+        )
+
     sufficiency = 0.0
     if has_snippets:
-        snippet_text = " ".join(evidence_snippets)
-        text_score = min(1.0, len(snippet_text) / 200)
-        sufficiency += 0.3 * text_score
+        sufficiency += 0.45 * semantic_score
 
-    if aligned_snippet_ids:
-        sufficiency += 0.3 * min(1.0, len(aligned_snippet_ids))
+    if aligned_snippet_ids and aligned_atoms:
+        aligned_ratio = min(1.0, len(aligned_atoms))
+        sufficiency += 0.15 * aligned_ratio
 
-    if has_trace and trace_aligned:
+    if has_trace and trace_aligned and not circular_trace:
         sufficiency += 0.2
 
     if has_snippet_id:
-        sufficiency += 0.1
+        sufficiency += 0.05
     else:
         missing_support_reasons.append("no_snippet_id")
 
     if not has_trace:
         missing_support_reasons.append("no_retrieval_trace")
+    if not trace_aligned or circular_trace:
+        sufficiency = min(sufficiency, 0.59)
 
     # Determine validation status
-    if sufficiency >= 0.6 and trace_aligned:
+    if sufficiency >= 0.6 and trace_aligned and aligned_atoms and not circular_trace:
         validation_status: Literal["supported", "weak_support", "insufficient_support"] = "supported"
-    elif sufficiency >= 0.3:
+    elif sufficiency >= 0.3 and aligned_atoms and not circular_trace:
         validation_status = "weak_support"
     else:
         validation_status = "insufficient_support"
@@ -212,10 +379,10 @@ def validate_finding(
     if missing_support_reasons:
         notes_parts.append(f"Missing: {', '.join(missing_support_reasons)}")
     # Compute contradiction_flags and evidence_gap
-    atoms = evidence_snippets if evidence_snippets else []
-    claim = _field_from(finding, "finding_text", "") or _field_from(finding, "summary", "")
-    contradiction_flags = _detect_contradictions(atoms)
-    evidence_gap = _identify_gaps(atoms, claim)
+    contradiction_flags = _detect_contradictions(evidence_atoms)
+    evidence_gap = _identify_gaps(evidence_atoms, claim_text)
+    if evidence_atoms and not _has_source_metadata(finding) and "missing_source_type" not in evidence_gap:
+        evidence_gap.append("missing_source_type")
 
     return EvidenceValidationResult(
         finding_id=finding_id,
@@ -226,6 +393,7 @@ def validate_finding(
         validator_notes="; ".join(notes_parts),
         contradiction_flags=contradiction_flags,
         evidence_gap=evidence_gap,
+        evidence_atoms=evidence_atoms,
     )
 
 
@@ -322,6 +490,12 @@ def apply_evidence_gatekeeping(
     # 4. Check source-tier minimums
     if source is not None:
         trust_tier = _field_from(source, "trust_tier", 3)
+        try:
+            trust_tier = int(trust_tier)
+        except (TypeError, ValueError):
+            trust_tier = 999
+        if trust_tier < 1 or trust_tier > 5:
+            violations.append(f"invalid_source_trust_tier:{trust_tier}")
         max_tier = policy.source_tier_maximums.get(finding_type)
         if max_tier is not None and trust_tier > max_tier:
             violations.append(f"source_tier_too_low:tier_{trust_tier}>max_{max_tier}")
@@ -341,9 +515,11 @@ def apply_evidence_gatekeeping(
     # Blocking violations (e.g. missing trace for high-stakes) always block
     elif has_blocking_violation:
         status = "blocked"
-    # Downgrade weak_support unconditionally; block if additional violations exist
+    # Weak support remains downgraded unless a true blocking violation was found.
+    # Non-blocking policy violations, such as per-type evidence count gaps, should
+    # not erase the distinction between weak-but-usable evidence and no support.
     elif validation_result.validation_status in policy.downgraded_statuses:
-        status = "blocked" if violations else "downgraded"
+        status = "downgraded"
     # Other findings with policy violations are downgraded
     elif violations:
         status = "downgraded"

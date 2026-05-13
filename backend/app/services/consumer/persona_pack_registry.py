@@ -1,10 +1,12 @@
-"""Persona pack registry — configurable assets instead of hardcoded defaults."""
+﻿"""Persona pack registry 鈥?configurable assets instead of hardcoded defaults."""
 
 from __future__ import annotations
 
+import copy
 import json
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence
@@ -215,6 +217,87 @@ class PersonaPackRegistry:
         self._custom_cache[assigned_id] = meta
         return meta
 
+    def patch_persona(
+        self,
+        pack_id: str,
+        persona_id: str,
+        patch: Mapping[str, Any],
+    ) -> Dict[str, Any]:
+        """Patch one custom persona while preserving arbitrary uploaded fields."""
+        if not isinstance(patch, Mapping) or not patch:
+            raise ValueError("Persona patch must be a non-empty object")
+        meta = self.get_pack(pack_id)
+        if meta is None or not meta.path:
+            raise ValueError(f"Persona pack not found: {pack_id}")
+        pack_path = Path(meta.path)
+        payload = json.loads(pack_path.read_text(encoding="utf-8"))
+        if not isinstance(payload, list):
+            raise ValueError("Persona pack top-level JSON payload must be a list")
+
+        for index, persona in enumerate(payload):
+            if not isinstance(persona, dict):
+                continue
+            if str(persona.get("persona_id")) != str(persona_id):
+                continue
+            before = copy.deepcopy(persona)
+            changed_fields = _patch_leaf_paths(patch)
+            _deep_merge(persona, patch)
+            version_before = _coerce_int(before.get("version"), 1)
+            persona["version"] = version_before + 1
+            persona["updated_at"] = datetime.now(timezone.utc).isoformat()
+            _parse_and_validate_persona_pack_json(json.dumps(payload, ensure_ascii=False))
+            pack_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+            self._append_persona_audit(
+                pack_path,
+                {
+                    "pack_id": pack_id,
+                    "persona_id": persona_id,
+                    "changed_fields": changed_fields,
+                    "version_before": version_before,
+                    "version_after": persona["version"],
+                    "updated_at": persona["updated_at"],
+                    "before": before,
+                    "after": copy.deepcopy(persona),
+                },
+            )
+            return dict(persona)
+        raise ValueError(f"Persona not found: {persona_id}")
+
+    def list_persona_audit_log(
+        self,
+        pack_id: str,
+        persona_id: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Return patch audit events for a pack, optionally filtered by persona."""
+        meta = self.get_pack(pack_id)
+        if meta is None or not meta.path:
+            return []
+        log_path = self._audit_log_path(Path(meta.path))
+        if not log_path.exists():
+            return []
+        entries: List[Dict[str, Any]] = []
+        for line in log_path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if entry.get("pack_id") != pack_id:
+                continue
+            if persona_id is not None and entry.get("persona_id") != persona_id:
+                continue
+            entries.append(entry)
+        return entries
+
+    def _append_persona_audit(self, pack_path: Path, entry: Mapping[str, Any]) -> None:
+        log_path = self._audit_log_path(pack_path)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with log_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(dict(entry), ensure_ascii=False, sort_keys=True) + "\n")
+
+    def _audit_log_path(self, pack_path: Path) -> Path:
+        return pack_path.parent / "persona_pack_audit_log.jsonl"
     def _discover_custom_packs(self) -> Dict[str, PersonaPackMetadata]:
         if self._project_dir is None or not self._project_dir.exists():
             return {}
@@ -239,6 +322,30 @@ class PersonaPackRegistry:
                 continue
         return self._custom_cache
 
+def _coerce_int(value: Any, fallback: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return fallback
+
+
+def _deep_merge(target: Dict[str, Any], patch: Mapping[str, Any]) -> None:
+    for key, value in patch.items():
+        if isinstance(value, Mapping) and isinstance(target.get(key), dict):
+            _deep_merge(target[key], value)
+        else:
+            target[key] = copy.deepcopy(value)
+
+
+def _patch_leaf_paths(patch: Mapping[str, Any], prefix: str = "") -> List[str]:
+    paths: List[str] = []
+    for key, value in patch.items():
+        path = f"{prefix}.{key}" if prefix else str(key)
+        if isinstance(value, Mapping) and value:
+            paths.extend(_patch_leaf_paths(value, path))
+        else:
+            paths.append(path)
+    return paths
 
 def _load_personas_from_path(path: Path) -> List[PersonaRecord]:
     payload = json.loads(path.read_text(encoding="utf-8"))
@@ -295,3 +402,4 @@ __all__ = [
     "list_builtin_persona_packs",
     "load_persona_pack_by_id",
 ]
+

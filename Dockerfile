@@ -1,29 +1,25 @@
-FROM python:3.11
+FROM python:3.12-slim AS backend
 
-# 安装 Node.js （满足 >=18）及必要工具
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends nodejs npm \
-  && rm -rf /var/lib/apt/lists/*
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/app/backend/.venv/bin:${PATH}"
 
-# 从 uv 官方镜像复制 uv
 COPY --from=ghcr.io/astral-sh/uv:0.9.26 /uv /uvx /bin/
 
-WORKDIR /app
+RUN groupadd --gid 10001 miroconsumer \
+    && useradd --uid 10001 --gid miroconsumer --create-home --home-dir /app --shell /usr/sbin/nologin miroconsumer \
+    && mkdir -p /app/backend \
+    && chown -R miroconsumer:miroconsumer /app
 
-# 先复制依赖描述文件以利用缓存
-COPY package.json package-lock.json ./
-COPY frontend/package.json frontend/package-lock.json ./frontend/
-COPY backend/pyproject.toml backend/uv.lock ./backend/
+WORKDIR /app/backend
 
-# 安装依赖（Node + Python）
-RUN npm ci \
-  && npm ci --prefix frontend \
-  && cd backend && uv sync
+COPY --chown=miroconsumer:miroconsumer backend/pyproject.toml backend/uv.lock ./
+RUN uv sync --frozen --no-dev
 
-# 复制项目源码
-COPY . .
+COPY --chown=miroconsumer:miroconsumer backend ./
 
-EXPOSE 3000 5001
+USER miroconsumer
 
-# 同时启动前后端（开发模式）
-CMD ["npm", "run", "dev"]
+EXPOSE 5001
+
+CMD ["sh", "-c", "gunicorn 'app:create_app()' --bind 0.0.0.0:5001 --workers ${GUNICORN_WORKERS:-4} --threads ${GUNICORN_THREADS:-4} --timeout ${GUNICORN_TIMEOUT:-300} --access-logfile - --error-logfile -"]

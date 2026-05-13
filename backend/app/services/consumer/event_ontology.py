@@ -23,6 +23,8 @@ class ConsumerEventType(str, Enum):
     PURCHASE_INTENT_UP = "PURCHASE_INTENT_UP"
     PURCHASE_INTENT_DOWN = "PURCHASE_INTENT_DOWN"
     NEGATIVE_CASCADE = "NEGATIVE_CASCADE"
+    PARTICIPATION_SKIPPED = "PARTICIPATION_SKIPPED"
+    IGNORE = "IGNORE"
 
 
 # Fixed legacy bucket/event to consumer event ontology mapping.

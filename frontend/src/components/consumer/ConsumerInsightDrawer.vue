@@ -84,7 +84,8 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
+// @ts-nocheck
 import { computed } from 'vue'
 import ConsumerExplainabilityPanel from './ConsumerExplainabilityPanel.vue'
 import { isPhase6IInterviewHandoff } from '../../utils/consumerResearchActions'

@@ -56,6 +56,7 @@ def test_production_memory_rate_limit_is_rejected():
     class ProductionConfig(Config):
         DEBUG = False
         TESTING = False
+        ENVIRONMENT = "production"
         SECRET_KEY = "valid-secret-key-that-is-long-enough-32"
         RATE_LIMIT_ENABLED = True
         RATE_LIMIT_BACKEND = "memory"

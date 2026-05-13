@@ -2066,6 +2066,7 @@ class ReportAgent:
             self.report_logger.log_planning_complete(outline.to_dict())
 
         total_sections = len(outline.sections)
+        generated_section_contents: List[str] = []
         for index, section in enumerate(outline.sections, start=1):
             progress = 20 + int(((index - 1) / max(total_sections, 1)) * 70)
             ReportManager.update_progress(
@@ -2079,9 +2080,15 @@ class ReportAgent:
             if progress_callback:
                 progress_callback("generating", progress, f"正在生成章节：{section.title}")
 
-            section.content = self._render_consumer_section(section.title, context)
+            section.content = self._render_consumer_section_with_optional_llm(
+                section=section,
+                outline=outline,
+                context=context,
+                previous_sections=generated_section_contents,
+            )
             ReportManager.save_section(report_id, index, section)
             completed_section_titles.append(section.title)
+            generated_section_contents.append(f"## {section.title}\n\n{section.content}".strip())
 
             if self.report_logger:
                 self.report_logger.log_section_full_complete(
@@ -2115,6 +2122,49 @@ class ReportAgent:
 
         return report
 
+    def _consumer_report_llm_enabled(self) -> bool:
+        return os.environ.get("CONSUMER_REPORT_LLM_ENABLED", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+
+    def _render_consumer_section_with_optional_llm(
+        self,
+        *,
+        section: ReportSection,
+        outline: ReportOutline,
+        context: Dict[str, Any],
+        previous_sections: List[str],
+    ) -> str:
+        if not self._consumer_report_llm_enabled():
+            return self._render_consumer_section(section.title, context)
+
+        stats = getattr(
+            self,
+            "consumer_report_llm_stats",
+            {"attempted": 0, "succeeded": 0, "failed": 0, "latencies": []},
+        )
+        stats["attempted"] += 1
+        started_at = time.time()
+        try:
+            context_preview = json.dumps(context, ensure_ascii=False, default=str)[:4000]
+            llm_previous_sections = [
+                f"consumer_report_context:\n{context_preview}",
+                *previous_sections,
+            ]
+            content = self._generate_section_react(section, outline, llm_previous_sections)
+            stats["succeeded"] += 1
+            stats["latencies"].append(round(time.time() - started_at, 4))
+            self.consumer_report_llm_stats = stats
+            return content
+        except Exception as exc:
+            stats["failed"] += 1
+            stats["latencies"].append(round(time.time() - started_at, 4))
+            self.consumer_report_llm_stats = stats
+            logger.warning("Consumer report LLM section failed; falling back to template: %s", exc)
+            return self._render_consumer_section(section.title, context)
     def _build_consumer_report_context(self) -> Dict[str, Any]:
         rounds_path = os.path.join(
             Config.UPLOAD_FOLDER,
@@ -2247,6 +2297,15 @@ class ReportAgent:
         context["research_findings"] = research_findings
         context["retrieval_traces"] = retrieval_traces
         context["task_type"] = task_type or "concept_test"
+        brief_summary = consumer_brief_summary if isinstance(consumer_brief_summary, dict) else {}
+        context["industry"] = brief_summary.get("category") or (
+            getattr(brief, "category", "")
+            if brief is not None
+            else ""
+        ) or brief_summary.get("industry", "")
+        context["target_audience"] = (
+            brief.target_audience if brief is not None and getattr(brief, "target_audience", None) else brief_summary.get("target_audience", [])
+        )
 
         # Merge Phase 2 fields when events exist
         if all_events:
@@ -2383,23 +2442,34 @@ class ReportAgent:
 
     def _build_consumer_outline(self, context: Dict[str, Any]) -> ReportOutline:
         summary = context["summary"]
+        task_type = str(context.get("task_type", "")).strip().lower()
         outline_summary = (
             "本报告基于消费者群体传播快照生成，"
             f"初始正向接受度 {summary['initial_acceptance']['positive']:.0%}，"
             f"传播后正向接受度 {summary['post_propagation_acceptance']['positive']:.0%}，"
             f"态度转向率 {summary['attitude_shift_rate']:.0%}。"
         )
+        sections = [
+            ReportSection(title="测试概览", content=""),
+            ReportSection(title="初始反应", content=""),
+            ReportSection(title="传播演化", content=""),
+            ReportSection(title="风险与误读", content=""),
+            ReportSection(title="代表性消费者原声", content=""),
+            ReportSection(title="行动建议", content=""),
+        ]
+        if task_type == "price_test":
+            sections.insert(2, ReportSection(title="价格敏感度与 WTP 分析", content=""))
+            sections.insert(3, ReportSection(title="价格接受区间与弹性", content=""))
+        elif task_type == "packaging_test":
+            sections.insert(2, ReportSection(title="视觉认知与货架吸引力", content=""))
+            sections.insert(3, ReportSection(title="包装识别与注意力路径", content=""))
+        elif task_type == "ab_test":
+            sections.insert(2, ReportSection(title="偏好对比与统计显著性", content=""))
+            sections.insert(3, ReportSection(title="版本差异与选择理由", content=""))
         return ReportOutline(
             title="消费者传播测试报告",
             summary=outline_summary,
-            sections=[
-                ReportSection(title="测试概览", content=""),
-                ReportSection(title="初始反应", content=""),
-                ReportSection(title="传播演化", content=""),
-                ReportSection(title="风险与误读", content=""),
-                ReportSection(title="代表性消费者原声", content=""),
-                ReportSection(title="行动建议", content=""),
-            ],
+            sections=sections,
         )
 
     def _render_consumer_section(self, section_title: str, context: Dict[str, Any]) -> str:
@@ -2451,6 +2521,44 @@ class ReportAgent:
             if task_type == "price_test" and context.get("resisted_price_points"):
                 lines.append(f"- 抗拒价格：{self._format_points(context['resisted_price_points'])}")
             return "\n".join(lines)
+
+        if section_title == "价格敏感度与 WTP 分析":
+            return "\n".join([
+                f"- 可接受价格：{self._format_points(context.get('acceptable_price_points', []))}",
+                f"- 抗拒价格：{self._format_points(context.get('resisted_price_points', []))}",
+                f"- 价格异议：{self._format_points(context.get('top_price_objections', []))}",
+            ])
+
+        if section_title == "价格接受区间与弹性":
+            return "\n".join([
+                f"- 价格背景：{context.get('price_context', '') or '暂无'}",
+                "- WTP 分布应结合真实价格带和传播后接受度共同解释。",
+            ])
+
+        if section_title == "视觉认知与货架吸引力":
+            return "\n".join([
+                f"- 包装吸引点：{self._format_points(context.get('top_packaging_hooks', []))}",
+                f"- 混淆触发点：{self._format_points(context.get('top_confusion_triggers', []))}",
+            ])
+
+        if section_title == "包装识别与注意力路径":
+            return "\n".join([
+                f"- 信任疑虑：{self._format_points(context.get('top_trust_objections', []))}",
+                "- 货架吸引力应结合第一眼理解、证据位置和包装差异化判断。",
+            ])
+
+        if section_title == "偏好对比与统计显著性":
+            lines = [f"- 占优 variant：{context.get('winning_variant', '') or '暂无'}"]
+            for delta in context.get("top_variant_deltas", [])[:3]:
+                lines.append(f"  - {delta.get('quote', delta)}")
+            lines.append("- 统计显著性需结合样本量、重复种子和置信度输出。")
+            return "\n".join(lines)
+
+        if section_title == "版本差异与选择理由":
+            return "\n".join([
+                f"- 人群差异：{self._format_points(context.get('top_persona_divergences', []))}",
+                "- 版本选择理由应优先引用差异化 VOC 与事件链。",
+            ])
 
         if section_title == "风险与误读":
             lines = [
@@ -2542,14 +2650,26 @@ class ReportAgent:
 
     def _format_quotes(self, quotes: List[Dict[str, Any]]) -> str:
         if not quotes:
-            return "- 暂无代表性原声"
-        lines = []
-        for item in quotes:
+            return "- No representative quotes"
+
+        def is_template_generated(item: Dict[str, Any]) -> bool:
+            metadata = item.get("quote_metadata") or {}
+            if isinstance(metadata, dict) and "template_generated" in metadata:
+                return bool(metadata.get("template_generated"))
+            return True
+
+        sorted_quotes = sorted(quotes, key=is_template_generated)
+        llm_count = sum(1 for item in sorted_quotes if not is_template_generated(item))
+        template_count = len(sorted_quotes) - llm_count
+        lines = [f"- Source: LLM\u751f\u6210 {llm_count} / \u6a21\u62df\u751f\u6210 {template_count}"]
+        for item in sorted_quotes:
             quote = str(item.get("quote", "")).strip()
+            if not quote:
+                continue
             engagement = item.get("engagement", 0)
-            lines.append(f'- "{quote}"（互动值 {engagement}）')
-        return "\n".join(lines)
-    
+            source_label = " [\u6a21\u62df\u751f\u6210\uff0c\u975eLLM\u63a8\u7406]" if is_template_generated(item) else ""
+            lines.append(f'- "{quote}"{source_label} (engagement {engagement})')
+        return "\n".join(lines) if len(lines) > 1 else "- No representative quotes"
     def chat(
         self, 
         message: str,

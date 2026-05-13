@@ -15,6 +15,7 @@ class ConsumerTaskType(str, Enum):
 
 class GraphVisibility(str, Enum):
     Initial = "Initial"
+    GraphVisible = "GraphVisible"
     Propagation_Only = "Propagation_Only"
     Restricted = "Restricted"
 
@@ -110,7 +111,13 @@ class RetrievalTrace(BaseModel):
 
 class ResearchFinding(BaseModel):
     finding_id: str
-    finding_type: Literal["category_context", "competitor_signal", "risk_signal", "trend_signal"]
+    finding_type: Literal[
+        "category_context",
+        "competitor_signal",
+        "risk_signal",
+        "trend_signal",
+        "propagation_signal",
+    ]
     summary: str
     evidence_snippets: List[str] = Field(default_factory=list)
     source_label: str = "brief_background"
@@ -332,6 +339,18 @@ def _normalize_price_context(value: Any) -> Optional[str]:
     return None
 
 
+def _normalize_retry_budget(value: Any, default: int, field_name: str, upper_bound: int) -> int:
+    if value is None:
+        return default
+    try:
+        budget = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{field_name} must be an integer") from exc
+    if budget < 0 or budget > upper_bound:
+        raise ValueError(f"{field_name} must be between 0 and {upper_bound}")
+    return budget
+
+
 def _normalize_persona_pack_selection(value: Any) -> PersonaPackSelection:
     if value is None:
         return PersonaPackSelection()
@@ -374,6 +393,9 @@ class ConsumerBusinessBrief:
     test_variants: List[TestVariant] = field(default_factory=list)
     price_context: Optional[str] = None
     persona_pack_selection: PersonaPackSelection = field(default_factory=PersonaPackSelection)
+    llm_retry_budget: int = 2
+    task_retry_budget: int = 1
+    simulation_retry_budget: int = 0
     source_evidence_spans: List[str] = field(default_factory=list)
     risk_flags: List[str] = field(default_factory=list)
     supported_task_types: ClassVar[set[ConsumerTaskType]] = {
@@ -431,6 +453,15 @@ class ConsumerBusinessBrief:
         self.research_mode = _normalize_research_mode(self.research_mode)
         self.enable_lane_b = _normalize_enable_lane_b(self.enable_lane_b)
         self.persona_pack_selection = _normalize_persona_pack_selection(self.persona_pack_selection)
+        self.llm_retry_budget = _normalize_retry_budget(
+            self.llm_retry_budget, 2, "llm_retry_budget", 5
+        )
+        self.task_retry_budget = _normalize_retry_budget(
+            self.task_retry_budget, 1, "task_retry_budget", 3
+        )
+        self.simulation_retry_budget = _normalize_retry_budget(
+            self.simulation_retry_budget, 0, "simulation_retry_budget", 2
+        )
 
     def to_summary(self) -> Dict[str, Any]:
         return {
@@ -453,6 +484,9 @@ class ConsumerBusinessBrief:
             "test_variants": [v.to_summary() for v in self.test_variants],
             "price_context": self.price_context,
             "persona_pack_selection": self.persona_pack_selection.to_summary(),
+            "llm_retry_budget": self.llm_retry_budget,
+            "task_retry_budget": self.task_retry_budget,
+            "simulation_retry_budget": self.simulation_retry_budget,
             "source_evidence_spans": self.source_evidence_spans,
             "risk_flags": self.risk_flags,
         }

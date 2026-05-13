@@ -18,10 +18,11 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
+// @ts-nocheck
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { availableLocales } from '@/i18n/index.js'
+import { availableLocales } from '@/i18n/index.ts'
 
 const { locale } = useI18n()
 const open = ref(false)

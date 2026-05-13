@@ -1,6 +1,6 @@
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
-import { createConsumerApi } from '../src/api/consumerFactory.js'
+import { createConsumerApi } from '../src/api/consumerFactory.ts'
 
 function makeFakeService() {
   const calls = []

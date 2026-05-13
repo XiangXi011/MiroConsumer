@@ -5,29 +5,69 @@ on:
     branches: [main, codex/*]
   push:
     branches: [main]
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
 
 jobs:
   dependency-audit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
-      - name: Install pip-audit
-        run: pip install pip-audit
-      - name: Run dependency audit
-        run: pip-audit
+          python-version: "3.12"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install audit tools
+        run: pip install pip-audit pip-licenses
+
+      - name: Run pip-audit
+        run: pip-audit --format=json --output=pip-audit.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run npm audit
+        working-directory: frontend
+        run: npm audit --audit-level=moderate --json > ../npm-audit.json
+
+      - name: License scan
+        run: |
+          pip-licenses --format=json --output-file=licenses.json
+          pip-licenses --fail-on='Proprietary;BSD-4-Clause;UNKNOWN'
+
+      - name: Upload security artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-security-reports
+          path: |
+            pip-audit.json
+            npm-audit.json
+            licenses.json
+          retention-days: 30
 
   sast:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: "3.12"
+
       - name: Install bandit
         run: pip install bandit
+
       - name: Run SAST scan
         run: bandit -r backend/app/ -ll --skip B101
 
@@ -35,6 +75,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Check for hardcoded secrets
         run: |
           echo "Scanning for potential secrets..."

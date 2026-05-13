@@ -52,7 +52,8 @@ services:
   worker:
     build:
       context: .
-      dockerfile: Dockerfile.worker
+      dockerfile: Dockerfile.backend
+      target: worker
     image: ${MIROCONSUMER_WORKER_IMAGE:-miroconsumer-worker:latest}
     env_file:
       - path: .env
@@ -67,6 +68,22 @@ services:
       - backend
       - postgres
       - redis
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import os; q=os.getenv('RQ_QUEUE_NAME','default'); print(f'worker queue {q} health probe ok')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    deploy:
+      mode: replicated
+      replicas: 2
+      resources:
+        limits:
+          cpus: "2"
+          memory: 4G
+        reservations:
+          cpus: "0.5"
+          memory: 1G
     volumes:
       - backend_uploads:/app/backend/uploads
       - backend_data:/app/backend/data
@@ -89,11 +106,23 @@ services:
 
   redis:
     image: redis:7-alpine
-    command: ["redis-server", "--appendonly", "yes"]
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
     volumes:
       - redis_data:/data
     restart: unless-stopped
 
+  promtail:
+    image: grafana/promtail:2.9.8
+    command: ["-config.file=/etc/promtail/config.yml", "-config.expand-env=true"]
+    environment:
+      LOKI_URL: ${LOKI_URL:-http://loki:3100/loki/api/v1/push}
+    volumes:
+      - ./ops/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - backend
+      - worker
+    restart: unless-stopped
   minio:
     image: minio/minio:RELEASE.2026-04-03T16-13-37Z
     command: server /data --console-address ":9001"
@@ -104,8 +133,25 @@ services:
       - minio_data:/data
     ports:
       - "9000:9000"
-      - "9001:9001"
+      # MinIO console is loopback-only; use SSH tunnel/VPN for remote administration.
+      - "127.0.0.1:9001:9001"
     restart: unless-stopped
+
+  image-signature-verify:
+    image: cgr.dev/chainguard/cosign:latest
+    profiles: ["verify"]
+    entrypoint: ["/bin/sh", "-c"]
+    environment:
+      COSIGN_PUBLIC_KEY: ${COSIGN_PUBLIC_KEY:-}
+      MIROCONSUMER_BACKEND_IMAGE: ${MIROCONSUMER_BACKEND_IMAGE:-miroconsumer-backend:latest}
+      MIROCONSUMER_WORKER_IMAGE: ${MIROCONSUMER_WORKER_IMAGE:-miroconsumer-worker:latest}
+      MIROCONSUMER_FRONTEND_IMAGE: ${MIROCONSUMER_FRONTEND_IMAGE:-miroconsumer-frontend:latest}
+    command: >-
+      set -eu;
+      printf "%s" "$${COSIGN_PUBLIC_KEY}" > /tmp/cosign.pub;
+      cosign verify --key /tmp/cosign.pub "$${MIROCONSUMER_BACKEND_IMAGE}";
+      cosign verify --key /tmp/cosign.pub "$${MIROCONSUMER_WORKER_IMAGE}";
+      cosign verify --key /tmp/cosign.pub "$${MIROCONSUMER_FRONTEND_IMAGE}"
 
 volumes:
   backend_uploads:
@@ -113,3 +159,5 @@ volumes:
   postgres_data:
   redis_data:
   minio_data:
+
+

@@ -37,6 +37,9 @@ EXPECTED_SNAPSHOT_KEYS = frozenset({
     "bucket",
     "quote",
     "engagement",
+    "test_type_profile",
+    "perception_signals",
+    "decision_signals",
 })
 
 

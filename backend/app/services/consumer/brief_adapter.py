@@ -58,6 +58,11 @@ class ConsumerBriefAdapter:
             if isinstance(persona_pack_raw, dict)
             else PersonaPackSelection()
         )
+        legacy_retry_budget = payload.get("retry_budget")
+        llm_retry_budget = payload.get(
+            "llm_retry_budget",
+            legacy_retry_budget if legacy_retry_budget is not None else 2,
+        )
 
         return ConsumerBusinessBrief(
             task_type=task_type,
@@ -79,4 +84,7 @@ class ConsumerBriefAdapter:
             test_variants=test_variants,
             price_context=_normalize_price_context(payload.get("price_context")),
             persona_pack_selection=persona_pack_selection,
+            llm_retry_budget=llm_retry_budget,
+            task_retry_budget=payload.get("task_retry_budget", 1),
+            simulation_retry_budget=payload.get("simulation_retry_budget", 0),
         )

@@ -191,3 +191,36 @@ class TestConfiguredAuthRepository:
             assert restarted_repo.get_api_key_by_id(api_key.key_id) == api_key
         finally:
             restarted_engine.dispose()
+
+
+class TestCachedAuthRepository:
+    def test_get_user_uses_auth_user_cache_with_600_second_ttl(self, user):
+        from app.auth.repository import CachedAuthRepository
+
+        base = MemoryAuthRepository()
+        cache = type("FakeCache", (), {})()
+        cache.get = lambda key: None
+        cache.set_calls = []
+        cache.set = lambda key, value, ttl=300: cache.set_calls.append((key, value, ttl)) or True
+        cache.delete = lambda key: True
+
+        repo = CachedAuthRepository(base, cache)
+        repo.save_user(user)
+        loaded = repo.get_user(user.user_id)
+
+        assert loaded == user
+        assert ("auth:user:user_test", user.__dict__, 600) in cache.set_calls
+
+    def test_get_user_returns_cached_user_without_delegating(self, user):
+        from app.auth.repository import CachedAuthRepository
+
+        base = MemoryAuthRepository()
+        cache = type("FakeCache", (), {})()
+        cache.get = lambda key: user.__dict__ if key == "auth:user:user_test" else None
+        cache.set = lambda *args, **kwargs: True
+        cache.delete = lambda key: True
+
+        repo = CachedAuthRepository(base, cache)
+
+        assert repo.get_user(user.user_id) == user
+        assert base.get_user(user.user_id) is None

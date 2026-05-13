@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, patch
+﻿from unittest.mock import MagicMock, patch
 
 from app import create_app
 from app.config import Config
@@ -29,7 +29,9 @@ def test_health_does_not_leak_sensitive_information():
 
     assert response.status_code == 200
     payload = response.get_json()
-    assert payload == {"status": "ok"}
+    assert payload["status"] == "ok"
+    assert payload["rate_limiter"] == "enabled"
+    assert set(payload["performance"]) >= {"p95_response_ms", "cache_hit_rate", "llm_avg_latency_ms"}
     text = response.get_data(as_text=True).lower()
     for forbidden in ["secret", "key", "model", "path", "version"]:
         assert forbidden not in text
@@ -40,6 +42,7 @@ def test_ready_returns_ready_when_dependencies_are_ok():
 
     with patch("app.redis.health.redis.Redis.from_url", return_value=redis_conn):
         app = create_app(ReadyConfig)
+        redis_conn.ping.reset_mock()
         response = app.test_client().get("/ready")
 
     assert response.status_code == 200
@@ -55,9 +58,12 @@ def test_ready_returns_503_when_redis_is_unavailable():
 
     with patch("app.redis.health.redis.Redis.from_url", return_value=redis_conn):
         app = create_app(ReadyConfig)
+        redis_conn.ping.reset_mock()
         response = app.test_client().get("/ready")
 
     assert response.status_code == 503
     payload = response.get_json()
     assert payload["status"] == "not_ready"
     assert payload["checks"]["redis"] == "error"
+
+

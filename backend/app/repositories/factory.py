@@ -1,7 +1,6 @@
-"""Repository factory — returns the correct bundle based on DB_URL."""
+﻿"""Repository factory - returns the correct bundle based on DB_URL."""
 
 from dataclasses import dataclass
-from typing import Any, Optional
 
 from ..config import Config
 from . import (
@@ -38,6 +37,27 @@ class RepositoryBundle:
     benchmark_repo: BenchmarkRepository
 
 
+def _wrap_cache_if_configured(bundle: RepositoryBundle, config: type[Config]) -> RepositoryBundle:
+    redis_url = getattr(config, "REDIS_URL", "")
+    if not redis_url:
+        return bundle
+
+    from ..services.application.redis_cache import RedisCache
+    from .cache import CachedProjectRepository, CachedSimulationRepository
+
+    cache = RedisCache(redis_url=redis_url)
+    return RepositoryBundle(
+        backend=bundle.backend,
+        project_repo=CachedProjectRepository(bundle.project_repo, cache),
+        consumer_state_repo=bundle.consumer_state_repo,
+        consumer_research_provider=bundle.consumer_research_provider,
+        simulation_repo=CachedSimulationRepository(bundle.simulation_repo, cache),
+        branch_repo=bundle.branch_repo,
+        report_repo=bundle.report_repo,
+        benchmark_repo=bundle.benchmark_repo,
+    )
+
+
 def create_repository_bundle(config: type[Config] = Config) -> RepositoryBundle:
     """Create a RepositoryBundle based on Config.DB_URL.
 
@@ -49,7 +69,7 @@ def create_repository_bundle(config: type[Config] = Config) -> RepositoryBundle:
     db_url = config.DB_URL
 
     if not db_url:
-        return RepositoryBundle(
+        bundle = RepositoryBundle(
             backend="filesystem",
             project_repo=FilesystemProjectRepository(),
             consumer_state_repo=FilesystemConsumerStateRepository(),
@@ -59,6 +79,7 @@ def create_repository_bundle(config: type[Config] = Config) -> RepositoryBundle:
             report_repo=FilesystemReportRepository(),
             benchmark_repo=FilesystemBenchmarkRepository(),
         )
+        return _wrap_cache_if_configured(bundle, config)
 
     valid_schemes = ("sqlite:///", "postgresql+psycopg://")
     if not any(db_url.startswith(scheme) for scheme in valid_schemes):
@@ -66,7 +87,6 @@ def create_repository_bundle(config: type[Config] = Config) -> RepositoryBundle:
             f"DB_URL unsupported scheme: {db_url.split('://')[0] if '://' in db_url else db_url}"
         )
 
-    # SQLAlchemy-backed repositories (Phase 7A.2 will implement methods)
     from .session import create_engine_from_config, create_session_factory
     from .sqlalchemy import (
         SQLAlchemyProjectRepository,
@@ -82,10 +102,9 @@ def create_repository_bundle(config: type[Config] = Config) -> RepositoryBundle:
         engine = create_engine_from_config(config)
         session_factory = create_session_factory(engine)
     except ImportError:
-        # Driver not installed (e.g. psycopg in test environments)
         session_factory = None
 
-    return RepositoryBundle(
+    bundle = RepositoryBundle(
         backend="sqlalchemy",
         project_repo=SQLAlchemyProjectRepository(session_factory=session_factory),
         consumer_state_repo=SQLAlchemyConsumerStateRepository(session_factory=session_factory),
@@ -95,3 +114,4 @@ def create_repository_bundle(config: type[Config] = Config) -> RepositoryBundle:
         report_repo=SQLAlchemyReportRepository(session_factory=session_factory),
         benchmark_repo=SQLAlchemyBenchmarkRepository(session_factory=session_factory),
     )
+    return _wrap_cache_if_configured(bundle, config)

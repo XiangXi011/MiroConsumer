@@ -1,16 +1,19 @@
-"""Layered reasoning bridge for the Phase 6G consumer society runtime."""
+﻿"""Layered reasoning bridge for the Phase 6G consumer society runtime."""
 
 from __future__ import annotations
 
 import logging
 import os
+import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
-from typing import Any, Callable, Dict, Iterable, Mapping
+from typing import Any, Callable, Dict, Iterable, List, Mapping
 
-from ....utils.llm_governance import validate_llm_output, get_fallback_response
 from ....config import Config
+from ....security.prompt_guard import get_prompt_guard
+from ....utils.llm_governance import get_fallback_response, validate_llm_output
 from ..event_ontology import ConsumerEventType
 from .population_models import ConsumerSocietyAgent
+from .reasoning_evidence_digest import build_evidence_digest
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +33,71 @@ def _clamp(value: Any, fallback: float = 0.5) -> float:
     return round(max(0.0, min(1.0, numeric)), 4)
 
 
+def _text(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def _reasoning_triplet(perception: str, decision: str, expression: str) -> List[Dict[str, str]]:
+    if not any((perception, decision, expression)):
+        return []
+    return [{"input": perception, "evidence": decision, "conclusion": expression}]
+
+
+def _fallback_segments(
+    *,
+    agent: ConsumerSocietyAgent,
+    event: Mapping[str, Any],
+    reasoning_mode: str,
+    quote: str,
+    reasoning_summary: str,
+) -> Dict[str, str]:
+    claim = _text(event.get("claim")) or "consumer claim"
+    event_type = _text(event.get("consumer_event_type")) or "consumer reaction"
+    role = agent.role.value
+    mode = reasoning_mode.replace("_", " ")
+    summary = _text(reasoning_summary)
+    perception = (
+        f"Perception: agent={agent.agent_id}, segment={agent.segment}, "
+        f"role={role}, claim={claim}."
+    )
+    decision = (
+        f"Decision: event_type={event_type}, mode={mode}, "
+        f"trust={event.get('trust', '')}, summary={summary or 'n/a'}."
+    )
+    expression = f"Expression: {quote or summary or 'No expression generated.'}"
+    return {
+        "perception_reasoning": perception,
+        "decision_reasoning": decision,
+        "expression_reasoning": expression,
+    }
+
+
+def _apply_segmented_reasoning(
+    *,
+    event: Dict[str, Any],
+    agent: ConsumerSocietyAgent,
+    reasoning_mode: str,
+    quote: str,
+    reasoning_summary: str,
+    payload: Mapping[str, Any] | None = None,
+) -> None:
+    payload = payload or {}
+    fallback = _fallback_segments(
+        agent=agent,
+        event=event,
+        reasoning_mode=reasoning_mode,
+        quote=quote,
+        reasoning_summary=reasoning_summary,
+    )
+    perception = _text(payload.get("perception_reasoning")) or fallback["perception_reasoning"]
+    decision = _text(payload.get("decision_reasoning")) or fallback["decision_reasoning"]
+    expression = _text(payload.get("expression_reasoning")) or fallback["expression_reasoning"]
+    event["perception_reasoning"] = perception
+    event["decision_reasoning"] = decision
+    event["expression_reasoning"] = expression
+    event["reasoning_triplets"] = _reasoning_triplet(perception, decision, expression)
+
+
 class LayeredSocietyReasoningEngine:
     """Apply L1/L2/L4 reasoning while keeping L3 shadow agents rule-only."""
 
@@ -37,6 +105,10 @@ class LayeredSocietyReasoningEngine:
         self,
         llm_client_factory: Callable[[], Any] | None = None,
         per_call_timeout_seconds: float | None = None,
+        template_fallback_coverage_target: float = 0.15,
+        llm_max_retries: int = 3,
+        llm_retry_backoff_base: float = 1.0,
+        sleep_fn: Callable[[float], None] | None = None,
     ):
         self.llm_client_factory = llm_client_factory
         self.per_call_timeout_seconds = float(
@@ -44,6 +116,10 @@ class LayeredSocietyReasoningEngine:
             if per_call_timeout_seconds is not None
             else os.environ.get("SOCIETY_LLM_TIMEOUT_SECONDS", "30")
         )
+        self.template_fallback_coverage_target = float(template_fallback_coverage_target)
+        self.llm_max_retries = max(1, int(llm_max_retries or 1))
+        self.llm_retry_backoff_base = max(0.0, float(llm_retry_backoff_base or 0.0))
+        self.sleep_fn = sleep_fn or time.sleep
 
     def reason(
         self,
@@ -60,18 +136,35 @@ class LayeredSocietyReasoningEngine:
         deterministic = os.environ.get("SOCIETY_DETERMINISTIC_MODE", "").strip().lower() == "mock"
         backend = os.environ.get("SOCIETY_REASONING_BACKEND", "template").strip().lower()
         if backend == "llm" and not deterministic:
-            try:
-                return self._llm_reason(
-                    agent=agent,
-                    base_event=base_event,
-                    brief_context=brief_context,
-                    research_findings=research_findings,
-                    reasoning_mode=reasoning_mode,
-                )
-            except Exception as exc:
-                event = self._template_reason(agent, base_event, reasoning_mode, backend="template_fallback")
-                event["reasoning_error"] = str(exc)
-                return event
+            last_error: Exception | None = None
+            for attempt in range(1, self.llm_max_retries + 1):
+                try:
+                    event = self._llm_reason(
+                        agent=agent,
+                        base_event=base_event,
+                        brief_context=brief_context,
+                        research_findings=research_findings,
+                        reasoning_mode=reasoning_mode,
+                    )
+                    event["retry_attempts"] = attempt - 1
+                    if attempt > 1:
+                        event["fallback_reason"] = "llm_retry_recovered"
+                    return event
+                except Exception as exc:
+                    last_error = exc
+                    if attempt >= self.llm_max_retries:
+                        break
+                    self.sleep_fn(min(self.llm_retry_backoff_base * (2 ** (attempt - 1)), 8.0))
+            event = self._template_reason(
+                agent,
+                base_event,
+                reasoning_mode,
+                backend="template_fallback",
+            )
+            event["retry_attempts"] = self.llm_max_retries
+            event["fallback_reason"] = "llm_retry_exhausted"
+            event["reasoning_error"] = str(last_error) if last_error else "LLM reasoning failed"
+            return event
 
         return self._template_reason(
             agent,
@@ -98,8 +191,17 @@ class LayeredSocietyReasoningEngine:
         event["reasoning_method"] = reasoning_mode
         event["reasoning_backend"] = backend
         event["llm_invoked"] = False
+        event["quote_metadata"] = {"template_generated": True, "source": backend}
+        reasoning_summary = f"{role} response to {claim}"
         if Config.ENABLE_REASONING_TRACE:
-            event["reasoning_summary"] = f"{role} response to {claim}"
+            event["reasoning_summary"] = reasoning_summary
+        _apply_segmented_reasoning(
+            event=event,
+            agent=agent,
+            reasoning_mode=reasoning_mode,
+            quote=event["quote"],
+            reasoning_summary=reasoning_summary,
+        )
         return event
 
     def _llm_reason(
@@ -113,6 +215,8 @@ class LayeredSocietyReasoningEngine:
     ) -> Dict[str, Any]:
         client = self._build_llm_client()
         prompt = self._build_prompt(agent, base_event, brief_context, research_findings, reasoning_mode)
+        guarded_prompt = get_prompt_guard().wrap_user_content(prompt)
+
         def _call_llm() -> Dict[str, Any]:
             return client.chat_json(
                 messages=[
@@ -123,7 +227,7 @@ class LayeredSocietyReasoningEngine:
                             "Return JSON only and keep values inside the provided schema."
                         ),
                     },
-                    {"role": "user", "content": prompt},
+                    {"role": "user", "content": guarded_prompt},
                 ],
                 temperature=0.2 if reasoning_mode == "llm_deep_reasoning" else 0.35,
                 max_tokens=700,
@@ -135,8 +239,12 @@ class LayeredSocietyReasoningEngine:
         try:
             payload = future.result(timeout=self.per_call_timeout_seconds)
         except FutureTimeoutError as exc:
+            if future.done():
+                raise
             future.cancel()
-            raise TimeoutError(f"TimeoutError: LLM reasoning exceeded {self.per_call_timeout_seconds}s") from exc
+            raise TimeoutError(
+                f"TimeoutError: LLM reasoning exceeded {self.per_call_timeout_seconds}s"
+            ) from exc
         finally:
             executor.shutdown(wait=False, cancel_futures=True)
 
@@ -145,18 +253,23 @@ class LayeredSocietyReasoningEngine:
         if requested_type in {item.value for item in ConsumerEventType}:
             event["consumer_event_type"] = requested_type
 
-        # LLM 输出治理：校验 quote 和 reasoning_summary
         quote = str(payload.get("quote") or event.get("quote") or "")
         reasoning_summary = str(payload.get("reasoning_summary", ""))
         quote_validation = validate_llm_output(quote, context="reasoning_engine.quote")
-        summary_validation = validate_llm_output(reasoning_summary, context="reasoning_engine.summary")
+        summary_validation = validate_llm_output(
+            reasoning_summary,
+            context="reasoning_engine.summary",
+        )
 
         if not quote_validation["valid"]:
-            logger.warning("reasoning_engine quote 校验失败: %s", quote_validation["issues"])
+            logger.warning("reasoning_engine quote validation failed: %s", quote_validation["issues"])
             quote = get_fallback_response("opinion")
         if not summary_validation["valid"]:
-            logger.warning("reasoning_engine summary 校验失败: %s", summary_validation["issues"])
-            reasoning_summary = "（推理摘要生成失败）"
+            logger.warning(
+                "reasoning_engine summary validation failed: %s",
+                summary_validation["issues"],
+            )
+            reasoning_summary = "(reasoning summary generation failed)"
 
         event["quote"] = quote
         event["trust"] = _clamp(payload.get("trust", event.get("trust", 0.5)))
@@ -167,8 +280,17 @@ class LayeredSocietyReasoningEngine:
         event["reasoning_method"] = reasoning_mode
         event["reasoning_backend"] = "llm"
         event["llm_invoked"] = True
+        event["quote_metadata"] = {"template_generated": False, "source": "llm"}
         if Config.ENABLE_REASONING_TRACE:
             event["reasoning_summary"] = reasoning_summary
+        _apply_segmented_reasoning(
+            event=event,
+            agent=agent,
+            reasoning_mode=reasoning_mode,
+            quote=quote,
+            reasoning_summary=reasoning_summary,
+            payload=payload,
+        )
         return event
 
     def _build_llm_client(self) -> Any:
@@ -200,114 +322,14 @@ class LayeredSocietyReasoningEngine:
             f"research_findings_count: {len(findings_list)}\n"
             f"evidence_digest: {evidence_digest}\n"
             f"base_event: {dict(base_event)}\n"
-            "Return JSON with keys: consumer_event_type, quote, trust, purchase_intent, reasoning_summary."
+            "Return JSON with keys: consumer_event_type, quote, trust, purchase_intent, reasoning_summary, perception_reasoning, decision_reasoning, expression_reasoning."
         )
 
     def _build_evidence_digest(self, findings: List[Any]) -> List[Dict[str, Any]]:
         """Build a structured evidence digest from research findings."""
-        digest: List[Dict[str, Any]] = []
-        for finding in findings:
-            if isinstance(finding, dict):
-                fid = finding.get("finding_id", "")
-                claim = finding.get("claim", "")
-                summary = finding.get("summary")
-                display_claim = summary if summary is not None else claim
-
-                evidence_snippets = finding.get("evidence_snippets")
-                if evidence_snippets is not None:
-                    supporting = list(evidence_snippets) if evidence_snippets else []
-                else:
-                    supporting = finding.get("supporting_evidence", [])
-
-                contradicting = finding.get("contradicting_evidence", [])
-                raw_source_quality = self._derive_source_quality(finding)
-                raw_confidence = finding.get("confidence", "")
-            else:
-                fid = getattr(finding, "finding_id", "")
-                claim = getattr(finding, "claim", "")
-                summary = getattr(finding, "summary", None)
-                display_claim = summary if summary is not None else claim
-
-                evidence_snippets = getattr(finding, "evidence_snippets", None)
-                if evidence_snippets is not None:
-                    supporting = list(evidence_snippets) if evidence_snippets else []
-                else:
-                    supporting = getattr(finding, "supporting_evidence", [])
-
-                contradicting = getattr(finding, "contradicting_evidence", [])
-                raw_source_quality = self._derive_source_quality_from_obj(finding)
-                raw_confidence = getattr(finding, "confidence", "")
-
-            source_quality = self._constrain_source_quality(raw_source_quality)
-            confidence = self._constrain_confidence(raw_confidence)
-
-            digest.append({
-                "finding_id": fid,
-                "claim": display_claim,
-                "supporting_evidence": list(supporting) if supporting else [],
-                "contradicting_evidence": list(contradicting) if contradicting else [],
-                "source_quality": source_quality,
-                "confidence": confidence,
-            })
-        return digest
-
-    @staticmethod
-    def _derive_source_quality(finding: Dict[str, Any]) -> Any:
-        for key in ("source_quality", "source_label", "source_id", "lane", "source_lane"):
-            val = finding.get(key, "")
-            if val:
-                return val
-        source = finding.get("source")
-        if source and isinstance(source, dict):
-            lane = source.get("lane", "")
-            if lane:
-                return lane
-        return ""
-
-    @staticmethod
-    def _derive_source_quality_from_obj(finding: Any) -> Any:
-        for key in ("source_quality", "source_label", "source_id", "lane", "source_lane"):
-            val = getattr(finding, key, "")
-            if val:
-                return val
-        source = getattr(finding, "source", None)
-        if source is not None:
-            lane = getattr(source, "lane", "")
-            if lane:
-                return lane
-        return ""
-
-    @staticmethod
-    def _constrain_source_quality(value: Any) -> str:
-        allowed = {"lane_a", "lane_b", "simulation", "unknown"}
-        v = str(value).strip().lower() if value else ""
-        if v in allowed:
-            return v
-        if "public_web" in v or "lane_b" in v:
-            return "lane_b"
-        if "ingested_document" in v or "brief_background" in v or "lane_a" in v:
-            return "lane_a"
-        if "auto_enrich" in v or "simulation" in v:
-            return "simulation"
-        return "unknown"
-
-    @staticmethod
-    def _constrain_confidence(value: Any) -> str:
-        allowed = {"high", "medium", "low", "unknown"}
-        try:
-            numeric = float(value)
-        except (TypeError, ValueError):
-            v = str(value).strip().lower() if value else ""
-            return v if v in allowed else "unknown"
-
-        if numeric >= 0.75:
-            return "high"
-        elif numeric >= 0.45:
-            return "medium"
-        elif numeric > 0:
-            return "low"
-        else:
-            return "unknown"
+        return build_evidence_digest(list(findings))
 
 
 __all__ = ["LayeredSocietyReasoningEngine", "VALID_REASONING_MODES"]
+
+

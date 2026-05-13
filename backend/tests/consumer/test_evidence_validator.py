@@ -195,6 +195,143 @@ def test_finding_with_missing_snippet_reference():
     assert "referenced_trace_not_found" in result.missing_support_reasons
 
 
+def test_long_irrelevant_snippet_does_not_pass_by_length_only():
+    finding = ResearchFinding(
+        finding_id="f_irrelevant",
+        finding_type="risk_signal",
+        summary="Low sugar claim may be misread as zero sugar",
+        evidence_snippets=[
+            " ".join(["warehouse logistics inventory shelf placement"] * 80)
+        ],
+        snippet_id="chk_irrelevant",
+        retrieval_trace_id="trace_irrelevant",
+    )
+    traces = [
+        RetrievalTrace(
+            trace_id="trace_irrelevant",
+            query="low sugar",
+            lane="lane_a",
+            chunk_ids=["chk_irrelevant"],
+        )
+    ]
+    chunks = [
+        DocumentChunk(
+            chunk_id="chk_irrelevant",
+            doc_id="doc",
+            source_id="src",
+            text="warehouse logistics inventory shelf placement",
+        )
+    ]
+
+    result = validate_finding(finding, traces=traces, chunks=chunks)
+
+    assert result.validation_status == "insufficient_support"
+    assert result.evidence_sufficiency < 0.3
+    assert "no_semantically_aligned_evidence" in result.missing_support_reasons
+
+
+def test_evidence_atomization_scores_only_aligned_propositions():
+    finding = ResearchFinding(
+        finding_id="f_atoms",
+        finding_type="risk_signal",
+        summary="Low sugar claim may be misread as zero sugar",
+        evidence_snippets=[
+            "Shelf color is blue. Customer review says low sugar sounded like zero sugar. "
+            "Delivery packaging was praised."
+        ],
+        snippet_id="chk_atoms",
+        retrieval_trace_id="trace_atoms",
+    )
+    traces = [
+        RetrievalTrace(
+            trace_id="trace_atoms",
+            query="low sugar",
+            lane="lane_a",
+            chunk_ids=["chk_atoms"],
+        )
+    ]
+    chunks = [
+        DocumentChunk(
+            chunk_id="chk_atoms",
+            doc_id="doc",
+            source_id="src",
+            text="Customer review says low sugar sounded like zero sugar.",
+        )
+    ]
+
+    result = validate_finding(finding, traces=traces, chunks=chunks)
+
+    assert result.validation_status == "supported"
+    assert result.evidence_atoms
+    aligned = [atom for atom in result.evidence_atoms if atom["alignment_score"] >= 0.25]
+    assert len(aligned) == 1
+    assert "low sugar sounded like zero sugar" in aligned[0]["text"]
+
+
+def test_circular_trace_reference_is_rejected():
+    finding = ResearchFinding(
+        finding_id="f_cycle",
+        finding_type="risk_signal",
+        summary="Safety concern",
+        evidence_snippets=["Safety concern detail"],
+        snippet_id="chk_cycle",
+        retrieval_trace_id="trace_cycle",
+    )
+    traces = [
+        RetrievalTrace(
+            trace_id="trace_cycle",
+            query="safety",
+            lane="lane_a",
+            chunk_ids=["trace_cycle"],
+        )
+    ]
+    chunks = [
+        DocumentChunk(
+            chunk_id="chk_cycle",
+            doc_id="doc",
+            source_id="src",
+            text="Safety concern detail",
+        )
+    ]
+
+    result = validate_finding(finding, traces=traces, chunks=chunks)
+
+    assert result.validation_status != "supported"
+    assert "circular_trace_reference" in result.missing_support_reasons
+
+
+def test_gatekeeping_blocks_extreme_source_trust_tier_values():
+    finding = ResearchFinding(
+        finding_id="f_trust_tier",
+        finding_type="risk_signal",
+        summary="Safety concern",
+        evidence_snippets=["Safety concern detail", "Second safety detail"],
+        snippet_id="chk_tier",
+        retrieval_trace_id="trace_tier",
+        source_id="src_tier",
+    )
+    validation = EvidenceValidationResult(
+        finding_id="f_trust_tier",
+        validation_status="supported",
+        evidence_sufficiency=0.8,
+        aligned_snippet_ids=["chk_tier"],
+        missing_support_reasons=[],
+        validator_notes="ok",
+    )
+    source = ResearchSource(
+        source_id="src_tier",
+        lane="lane_a",
+        source_type="upload",
+        label="Doc",
+        trust_tier=999,
+    )
+
+    result = apply_evidence_gatekeeping(finding, validation, source=source)
+
+    assert result.gatekeeping_status == "blocked"
+    assert any("invalid_source_trust_tier" in v for v in result.policy_violations)
+
+
 # Phase 5C: Evidence gatekeeping tests
 
 def test_gatekeeping_allows_strong_supported_finding():

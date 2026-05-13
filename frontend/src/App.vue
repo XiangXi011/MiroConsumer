@@ -1,8 +1,17 @@
 <template>
   <router-view />
+  <a
+    class="source-link"
+    href="https://github.com/miroconsumer/miroconsumer"
+    target="_blank"
+    rel="noopener noreferrer"
+  >
+    Source
+  </a>
 </template>
 
-<script setup>
+<script setup lang="ts">
+// @ts-nocheck
 // 使用 Vue Router 来管理页面
 </script>
 
@@ -43,5 +52,25 @@
 /* 全局按钮样式 */
 button {
   font-family: inherit;
+}
+
+.source-link {
+  position: fixed;
+  right: 12px;
+  bottom: 10px;
+  z-index: 1000;
+  color: #111111;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid #111111;
+  padding: 4px 8px;
+  font-size: 12px;
+  line-height: 1.2;
+  text-decoration: none;
+}
+
+.source-link:focus,
+.source-link:hover {
+  background: #111111;
+  color: #ffffff;
 }
 </style>

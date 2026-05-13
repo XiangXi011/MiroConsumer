@@ -1,7 +1,7 @@
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
 
-import { useComparisonState } from '../../src/composables/consumer/useComparisonState.js'
+import { useComparisonState } from '../../src/composables/consumer/useComparisonState.ts'
 
 test('useComparisonState returns refs with default values', () => {
   const state = useComparisonState()

@@ -9,7 +9,7 @@ import {
   saveConsumerInterviewHandoff,
   loadConsumerInterviewHandoff,
   clearConsumerInterviewHandoff,
-} from '../src/utils/consumerResearchActions.js'
+} from '../src/utils/consumerResearchActions.ts'
 
 test('CONSUMER_RESEARCH_ACTIONS contains all five expected values', () => {
   assert.equal(CONSUMER_RESEARCH_ACTIONS.DEEP_DIVE_CONCLUSION, 'deep_dive_conclusion')

@@ -32,7 +32,8 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
+// @ts-nocheck
 defineProps({
   roleLabel: { type: String, default: '' },
   segment: { type: String, default: '' },

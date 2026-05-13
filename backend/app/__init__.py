@@ -1,14 +1,12 @@
-"""
-MiroConsumer Backend - Flask应用工厂
-"""
+"""MiroConsumer Flask application factory."""
 
+import json
 import os
 import re
 import uuid
 import warnings
 
-# 抑制 multiprocessing resource_tracker 的警告（来自第三方库如 transformers）
-# 需要在所有其他导入之前设置
+# Suppress noisy multiprocessing resource tracker warnings from optional ML dependencies.
 warnings.filterwarnings("ignore", message=".*resource_tracker.*")
 
 from flask import Flask, g, request
@@ -19,6 +17,9 @@ from .utils.logger import setup_logger, get_logger
 
 SENSITIVE_FIELDS = {'api_key', 'token', 'secret', 'password', 'concept', 'price',
                     'claims', 'consumer_data', 'uploaded_text', 'LLM_API_KEY'}
+
+LEGACY_API_DEPRECATION = 'date="Sun, 01 Nov 2026 00:00:00 GMT"'
+LEGACY_API_SUNSET = "Sun, 01 Dec 2026 00:00:00 GMT"
 
 
 def _schema_ref(name: str) -> dict:
@@ -92,6 +93,54 @@ def _auto_openapi_operation(rule, method: str) -> dict:
     }
 
 
+def _is_legacy_api_path(path: str) -> bool:
+    return path.startswith("/api/") and not path.startswith("/api/v1/")
+
+
+def _mark_legacy_operation_deprecated(operation: dict) -> dict:
+    operation["deprecated"] = True
+    operation["x-deprecation"] = LEGACY_API_DEPRECATION
+    operation["x-sunset"] = LEGACY_API_SUNSET
+    operation["x-successor-version"] = "/api/v1/"
+    return operation
+
+
+def _add_legacy_deprecation_headers(response):
+    if _is_legacy_api_path(request.path):
+        response.headers["Deprecation"] = LEGACY_API_DEPRECATION
+        response.headers["Sunset"] = LEGACY_API_SUNSET
+        response.headers["Link"] = '</api/openapi.json>; rel="successor-version"'
+    return response
+
+
+def _normalize_json_error_response(response):
+    if not response.is_json:
+        return response
+    payload = response.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return response
+    from .utils.error_codes import normalize_error_payload
+    normalized = normalize_error_payload(payload, response.status_code)
+    if normalized != payload:
+        response.set_data(json.dumps(normalized, ensure_ascii=False))
+        response.mimetype = "application/json"
+    return response
+
+def _configured_cors_origins(config_class) -> list[str]:
+    raw_new = getattr(config_class, "CORS_ALLOW_ORIGINS", None)
+    raw_old = getattr(config_class, "CORS_ALLOWED_ORIGINS", None)
+    raw_origins = raw_new if raw_new is not None else raw_old
+    if raw_old and raw_new and raw_old != raw_new:
+        raw_origins = raw_old
+    if isinstance(raw_origins, str):
+        origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
+    else:
+        origins = [str(origin).strip() for origin in raw_origins if str(origin).strip()]
+    if not origins:
+        raise RuntimeError("CORS_ALLOW_ORIGINS must be explicitly set")
+    return origins
+
+
 def _openapi_components() -> dict:
     success_response = {
         "type": "object",
@@ -110,8 +159,13 @@ def _openapi_components() -> dict:
                     "success": {"type": "boolean", "example": False},
                     "error": {"type": "string"},
                     "message": {"type": "string"},
+                    "error_code": {"type": "string"},
+                    "error_message": {"type": "string"},
+                    "field": {"type": "string"},
+                    "request_id": {"type": "string"},
+                    "suggestion": {"type": "string"},
                 },
-                "required": ["success", "error"],
+                "required": ["success", "error", "error_code", "error_message", "field", "request_id", "suggestion"],
             },
             "RegisterUserRequest": {
                 "type": "object",
@@ -367,22 +421,26 @@ def _openapi_paths(app=None) -> dict:
     }
     if app is not None:
         for rule in app.url_map.iter_rules():
-            if not rule.rule.startswith("/api/v1/"):
+            if not rule.rule.startswith("/api/"):
                 continue
             path = _flask_rule_to_openapi_path(rule.rule)
             path_item = paths.setdefault(path, {})
+            is_legacy = _is_legacy_api_path(rule.rule)
             for method in sorted(rule.methods or []):
                 if method in {"HEAD", "OPTIONS"}:
                     continue
                 openapi_method = method.lower()
                 if openapi_method in path_item:
                     continue
-                path_item[openapi_method] = _auto_openapi_operation(rule, method)
+                operation = _auto_openapi_operation(rule, method)
+                if is_legacy:
+                    operation = _mark_legacy_operation_deprecated(operation)
+                path_item[openapi_method] = operation
     return paths
 
 
 def _sanitize_log_data(data, max_length=200):
-    """脱敏日志数据"""
+    """Sanitize request payloads before logging."""
     if not isinstance(data, dict):
         return str(data)[:max_length]
     sanitized = {}
@@ -396,168 +454,259 @@ def _sanitize_log_data(data, max_length=200):
     return sanitized
 
 
-def create_app(config_class=Config):
-    """Flask应用工厂函数"""
-    app = Flask(__name__)
-    app.config.from_object(config_class)
-
-    # 运行配置校验（SECRET_KEY弱值/长度、DB_URL格式等）
+def _validate_config(config_class, logger):
     config_errors = config_class.validate()
     if config_errors:
-        logger = setup_logger('miroconsumer')
         for err in config_errors:
-            logger.error(f"配置错误: {err}")
+            logger.error(f"Configuration error: {err}")
         raise RuntimeError(f"Configuration errors: {'; '.join(config_errors)}")
 
-    # 请求体大小限制
-    app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB
-    
-    # 设置JSON编码：确保中文直接显示（而不是 \uXXXX 格式）
-    # Flask >= 2.3 使用 app.json.ensure_ascii，旧版本使用 JSON_AS_ASCII 配置
-    if hasattr(app, 'json') and hasattr(app.json, 'ensure_ascii'):
-        app.json.ensure_ascii = False
-    
-    # 设置日志
-    logger = setup_logger('miroconsumer')
 
-    # 结构化日志（JSON格式时启用）
+def _should_log_startup(app) -> bool:
+    is_reloader_process = os.environ.get("WERKZEUG_RUN_MAIN") == "true"
+    return not app.config.get("DEBUG", False) or is_reloader_process
+
+
+def create_flask_app(config_class=Config):
+    """Create the bare Flask app and validate static configuration."""
+    app = Flask(__name__)
+    app.config.from_object(config_class)
+    app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
+    if hasattr(app, "json") and hasattr(app.json, "ensure_ascii"):
+        app.json.ensure_ascii = False
+    logger = setup_logger("miroconsumer")
+    _validate_config(config_class, logger)
+    should_log_startup = _should_log_startup(app)
+    if should_log_startup:
+        logger.info("=" * 50)
+        logger.info("MiroConsumer Backend starting...")
+        logger.info("=" * 50)
+    return app, logger, should_log_startup
+
+
+def _load_sentry_integrations():
+    integrations = []
+    try:
+        from sentry_sdk.integrations.flask import FlaskIntegration
+        integrations.append(FlaskIntegration())
+    except ImportError:
+        return []
+    for module_name, class_name in (
+        ("sentry_sdk.integrations.celery", "CeleryIntegration"),
+        ("sentry_sdk.integrations.sqlalchemy", "SqlalchemyIntegration"),
+    ):
+        try:
+            module = __import__(module_name, fromlist=[class_name])
+            integrations.append(getattr(module, class_name)())
+        except (ImportError, AttributeError):
+            continue
+    return integrations
+
+
+def _build_sentry_traces_sampler(base_rate: float):
+    def traces_sampler(sampling_context):
+        transaction = sampling_context.get("transaction_context", {}) or {}
+        environ = sampling_context.get("wsgi_environ", {}) or {}
+        name = str(transaction.get("name", "") or "")
+        path = str(environ.get("PATH_INFO", "") or "")
+        target = f"{name} {path}".lower()
+        if "/api/simulation" in target or "/api/report" in target:
+            return 1.0
+        return base_rate
+
+    return traces_sampler
+
+
+def init_observability(app, config_class, logger):
+    """Initialize structured logging and optional error tracking."""
     from .utils.structured_logger import setup_structured_logger
-    if config_class.LOG_FORMAT == 'json':
+    if config_class.LOG_FORMAT == "json":
         setup_structured_logger(app)
 
-    # 只在 reloader 子进程中打印启动信息（避免 debug 模式下打印两次）
-    is_reloader_process = os.environ.get('WERKZEUG_RUN_MAIN') == 'true'
-    debug_mode = app.config.get('DEBUG', False)
-    should_log_startup = not debug_mode or is_reloader_process
-
-    if should_log_startup:
-        logger.info("=" * 50)
-        logger.info("MiroConsumer Backend 启动中...")
-        logger.info("=" * 50)
-    
-    # 启用CORS
-    origins = [o.strip() for o in config_class.CORS_ALLOWED_ORIGINS.split(",") if o.strip()]
-    CORS(app, resources={r"/api/*": {"origins": origins}})
-
-    # CORS 通配符校验（生产环境禁止 *）
-    if '*' in origins and not app.debug:
-        raise RuntimeError("CORS wildcard '*' is not allowed in production. Set CORS_ALLOWED_ORIGINS in .env")
-
-    # 初始化认证授权系统
-    from .auth.middleware import init_auth
-    from .auth.repository import create_auth_repository_from_config
-    auth_repository, auth_engine = create_auth_repository_from_config(config_class)
-    app.extensions['auth_engine'] = auth_engine
-    init_auth(app, auth_repository=auth_repository)
-
-    # 注册模拟进程清理函数（确保服务器关闭时终止所有模拟进程）
-    from .services.simulation_runner import SimulationRunner
-    SimulationRunner.register_cleanup()
-    if should_log_startup:
-        logger.info("已注册模拟进程清理函数")
-    
-    # 请求日志中间件
-    @app.before_request
-    def log_request():
-        g.request_id = request.headers.get('X-Request-ID', str(uuid.uuid4())[:8])
-        logger = get_logger('miroconsumer.request')
-        logger.debug(f"请求: {request.method} {request.path}")
-        if request.content_type and 'json' in request.content_type:
-            logger.debug(f"请求体: {_sanitize_log_data(request.get_json(silent=True))}")
-
-    @app.after_request
-    def log_response(response):
-        logger = get_logger('miroconsumer.request')
-        logger.debug(f"响应: {response.status_code}")
-        # Security response headers
-        from .utils.security_headers import apply_security_headers
-        apply_security_headers(response, config_class)
-        # Inject request_id into response
-        response.headers['X-Request-ID'] = getattr(g, 'request_id', 'unknown')
-        # Record metrics
-        from .utils.metrics import record_request
-        record_request(response.status_code)
-        return response
-    
-    # 注册蓝图
-    from .api import graph_bp, simulation_bp, report_bp, consumer_bp
-    from .auth.routes import auth_bp
-    app.register_blueprint(auth_bp)
-    app.register_blueprint(graph_bp, url_prefix='/api/graph')
-    app.register_blueprint(simulation_bp, url_prefix='/api/simulation')
-    app.register_blueprint(report_bp, url_prefix='/api/report')
-    app.register_blueprint(consumer_bp, url_prefix='/api/consumer')
-
-    # P2-2: API v1 version prefix — same blueprints, dual paths
-    app.register_blueprint(graph_bp, url_prefix='/api/v1/graph', name='graph_v1')
-    app.register_blueprint(simulation_bp, url_prefix='/api/v1/simulation', name='simulation_v1')
-    app.register_blueprint(report_bp, url_prefix='/api/v1/report', name='report_v1')
-    app.register_blueprint(consumer_bp, url_prefix='/api/v1/consumer', name='consumer_v1')
-    app.register_blueprint(auth_bp, url_prefix='/api/v1/auth', name='auth_v1')
-    
-    # Sentry error tracking (configurable)
-    sentry_dsn = os.environ.get('SENTRY_DSN')
+    sentry_dsn = app.config.get("SENTRY_DSN") or os.environ.get("SENTRY_DSN")
     if sentry_dsn:
         try:
             import sentry_sdk
-            from sentry_sdk.integrations.flask import FlaskIntegration
+            integrations = _load_sentry_integrations()
+            if not integrations:
+                logger.warning("sentry integrations unavailable, skipping Sentry integration")
+                return
+            sample_rate = float(app.config.get("SENTRY_TRACES_SAMPLE_RATE", 0.05))
             sentry_sdk.init(
                 dsn=sentry_dsn,
-                integrations=[FlaskIntegration()],
-                traces_sample_rate=0.1,
-                environment=os.environ.get('FLASK_ENV', 'production'),
+                integrations=integrations,
+                traces_sampler=_build_sentry_traces_sampler(sample_rate),
+                environment=app.config.get("SENTRY_ENVIRONMENT", os.environ.get("FLASK_ENV", "production")),
             )
             logger.info("Sentry enabled")
         except ImportError:
             logger.warning("sentry-sdk not installed, skipping Sentry integration")
 
-    # 注册 metrics 蓝图
+
+def register_trace_context(app):
+    """Inject request trace and span IDs before auth and other middleware."""
+    @app.before_request
+    def inject_trace_context():
+        trace_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex
+        g.trace_id = trace_id
+        g.request_id = trace_id
+        g.span_id = uuid.uuid4().hex[:16]
+
+def init_extensions(app, config_class, logger, should_log_startup):
+    """Initialize CORS, auth, rate limiting, and process cleanup hooks."""
+    origins = _configured_cors_origins(config_class)
+    if "*" in origins and not app.debug:
+        raise RuntimeError("CORS wildcard '*' is not allowed in production. Set CORS_ALLOWED_ORIGINS in .env")
+    CORS(app, resources={r"/api/*": {"origins": origins}})
+
+    from .auth.middleware import init_auth
+    from .auth.repository import create_auth_repository_from_config
+    auth_repository, auth_engine = create_auth_repository_from_config(config_class)
+    app.extensions["auth_engine"] = auth_engine
+    init_auth(app, auth_repository=auth_repository)
+
+    from .middleware.rate_limiter import configure_rate_limiter
+    configure_rate_limiter(app)
+    if not app.config.get("RATE_LIMIT_ENABLED", False):
+        logger.warning("Rate limiting is disabled; production deployments must enable RATE_LIMIT_ENABLED")
+
+    from .services.simulation_runner import SimulationRunner
+    SimulationRunner.register_cleanup()
+    if should_log_startup:
+        logger.info("Simulation process cleanup registered")
+
+
+def register_request_hooks(app, config_class):
+    """Register request ID, logging, security headers, and metrics hooks."""
+    @app.before_request
+    def log_request():
+        import time
+        if not getattr(g, "trace_id", None):
+            trace_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex
+            g.trace_id = trace_id
+            g.request_id = trace_id
+        if not getattr(g, "span_id", None):
+            g.span_id = uuid.uuid4().hex[:16]
+        g.request_start_time = time.perf_counter()
+        request_logger = get_logger('miroconsumer.request')
+        request_logger.debug(f"request: {request.method} {request.path}")
+        if request.content_type and "json" in request.content_type:
+            request_logger.debug(f"request_body: {_sanitize_log_data(request.get_json(silent=True))}")
+
+    @app.after_request
+    def log_response(response):
+        request_logger = get_logger('miroconsumer.request')
+        request_logger.debug(f"response: {response.status_code}")
+        from .utils.security_headers import apply_security_headers
+        import time
+        from .utils.metrics import record_request
+        apply_security_headers(response, config_class)
+        response.headers["X-Request-ID"] = getattr(g, "trace_id", getattr(g, "request_id", "unknown"))
+        response.headers["X-Span-ID"] = getattr(g, "span_id", "unknown")
+        _add_legacy_deprecation_headers(response)
+        _normalize_json_error_response(response)
+        started_at = getattr(g, "request_start_time", None)
+        duration_ms = (time.perf_counter() - started_at) * 1000 if started_at else None
+        record_request(response.status_code, duration_ms=duration_ms)
+        return response
+
+
+def register_blueprints(app):
+    """Register public API, versioned API, auth, and metrics blueprints."""
+    from .api import graph_bp, simulation_bp, report_bp, consumer_bp
+    from .auth.routes import auth_bp
+    app.register_blueprint(auth_bp)
+    app.register_blueprint(graph_bp, url_prefix="/api/graph")
+    app.register_blueprint(simulation_bp, url_prefix="/api/simulation")
+    app.register_blueprint(report_bp, url_prefix="/api/report")
+    app.register_blueprint(consumer_bp, url_prefix="/api/consumer")
+    app.register_blueprint(graph_bp, url_prefix="/api/v1/graph", name="graph_v1")
+    app.register_blueprint(simulation_bp, url_prefix="/api/v1/simulation", name="simulation_v1")
+    app.register_blueprint(report_bp, url_prefix="/api/v1/report", name="report_v1")
+    app.register_blueprint(consumer_bp, url_prefix="/api/v1/consumer", name="consumer_v1")
+    app.register_blueprint(auth_bp, url_prefix="/api/v1/auth", name="auth_v1")
     from .utils.metrics import metrics_bp
     app.register_blueprint(metrics_bp)
 
-    # 健康检查
-    @app.route('/health')
-    def health():
-        return {'status': 'ok'}
 
-    @app.route('/ready')
+def register_health_routes(app):
+    """Register health and readiness endpoints."""
+    @app.route("/health")
+    def health():
+        status = "enabled" if app.config.get("RATE_LIMIT_ENABLED", False) else "disabled"
+        from .utils.metrics import performance_snapshot
+        return {"status": "ok", "rate_limiter": status, "performance": performance_snapshot()}
+
+    @app.route("/ready")
     def ready():
         checks = {}
         errors = {}
+        warnings = {}
         from .redis.health import check_redis
-        redis_status, redis_error = check_redis(app.config.get('REDIS_URL', ''))
-        checks['redis'] = redis_status
-        if redis_error:
-            errors['redis'] = redis_error
-        status_code = 200 if all(value in {'ok', 'skipped'} for value in checks.values()) else 503
-        return {'status': 'ready' if status_code == 200 else 'not_ready', 'checks': checks, **({'errors': errors} if errors else {})}, status_code
+        redis_status, redis_message = check_redis(
+            app.config.get("REDIS_URL", ""),
+            persistence_required=bool(app.config.get("REDIS_PERSISTENCE_ENABLED", False)),
+        )
+        checks["redis"] = redis_status
+        if redis_message:
+            if redis_status == "error":
+                errors["redis"] = redis_message
+            else:
+                warnings["redis"] = redis_message
+        status_code = 200 if all(value in {"ok", "skipped", "warning"} for value in checks.values()) else 503
+        payload = {"status": "ready" if status_code == 200 else "not_ready", "checks": checks}
+        if errors:
+            payload["errors"] = errors
+        if warnings:
+            payload["warnings"] = warnings
+        return payload, status_code
 
-    # 版本信息
+
+def register_version_routes(app):
     from .utils.version import get_version_info
 
-    @app.route('/api/version')
+    @app.route("/api/version")
     def version():
         return get_version_info()
 
-    # OpenAPI spec 端点
-    @app.route('/api/openapi.json')
+
+def register_openapi_routes(app):
+    from .utils.version import get_version_info
+
+    @app.route("/api/openapi.json")
     def openapi_spec():
         return {
             "openapi": "3.0.3",
-            "info": {"title": "MiroConsumer API", "version": "0.7.0"},
+            "info": {"title": "MiroConsumer API", "version": get_version_info()["version"]},
             "servers": [{"url": "/", "description": "Current host"}],
             "paths": _openapi_paths(app),
             "components": {**_openapi_components(), "securitySchemes": {"BearerAuth": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"}, "ApiKeyAuth": {"type": "apiKey", "in": "header", "name": "X-API-Key"}}},
             "security": [{"BearerAuth": []}, {"ApiKeyAuth": []}],
         }
 
-    # Swagger UI 文档页
-    @app.route('/api/docs')
+    @app.route("/api/docs")
     def api_docs():
         return '<html><head><title>MiroConsumer API Docs</title></head><body><h1>MiroConsumer API Docs</h1><p>OpenAPI spec: <a href="/api/openapi.json">/api/openapi.json</a></p></body></html>'
 
-    if should_log_startup:
-        logger.info("MiroConsumer Backend 启动完成")
 
+def create_app(config_class=Config):
+    """Flask application factory orchestration."""
+    app, logger, should_log_startup = create_flask_app(config_class)
+    init_observability(app, config_class, logger)
+    register_trace_context(app)
+    init_extensions(app, config_class, logger, should_log_startup)
+    register_request_hooks(app, config_class)
+    register_blueprints(app)
+    register_health_routes(app)
+    register_version_routes(app)
+    register_openapi_routes(app)
+    if should_log_startup:
+        logger.info("MiroConsumer Backend started")
     return app
+
+
+
+
+
+
 

@@ -1,0 +1,42 @@
+groups:
+  - name: miroconsumer-runtime
+    rules:
+      - alert: SimulationQueueHigh
+        expr: miroconsumer_queue_depth{queue="simulation"} > 100
+        for: 5m
+        labels:
+          severity: warning
+          service: worker
+        annotations:
+          summary: Simulation queue depth is high
+          description: Simulation queue depth stayed above 100 for more than five minutes.
+
+      - alert: LLMErrorRateHigh
+        expr: rate(miroconsumer_llm_errors_total[2m]) / clamp_min(rate(miroconsumer_llm_requests_total[2m]), 1) > 0.10
+        for: 2m
+        labels:
+          severity: critical
+          service: llm
+        annotations:
+          summary: LLM error rate is high
+          description: More than 10 percent of LLM calls failed during the last two minutes.
+
+      - alert: DatabaseConnectionPoolLow
+        expr: miroconsumer_db_pool_idle_connections < 5
+        for: 3m
+        labels:
+          severity: warning
+          service: database
+        annotations:
+          summary: Database idle connection pool is low
+          description: Fewer than five idle database connections were available for three minutes.
+
+      - alert: WorkerDown
+        expr: up{job="miroconsumer-worker"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: worker
+        annotations:
+          summary: Worker process is unreachable
+          description: Prometheus cannot scrape a MiroConsumer worker target.

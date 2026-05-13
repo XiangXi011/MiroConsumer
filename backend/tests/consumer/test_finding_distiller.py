@@ -132,7 +132,7 @@ def test_distill_findings_sets_visibility():
     normal_finding = next(f for f in findings if f.snippet_id == "chk_norm")
 
     assert risk_finding.visibility == GraphVisibility.Restricted
-    assert normal_finding.visibility == GraphVisibility.Propagation_Only
+    assert normal_finding.visibility == GraphVisibility.GraphVisible
 
 
 def test_build_retrieval_trace():

@@ -27,7 +27,8 @@
   </section>
 </template>
 
-<script setup>
+<script setup lang="ts">
+// @ts-nocheck
 import { computed } from 'vue'
 import { buildChannelHeatmapRows } from '../../utils/channelPropagation'
 

@@ -9,7 +9,7 @@ const __dirname = dirname(__filename)
 
 const componentPath = join(__dirname, '../src/components/consumer/EvidenceGraphPanel.vue')
 const step4Path = join(__dirname, '../src/components/Step4Report.vue')
-const consumerApiPath = join(__dirname, '../src/api/consumer.js')
+const consumerApiPath = join(__dirname, '../src/api/consumer.ts')
 
 test('EvidenceGraphPanel.vue exists as a consumer report component', () => {
   assert.ok(existsSync(componentPath), 'EvidenceGraphPanel.vue must exist')

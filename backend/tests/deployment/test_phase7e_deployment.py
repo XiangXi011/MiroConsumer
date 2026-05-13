@@ -75,8 +75,10 @@ def test_production_docker_files_exist_and_use_configurable_commands():
     assert "--workers ${GUNICORN_WORKERS:-2}" in backend
     assert "--threads ${GUNICORN_THREADS:-4}" in backend
     assert "--timeout ${GUNICORN_TIMEOUT:-300}" in backend
+    assert "FROM runtime AS worker" in backend
     assert "nginx" in frontend.lower()
-    assert "FROM miroconsumer-backend" in worker
+    assert "FROM miroconsumer-backend" not in worker
+    assert 'CMD ["python", "-m", "app.worker"]' in worker
     assert "proxy_pass http://backend:5001" in nginx
     assert "client_max_body_size" in nginx
 

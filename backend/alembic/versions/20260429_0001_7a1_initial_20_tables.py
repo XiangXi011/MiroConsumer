@@ -11,6 +11,7 @@ benchmark_replays, memory_entries, tasks, task_attempts, dead_letters, locks.
 Revision ID: 7a1_initial_20_tables
 Revises:
 Create Date: 2026-04-29 00:00:00.000000
+Revision rationale: establish the first durable schema for projects, simulations, reports, queues, and locks.
 
 """
 from typing import Sequence, Union

@@ -1,0 +1,24 @@
+{
+  "queries": [
+    {
+      "name": "trace_id_request_chain",
+      "description": "Show all JSON logs for one request trace_id across services.",
+      "logql": "{service=~\"backend|worker|frontend\", trace_id=\"$trace_id\"} | json"
+    },
+    {
+      "name": "error_code_rate",
+      "description": "Count backend errors by error_code over five minutes.",
+      "logql": "sum by (error_code) (count_over_time({service=\"backend\", level=~\"ERROR|CRITICAL\"} | json [5m]))"
+    },
+    {
+      "name": "tenant_id_activity",
+      "description": "Inspect all logs for a tenant_id.",
+      "logql": "{tenant_id=\"$tenant_id\"} | json"
+    }
+  ],
+  "kibana": [
+    "trace_id:\"$trace_id\"",
+    "tenant_id:\"$tenant_id\" AND level:(ERROR OR CRITICAL)",
+    "service:\"backend\" AND error_code:*"
+  ]
+}

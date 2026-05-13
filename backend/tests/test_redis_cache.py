@@ -167,3 +167,26 @@ def test_graceful_fallback_when_redis_operation_fails():
     assert cache.get("profile:1") is None
     assert cache.get_or_set("profile:1", factory, ttl=30) == {"fresh": True}
     factory.assert_called_once_with()
+
+
+def test_large_values_are_gzip_compressed_and_restored():
+    redis_conn, from_url_patch = _cache_with_mocked_redis()
+    large_value = {"text": "x" * (11 * 1024)}
+
+    with from_url_patch:
+        cache = RedisCache(redis_url="redis://localhost:6379/0")
+
+    assert cache.set("large", large_value, ttl=120) is True
+    stored_payload = redis_conn.set.call_args.args[1]
+    assert isinstance(stored_payload, bytes)
+    assert stored_payload.startswith(b"gzip:")
+
+    redis_conn.get.return_value = stored_payload
+    assert cache.get("large") == large_value
+
+
+def test_ttl_policy_supports_hot_warm_and_cold_data():
+    assert RedisCache.ttl_for_data_type("hot") == 60
+    assert RedisCache.ttl_for_data_type("warm") == 300
+    assert RedisCache.ttl_for_data_type("cold") == 3600
+    assert RedisCache.ttl_for_data_type("unknown") == 300

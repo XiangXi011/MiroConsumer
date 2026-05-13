@@ -25,6 +25,11 @@ def test_auth_required_response_contract():
     assert response.status_code == 401
     assert payload["success"] is False
     assert payload["error"] == "AUTH_REQUIRED"
+    assert payload["error_code"] == "AUTH_REQUIRED"
+    assert payload["error_message"]
+    assert "field" in payload
+    assert "request_id" in payload
+    assert payload["suggestion"]
     assert "message" in payload
 
 
@@ -49,6 +54,11 @@ def test_forbidden_response_contract():
     assert response.status_code == 403
     assert payload["success"] is False
     assert payload["error"] == "FORBIDDEN"
+    assert payload["error_code"] == "PERMISSION_DENIED"
+    assert payload["error_message"]
+    assert "field" in payload
+    assert "request_id" in payload
+    assert payload["suggestion"]
     assert "message" in payload
 
 
@@ -70,4 +80,9 @@ def test_rate_limited_response_contract():
     assert response.status_code == 429
     assert payload["success"] is False
     assert payload["error"] == "RATE_LIMITED"
+    assert payload["error_code"] == "RATE_LIMITED"
+    assert payload["error_message"]
+    assert "field" in payload
+    assert "request_id" in payload
+    assert payload["suggestion"]
     assert "retry_after" in payload

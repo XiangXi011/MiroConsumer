@@ -7,7 +7,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Mapping
 
 from ..reasoning_trace import ReasoningTrace
+from ..event_ontology import ConsumerEventType
 from .agent_step_executor import AgentStepExecutor
+from .dynamic_participation import DynamicParticipationModel, ParticipationDecision
 from .population_models import ConsumerSocietyAgent, ConsumerSocietyRunConfig
 from .progress_buffer import ProgressBuffer
 
@@ -20,10 +22,14 @@ class RoundScheduler:
         executor: AgentStepExecutor,
         population: List[ConsumerSocietyAgent],
         config: ConsumerSocietyRunConfig,
+        participation_model: DynamicParticipationModel | None = None,
     ):
         self.executor = executor
         self.population = population
         self.config = config
+        self.participation_model = participation_model or DynamicParticipationModel(
+            seed=config.random_seed
+        )
 
     @staticmethod
     def _record_event_counters(event: Mapping[str, Any], counters: Dict[str, Any]) -> None:
@@ -60,6 +66,102 @@ class RoundScheduler:
         )
         progress_buffer.maybe_time_flush()
 
+    def _decide_participation(
+        self,
+        *,
+        agent: ConsumerSocietyAgent,
+        round_index: int,
+        claims: List[str],
+        brief_context: Mapping[str, Any],
+        previous_events: List[Dict[str, Any]],
+    ) -> ParticipationDecision:
+        return self.participation_model.decide(
+            agent=agent,
+            round_index=round_index,
+            claims=claims,
+            brief_context=brief_context,
+            previous_events=previous_events,
+        )
+
+    def _skipped_participation_event(
+        self,
+        *,
+        agent: ConsumerSocietyAgent,
+        round_index: int,
+        decision: ParticipationDecision,
+    ) -> Dict[str, Any]:
+        trust = max(0.0, min(1.0, float(agent.state.get("trust", agent.trust_baseline))))
+        purchase_intent = max(0.0, min(1.0, float(agent.state.get("purchase_intent", 0.5))))
+        return {
+            "event_id": f"{agent.agent_id}:r{round_index}:PARTICIPATION_SKIPPED",
+            "round_index": round_index,
+            "agent_id": agent.agent_id,
+            "segment": agent.segment,
+            "role": agent.role.value,
+            "layer": agent.layer,
+            "consumer_event_type": ConsumerEventType.PARTICIPATION_SKIPPED.value,
+            "event_type": ConsumerEventType.IGNORE.value,
+            "channel": ConsumerEventType.IGNORE.value,
+            "claim": "",
+            "trust": round(trust, 4),
+            "purchase_intent": round(purchase_intent, 4),
+            "quote": "",
+            "reasoning_layer": agent.layer,
+            "reasoning_method": "dynamic_participation_model",
+            "reasoning_backend": "rules",
+            "llm_invoked": False,
+            "participation": {
+                "participated": False,
+                "probability": decision.participation_probability,
+                "random_draw": decision.random_draw,
+                "reason": decision.reason,
+                "engagement_level": decision.engagement_level,
+                "topic_relevance": decision.topic_relevance,
+                "fatigue": decision.fatigue,
+                "neighbor_activity": decision.neighbor_activity,
+            },
+        }
+
+    def _record_skipped_participation(
+        self,
+        *,
+        agent: ConsumerSocietyAgent,
+        round_index: int,
+        decision: ParticipationDecision,
+        progress_buffer: ProgressBuffer,
+        counters: Dict[str, Any],
+        total_agents: int,
+    ) -> tuple[Dict[str, Any], ReasoningTrace]:
+        event = self._skipped_participation_event(
+            agent=agent,
+            round_index=round_index,
+            decision=decision,
+        )
+        trace = self.executor._trace_from_event(agent, event, round_index)
+        counters["completed_agents"] += 1
+        counters["rules_count"] += 1
+        self._progress_step(
+            progress_buffer,
+            event=event,
+            agent=agent,
+            round_index=round_index,
+            total_agents=total_agents,
+            counters=counters,
+        )
+        store = getattr(self.executor, "store", None)
+        if store is not None and hasattr(store, "append_runtime_event"):
+            store.append_runtime_event(
+                getattr(self.executor, "simulation_id", ""),
+                {
+                    "event_type": "agent_participation_skipped",
+                    "agent_id": agent.agent_id,
+                    "round_index": round_index,
+                    "probability": decision.participation_probability,
+                    "reason": decision.reason,
+                },
+            )
+        return event, trace
+
     def run_round(
         self,
         round_index: int,
@@ -83,6 +185,25 @@ class RoundScheduler:
 
         # Core agents: sequential
         for agent in core + audit:
+            decision = self._decide_participation(
+                agent=agent,
+                round_index=round_index,
+                claims=claims,
+                brief_context=brief_context,
+                previous_events=previous_events,
+            )
+            if not decision.participated:
+                event, trace = self._record_skipped_participation(
+                    agent=agent,
+                    round_index=round_index,
+                    decision=decision,
+                    progress_buffer=progress_buffer,
+                    counters=counters,
+                    total_agents=total_agents,
+                )
+                round_events.append(event)
+                reasoning_traces.append(trace)
+                continue
             event, trace = self.executor.execute(
                 agent=agent,
                 round_index=round_index,
@@ -120,8 +241,28 @@ class RoundScheduler:
             safe_budget = ThreadSafeBudget(budget)
             indexed_results: List[tuple[int, ConsumerSocietyAgent, Dict[str, Any], ReasoningTrace]] = []
             with ThreadPoolExecutor(max_workers=max(1, int(self.executor.max_concurrency))) as pool:
-                futures = {
-                    pool.submit(
+                futures = {}
+                for idx, agent in enumerate(expanded):
+                    decision = self._decide_participation(
+                        agent=agent,
+                        round_index=round_index,
+                        claims=claims,
+                        brief_context=brief_context,
+                        previous_events=previous_events,
+                    )
+                    if not decision.participated:
+                        event, trace = self._record_skipped_participation(
+                            agent=agent,
+                            round_index=round_index,
+                            decision=decision,
+                            progress_buffer=progress_buffer,
+                            counters=counters,
+                            total_agents=total_agents,
+                        )
+                        indexed_results.append((idx, agent, event, trace))
+                        continue
+                    futures[
+                        pool.submit(
                         self.executor.execute,
                         agent=agent,
                         round_index=round_index,
@@ -130,9 +271,8 @@ class RoundScheduler:
                         research_findings=research_findings,
                         previous_events=previous_events,
                         budget=safe_budget,
-                    ): (idx, agent)
-                    for idx, agent in enumerate(expanded)
-                }
+                        )
+                    ] = (idx, agent)
                 for future in as_completed(futures):
                     idx, agent = futures[future]
                     try:
@@ -175,18 +315,50 @@ class RoundScheduler:
 
         # Shadow agents: batch rule execution (no LLM), one aggregate trace.
         if shadow:
+            shadow_indexed_results: List[tuple[int, Dict[str, Any], ReasoningTrace]] = []
+            active_shadow: List[tuple[int, ConsumerSocietyAgent]] = []
+            for idx, agent in enumerate(shadow):
+                decision = self._decide_participation(
+                    agent=agent,
+                    round_index=round_index,
+                    claims=claims,
+                    brief_context=brief_context,
+                    previous_events=previous_events,
+                )
+                if not decision.participated:
+                    event, trace = self._record_skipped_participation(
+                        agent=agent,
+                        round_index=round_index,
+                        decision=decision,
+                        progress_buffer=progress_buffer,
+                        counters=counters,
+                        total_agents=total_agents,
+                    )
+                    shadow_indexed_results.append((idx, event, trace))
+                else:
+                    active_shadow.append((idx, agent))
+
             batch_events, batch_traces = self.executor.execute_shadow_batch(
-                agents=shadow,
+                agents=[agent for _, agent in active_shadow],
                 round_index=round_index,
                 claims=claims,
                 brief_context=brief_context,
                 research_findings=research_findings,
                 previous_events=previous_events,
             )
-            for event in batch_events:
-                round_events.append(event)
+            for (idx, _), event in zip(active_shadow, batch_events):
+                shadow_indexed_results.append(
+                    (idx, event, self.executor._trace_from_event(
+                        next(agent for agent_idx, agent in active_shadow if agent_idx == idx),
+                        event,
+                        round_index,
+                    ))
+                )
                 counters["completed_agents"] += 1
                 counters["rules_count"] += 1
+            for _, event, trace in sorted(shadow_indexed_results, key=lambda item: item[0]):
+                round_events.append(event)
+                reasoning_traces.append(trace)
             reasoning_traces.extend(batch_traces)
             progress_buffer.step_completed(
                 status="running",

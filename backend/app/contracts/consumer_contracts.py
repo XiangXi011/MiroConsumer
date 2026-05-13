@@ -16,6 +16,40 @@ class CreateBriefRequest(BaseModel):
     persona_pack_id: Optional[str] = None
 
 
+class BusinessBriefRequest(BaseModel):
+    """Versioned BusinessBrief API contract with split retry budgets."""
+
+    task_type: str = Field(default="concept_test", description="Consumer test type.")
+    product_concept_assets: List[str] = Field(default_factory=list, description="Concept assets or text inputs.")
+    copy_material: List[str] = Field(default_factory=list, description="Copy claims to evaluate.")
+    target_audience: List[str] = Field(default_factory=list, description="Audience segments.")
+    usage_scene: List[str] = Field(default_factory=list, description="Usage contexts.")
+    research_goal: str = Field(default="", description="Research question for this run.")
+    retry_budget: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description="Deprecated legacy retry budget mapped to llm_retry_budget.",
+    )
+    llm_retry_budget: int = Field(
+        default=2,
+        ge=0,
+        le=5,
+        description="Retry attempts for one LLM call; intended for second-level transient failures.",
+    )
+    task_retry_budget: int = Field(
+        default=1,
+        ge=0,
+        le=3,
+        description="Retry attempts for a background task such as a Celery/RQ job; intended for minute-level failures.",
+    )
+    simulation_retry_budget: int = Field(
+        default=0,
+        ge=0,
+        le=2,
+        description="Retry attempts for the whole simulation workflow; default is zero because it is cost-sensitive.",
+    )
+
+
 class RunInterviewRequest(BaseModel):
     simulation_id: str = Field(min_length=1)
     agent_ids: Optional[List[str]] = None

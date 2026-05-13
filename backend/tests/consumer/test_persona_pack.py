@@ -26,6 +26,19 @@ EXPECTED_FIELDS = {
     "cognition_level",
     "herd_tendency",
     "influence_weight",
+    "source_basis",
+}
+
+SOURCE_BASIS_FIELDS = {
+    "psychology_theory",
+    "data_sources",
+    "sample_characteristics",
+}
+
+SAMPLE_CHARACTERISTICS_FIELDS = {
+    "age_range",
+    "region",
+    "income_level",
 }
 
 
@@ -33,8 +46,25 @@ def test_load_default_persona_pack_returns_phase1_personas():
     personas = load_default_persona_pack()
 
     assert personas
+    assert len(personas) == 16
     assert all(EXPECTED_FIELDS.issubset(persona.keys()) for persona in personas)
     assert {persona["persona_id"] for persona in personas} >= {"M01", "M05", "M08"}
+
+
+def test_default_personas_include_research_source_basis():
+    personas = load_default_persona_pack()
+
+    for persona in personas:
+        basis = persona["source_basis"]
+
+        assert SOURCE_BASIS_FIELDS.issubset(basis.keys()), persona["persona_id"]
+        assert basis["psychology_theory"].strip(), persona["persona_id"]
+        assert basis["data_sources"], persona["persona_id"]
+        assert all(source.strip() for source in basis["data_sources"])
+
+        sample = basis["sample_characteristics"]
+        assert SAMPLE_CHARACTERISTICS_FIELDS.issubset(sample.keys()), persona["persona_id"]
+        assert all(str(sample[field]).strip() for field in SAMPLE_CHARACTERISTICS_FIELDS)
 
 
 def test_default_pack_includes_deep_graph_eligible_persona():

@@ -4,6 +4,7 @@ from flask import g, jsonify
 
 from . import api_error_payload, consumer_bp
 from .consumer_utils import _check_simulation_tenant, _value_error_response
+from ..auth.middleware import require_permission
 from ..services.application import queue_app_service
 from ..services.application.audit_chain_service import AuditChainService
 from ..services.application.simulation_app_service import SimulationAppService
@@ -17,6 +18,7 @@ logger = get_logger("miroconsumer.api.consumer.operations")
 # ============== Task Queue Dead Letters ==============
 
 @consumer_bp.route("/simulations/<simulation_id>/run-estimate", methods=["POST"])
+@require_permission("simulation.run")
 def get_run_estimate(simulation_id: str):
     """Return Phase 7D pre-run LLM budget estimate."""
     try:
@@ -35,11 +37,11 @@ def get_run_estimate(simulation_id: str):
 
 
 @consumer_bp.route("/reports/<report_id>/audit-chain", methods=["GET"])
+@require_permission("audit.read")
 def get_report_audit_chain(report_id: str):
     """Return Phase 7D report audit chain."""
     try:
-        # 租户隔离检查（通过 report -> simulation -> tenant 链路）
-        current_tenant = getattr(g, 'current_tenant', None)
+        current_tenant = getattr(g, "current_tenant", None)
         if current_tenant:
             from ..services.report_agent import ReportManager
             report = ReportManager.get_report(report_id)
@@ -55,11 +57,13 @@ def get_report_audit_chain(report_id: str):
         logger.error(f"获取报告审计链失败: {str(e)}")
         return jsonify(api_error_payload(str(e))), 500
 
+
 @consumer_bp.route("/reports/<report_id>/evidence-graph", methods=["GET"])
+@require_permission("report.read")
 def get_report_evidence_graph(report_id: str):
     """Return a finding-evidence-source graph for a consumer report."""
     try:
-        current_tenant = getattr(g, 'current_tenant', None)
+        current_tenant = getattr(g, "current_tenant", None)
         if current_tenant:
             from ..services.report_agent import ReportManager
             report = ReportManager.get_report(report_id)
@@ -72,7 +76,7 @@ def get_report_evidence_graph(report_id: str):
     except ValueError as e:
         return _value_error_response(e)
     except Exception as e:
-        logger.error(f"鑾峰彇鎶ュ憡璇佹嵁鍥捐氨澶辫触: {str(e)}")
+        logger.error(f"获取报告证据图谱失败: {str(e)}")
         return jsonify(api_error_payload(str(e))), 500
 
 

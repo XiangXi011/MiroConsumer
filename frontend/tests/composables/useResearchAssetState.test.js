@@ -1,7 +1,7 @@
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
 
-import { useResearchAssetState } from '../../src/composables/consumer/useResearchAssetState.js'
+import { useResearchAssetState } from '../../src/composables/consumer/useResearchAssetState.ts'
 
 test('useResearchAssetState returns refs with default values', () => {
   const state = useResearchAssetState()

@@ -7,7 +7,7 @@ import { dirname, join } from 'path'
 import {
   buildChannelHeatmapRows,
   formatChannelPercent,
-} from '../src/utils/channelPropagation.js'
+} from '../src/utils/channelPropagation.ts'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)

@@ -7,6 +7,7 @@ from typing import Any, Dict, Mapping
 
 from .channel_report_adapter import ChannelReportAdapter
 from .state_store import SocietyStateStore
+from ..research_boundary import default_applicability_boundary
 
 
 EMPTY_SOCIETY_CONTEXT = {
@@ -41,9 +42,14 @@ class SocietyReportAdapter:
         population = self.store.read_population(simulation_id)
         rounds = self.store.read_rounds(simulation_id)
         network_topology = self.store.read_network_topology(simulation_id)
+        research_boundary = self.store.read_research_boundary(simulation_id) or default_applicability_boundary()
         channel_context = ChannelReportAdapter(base_dir=self.store.base_dir).build_report_context(simulation_id)
         if not config and not metrics and not population:
-            return {**dict(EMPTY_SOCIETY_CONTEXT), **channel_context}
+            return {
+                **dict(EMPTY_SOCIETY_CONTEXT),
+                "applicability_boundary": research_boundary,
+                **channel_context,
+            }
 
         event_summary: Dict[str, int] = {}
         backend_counts: Dict[str, int] = dict(config.get("reasoning_backend_counts", {}) or {})
@@ -100,6 +106,7 @@ class SocietyReportAdapter:
                     for key, value in dict(network_topology.get("graphs", {}) or {}).items()
                 },
             },
+            "applicability_boundary": research_boundary,
         }
         context.update(channel_context)
         return context

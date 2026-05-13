@@ -170,4 +170,83 @@ class ExpressionEngine:
         return templates.get(choice, f"聊聊消费那些事。#{agent.segment}")
 
 
-__all__ = ["ExpressionEngine"]
+class NLGExpressionAdapter:
+    """Generate VOC text with LLM-first behavior and platform-aware fallback."""
+
+    PLATFORM_STYLES = {
+        "xiaohongshu": "真实、轻量、带一点种草语气",
+        "zhihu": "理性、解释充分、少口号",
+        "weibo": "短句、直接、传播感强",
+    }
+
+    def __init__(self, llm_client: Any | None = None):
+        self.llm_client = llm_client
+
+    def generate_voc(
+        self,
+        *,
+        agent_profile: Mapping[str, Any],
+        claim: str,
+        platform: str = "xiaohongshu",
+        context: Mapping[str, Any] | None = None,
+    ) -> Dict[str, Any]:
+        platform_key = str(platform or "xiaohongshu").lower()
+        if self.llm_client is not None:
+            try:
+                payload = self.llm_client.chat_json(
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "Return JSON only: {\"voc\": \"consumer quote\"}.",
+                        },
+                        {
+                            "role": "user",
+                            "content": self._build_prompt(agent_profile, claim, platform_key, context or {}),
+                        },
+                    ],
+                    temperature=0.45,
+                    max_tokens=160,
+                )
+                text = str(payload.get("voc") or payload.get("text") or "").strip()
+                if text:
+                    return {
+                        "text": text,
+                        "generation_source": "llm",
+                        "platform": platform_key,
+                    }
+            except Exception as exc:
+                logger.warning("NLG VOC generation failed, using template: %s", exc)
+
+        return {
+            "text": self._template_voc(agent_profile, claim, platform_key),
+            "generation_source": "template_fallback",
+            "platform": platform_key,
+        }
+
+    def _build_prompt(
+        self,
+        agent_profile: Mapping[str, Any],
+        claim: str,
+        platform: str,
+        context: Mapping[str, Any],
+    ) -> str:
+        style = self.PLATFORM_STYLES.get(platform, "自然、具体、像真实消费者")
+        return (
+            f"消费者画像: {dict(agent_profile)}\n"
+            f"卖点: {claim}\n"
+            f"平台风格: {style}\n"
+            f"上下文: {dict(context)}\n"
+            "生成一句真实消费者VOC，不要写解释。"
+        )
+
+    @staticmethod
+    def _template_voc(agent_profile: Mapping[str, Any], claim: str, platform: str) -> str:
+        segment = str(agent_profile.get("segment") or agent_profile.get("name") or "消费者")
+        if platform == "zhihu":
+            return f"作为{segment}，我会先看{claim}有没有真实证据，再决定是否尝试。"
+        if platform == "weibo":
+            return f"{claim}听着有点吸引人，但我还想看真实反馈。"
+        return f"{claim}如果体验和描述一致，我会愿意先小范围试试。"
+
+
+__all__ = ["ExpressionEngine", "NLGExpressionAdapter"]

@@ -26,6 +26,8 @@ class TestConsumerEventType:
             "PURCHASE_INTENT_UP",
             "PURCHASE_INTENT_DOWN",
             "NEGATIVE_CASCADE",
+            "PARTICIPATION_SKIPPED",
+            "IGNORE",
         }
         actual = {member.value for member in ConsumerEventType}
         assert actual == expected

@@ -343,9 +343,9 @@ class ReportAppService:
     @classmethod
     def _build_methodology_page(cls, simulation_id: str, report=None) -> str:
         """Build methodology page markdown for injection into report downloads."""
-        from ...utils.disclaimer import get_methodology_limits
+        from ...utils.disclaimer import REPORT_DISCLAIMER, filter_forbidden_language, get_methodology_limits
 
-        agent_count, run_count, mode = 0, 1, "quick"
+        agent_count, run_count, mode = 8, 1, "quick"
         random_seed, evidence_support = None, "none"
 
         try:
@@ -367,32 +367,37 @@ class ReportAppService:
             evidence_support=evidence_support,
         )
 
-        limits_text = "\n".join("- " + l for l in methodology["limits"]) if methodology["limits"] else "- 无特殊限制"
-
-        # Filter forbidden language from methodology page text
-        from ...utils.disclaimer import filter_forbidden_language
-        display_label, _ = filter_forbidden_language(methodology['display_label'], agent_count)
+        limits_text = "\n".join("- " + l for l in methodology["limits"]) if methodology["limits"] else "- No special methodological limits detected."
+        display_label, _ = filter_forbidden_language(methodology["display_label"], agent_count)
         limits_text, _ = filter_forbidden_language(limits_text, agent_count)
 
         return f"""
----
+# Methodology Page
 
-## 方法论说明 / Methodology Statement
+## Simulation method
+Agent-based consumer propagation simulation. The system creates synthetic consumer agents, runs multi-round exposure and propagation, and summarizes simulated reactions as research hypotheses.
 
-| 项目 | 值 |
-|------|-----|
-| 样本量 (agent_count) | {methodology['agent_count']} |
-| 重复运行次数 (run_count) | {methodology['run_count']} |
-| 仿真模式 (simulation_mode) | {methodology['simulation_mode']} |
-| 置信水平 (confidence_level) | {methodology['confidence_level']} |
-| 可做统计推断 | {'是' if methodology['can_do_statistical_inference'] else '否'} |
-| 研究边界 | {display_label} |
+## Sample description
+- Consumer count: {methodology["agent_count"]}
+- Simulation rounds: {methodology["run_count"]}
+- Simulation mode: {methodology["simulation_mode"]}
+- Persona source: default and/or uploaded persona packs, with simulation-time variation.
+- Random seed: {random_seed if random_seed is not None else "not recorded"}
 
-**限制说明：**
+## Limitations
+The output is generated from synthetic agents and should not be treated as a real-market forecast, sales projection, or statistically representative survey. Boundary: {display_label}
+
 {limits_text}
 
-> ⚠️ 本报告由 AI 消费者仿真系统生成。所有结论基于 LLM 推演，不代表真实市场数据。
-"""
+## Confidence scoring
+Confidence reflects source quality, evidence sufficiency, signal consistency, and replay alignment where available. Current confidence level: {methodology["confidence_level"]}. Statistical inference enabled: {bool(methodology["can_do_statistical_inference"])}.
+
+## Data privacy
+The report should reference only project-provided inputs, approved retrieval artifacts, and generated simulation events. Do not include personal data unless it was explicitly authorized for this project.
+
+## Disclaimer
+{REPORT_DISCLAIMER}
+""".strip()
 
     @classmethod
     def get_report_download_info(cls, report_id: str) -> dict:
@@ -428,7 +433,12 @@ class ReportAppService:
 
         if os.path.exists(md_path):
             with open(md_path, 'r', encoding='utf-8') as f:
-                content_with_methodology = f.read() + methodology_page
+                report_content = f.read()
+                content_with_methodology = (
+                    f"{methodology_page}\n\n---\n\n{report_content}"
+                    if methodology_page
+                    else report_content
+                )
             content_with_methodology, violations = filter_forbidden_language(
                 content_with_methodology, agent_count_for_filter
             )
@@ -451,7 +461,12 @@ class ReportAppService:
                 "content": content_with_methodology,
             }
 
-        full_content = (report.markdown_content or "") + methodology_page
+        report_content = report.markdown_content or ""
+        full_content = (
+            f"{methodology_page}\n\n---\n\n{report_content}"
+            if methodology_page
+            else report_content
+        )
         full_content, violations = filter_forbidden_language(
             full_content, agent_count_for_filter
         )

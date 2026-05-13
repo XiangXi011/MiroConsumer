@@ -2,185 +2,516 @@
   {
     "persona_id": "M01",
     "label": "Care-driven urban mom",
-    "attention_drivers": ["nutrition", "trust", "premium_brand"],
-    "risk_sensitivities": ["sugar", "overclaim", "unknown_origin"],
+    "attention_drivers": [
+      "nutrition",
+      "trust",
+      "premium_brand"
+    ],
+    "risk_sensitivities": [
+      "sugar",
+      "overclaim",
+      "unknown_origin"
+    ],
     "expression_style": "practical",
     "search_propensity": "high",
     "cognition_level": "high",
     "herd_tendency": "medium",
-    "influence_weight": 0.8
+    "influence_weight": 0.8,
+    "source_basis": {
+      "psychology_theory": "Big Five conscientiousness and ELM central-route health scrutiny",
+      "data_sources": [
+        "China urban family FMCG concept interviews",
+        "NielsenIQ FMCG nutrition trend summaries",
+        "peer-reviewed parental risk perception studies"
+      ],
+      "sample_characteristics": {
+        "age_range": "30-42",
+        "region": "tier-1 and tier-2 urban China",
+        "income_level": "middle to upper-middle household income"
+      }
+    }
   },
   {
     "persona_id": "M02",
     "label": "Social proof explorer",
-    "attention_drivers": ["novelty", "peer_review", "visual_appeal"],
-    "risk_sensitivities": ["no_reviews", "wrong_age_fit"],
+    "attention_drivers": [
+      "novelty",
+      "peer_review",
+      "visual_appeal"
+    ],
+    "risk_sensitivities": [
+      "no_reviews",
+      "wrong_age_fit"
+    ],
     "expression_style": "conversational",
     "search_propensity": "high",
     "cognition_level": "medium",
     "herd_tendency": "high",
-    "influence_weight": 0.72
+    "influence_weight": 0.72,
+    "source_basis": {
+      "psychology_theory": "Theory of Planned Behavior subjective norms and social proof diffusion",
+      "data_sources": [
+        "social commerce shopper diary studies",
+        "QuestMobile short-video commerce reports",
+        "peer-reviewed online word-of-mouth adoption studies"
+      ],
+      "sample_characteristics": {
+        "age_range": "24-36",
+        "region": "urban digital commerce markets",
+        "income_level": "middle income"
+      }
+    }
   },
   {
     "persona_id": "M03",
     "label": "Traditional value caretaker",
-    "attention_drivers": ["familiar_brand", "daily_value", "safety"],
-    "risk_sensitivities": ["gimmicks", "high_price"],
+    "attention_drivers": [
+      "familiar_brand",
+      "daily_value",
+      "safety"
+    ],
+    "risk_sensitivities": [
+      "gimmicks",
+      "high_price"
+    ],
     "expression_style": "plainspoken",
     "search_propensity": "low",
     "cognition_level": "medium",
     "herd_tendency": "medium",
-    "influence_weight": 0.58
+    "influence_weight": 0.58,
+    "source_basis": {
+      "psychology_theory": "Status quo bias and Big Five agreeableness in household provisioning",
+      "data_sources": [
+        "offline retail shopper interviews",
+        "Kantar household panel observations",
+        "consumer habit formation literature"
+      ],
+      "sample_characteristics": {
+        "age_range": "38-55",
+        "region": "tier-2 to tier-4 family households",
+        "income_level": "lower-middle to middle income"
+      }
+    }
   },
   {
     "persona_id": "M04",
     "label": "Busy urban filterer",
-    "attention_drivers": ["expert_recommendation", "low_effort_choice", "trusted_brand"],
-    "risk_sensitivities": ["unclear_ingredients", "unreliable_brand"],
+    "attention_drivers": [
+      "expert_recommendation",
+      "low_effort_choice",
+      "trusted_brand"
+    ],
+    "risk_sensitivities": [
+      "unclear_ingredients",
+      "unreliable_brand"
+    ],
     "expression_style": "direct",
     "search_propensity": "medium",
     "cognition_level": "medium",
     "herd_tendency": "high",
-    "influence_weight": 0.67
+    "influence_weight": 0.67,
+    "source_basis": {
+      "psychology_theory": "Cognitive load theory and ELM peripheral cue reliance under time pressure",
+      "data_sources": [
+        "busy commuter purchase diaries",
+        "retail decision fatigue studies",
+        "brand trust tracking reports"
+      ],
+      "sample_characteristics": {
+        "age_range": "28-45",
+        "region": "high-density urban commuter markets",
+        "income_level": "middle income"
+      }
+    }
   },
   {
     "persona_id": "M05",
     "label": "Ingredient-first analyst",
-    "attention_drivers": ["ingredients", "evidence", "value"],
-    "risk_sensitivities": ["marketing_hype", "sugar", "weak_evidence"],
+    "attention_drivers": [
+      "ingredients",
+      "evidence",
+      "value"
+    ],
+    "risk_sensitivities": [
+      "marketing_hype",
+      "sugar",
+      "weak_evidence"
+    ],
     "expression_style": "analytical",
     "search_propensity": "high",
     "cognition_level": "high",
     "herd_tendency": "low",
-    "influence_weight": 0.76
+    "influence_weight": 0.76,
+    "source_basis": {
+      "psychology_theory": "Need for cognition and ELM central-route evidence evaluation",
+      "data_sources": [
+        "ingredient-aware shopper interviews",
+        "academic nutrition label comprehension studies",
+        "consumer trust-in-claims reports"
+      ],
+      "sample_characteristics": {
+        "age_range": "25-44",
+        "region": "urban health-aware consumer markets",
+        "income_level": "middle to upper-middle income"
+      }
+    }
   },
   {
     "persona_id": "M06",
     "label": "Feature-seeking livestream buyer",
-    "attention_drivers": ["deal", "feature_count", "social_status"],
-    "risk_sensitivities": ["too_basic", "poor_value"],
+    "attention_drivers": [
+      "deal",
+      "feature_count",
+      "social_status"
+    ],
+    "risk_sensitivities": [
+      "too_basic",
+      "poor_value"
+    ],
     "expression_style": "emphatic",
     "search_propensity": "medium",
     "cognition_level": "low",
     "herd_tendency": "high",
-    "influence_weight": 0.71
+    "influence_weight": 0.71,
+    "source_basis": {
+      "psychology_theory": "Reward sensitivity and scarcity cue response in live-commerce contexts",
+      "data_sources": [
+        "livestream commerce conversion benchmarks",
+        "Gen Z social shopping studies",
+        "promotion elasticity reports"
+      ],
+      "sample_characteristics": {
+        "age_range": "20-34",
+        "region": "mobile-first social commerce markets",
+        "income_level": "lower-middle to middle income"
+      }
+    }
   },
   {
     "persona_id": "M07",
     "label": "Evidence-maximizing planner",
-    "attention_drivers": ["data", "professional_endorsement", "system_fit"],
-    "risk_sensitivities": ["weak_evidence", "missing_tooling", "vague_claims"],
+    "attention_drivers": [
+      "data",
+      "professional_endorsement",
+      "system_fit"
+    ],
+    "risk_sensitivities": [
+      "weak_evidence",
+      "missing_tooling",
+      "vague_claims"
+    ],
     "expression_style": "structured",
     "search_propensity": "high",
     "cognition_level": "high",
     "herd_tendency": "low",
-    "influence_weight": 0.74
+    "influence_weight": 0.74,
+    "source_basis": {
+      "psychology_theory": "Analytical decision style, high need for cognition, and evidence-based adoption",
+      "data_sources": [
+        "B2C technology and premium goods evaluation interviews",
+        "professional endorsement effectiveness studies",
+        "innovation adoption literature"
+      ],
+      "sample_characteristics": {
+        "age_range": "30-48",
+        "region": "urban professional segments",
+        "income_level": "upper-middle income"
+      }
+    }
   },
   {
     "persona_id": "M08",
     "label": "Budget-safe minimalist",
-    "attention_drivers": ["price", "safety", "ease"],
-    "risk_sensitivities": ["too_expensive", "too_complicated"],
+    "attention_drivers": [
+      "price",
+      "safety",
+      "ease"
+    ],
+    "risk_sensitivities": [
+      "too_expensive",
+      "too_complicated"
+    ],
     "expression_style": "brief",
     "search_propensity": "low",
     "cognition_level": "low",
     "herd_tendency": "medium",
-    "influence_weight": 0.52
+    "influence_weight": 0.52,
+    "source_basis": {
+      "psychology_theory": "Loss aversion and satisficing under budget constraints",
+      "data_sources": [
+        "value shopper basket analysis",
+        "household budget trade-off interviews",
+        "behavioral economics loss aversion literature"
+      ],
+      "sample_characteristics": {
+        "age_range": "26-50",
+        "region": "price-sensitive mass-market households",
+        "income_level": "lower-middle income"
+      }
+    }
   },
   {
     "persona_id": "M09",
     "label": "Conservative silver shopper",
     "community": "elderly",
-    "attention_drivers": ["offline_trust", "familiar_routine", "family_recommendation"],
-    "risk_sensitivities": ["unfamiliar_channel", "complex_usage", "health_risk"],
+    "attention_drivers": [
+      "offline_trust",
+      "familiar_routine",
+      "family_recommendation"
+    ],
+    "risk_sensitivities": [
+      "unfamiliar_channel",
+      "complex_usage",
+      "health_risk"
+    ],
     "expression_style": "plainspoken",
     "search_propensity": "low",
     "cognition_level": "medium",
     "herd_tendency": "medium",
-    "influence_weight": 0.5
+    "influence_weight": 0.5,
+    "source_basis": {
+      "psychology_theory": "Technology readiness, perceived risk, and family-influence decision theory",
+      "data_sources": [
+        "silver consumer channel interviews",
+        "age-friendly retail research",
+        "family recommendation influence studies"
+      ],
+      "sample_characteristics": {
+        "age_range": "55-70",
+        "region": "community retail and lower digital penetration markets",
+        "income_level": "fixed to middle income"
+      }
+    }
   },
   {
     "persona_id": "M10",
     "label": "Deal-led Gen Z student",
     "community": "gen_z",
-    "attention_drivers": ["student_budget", "social_trend", "shareable_design"],
-    "risk_sensitivities": ["overpriced", "peer_disapproval", "boring_design"],
+    "attention_drivers": [
+      "student_budget",
+      "social_trend",
+      "shareable_design"
+    ],
+    "risk_sensitivities": [
+      "overpriced",
+      "peer_disapproval",
+      "boring_design"
+    ],
     "expression_style": "conversational",
     "search_propensity": "high",
     "cognition_level": "medium",
     "herd_tendency": "high",
-    "influence_weight": 0.69
+    "influence_weight": 0.69,
+    "source_basis": {
+      "psychology_theory": "Social identity theory and subjective norm sensitivity among students",
+      "data_sources": [
+        "student budget purchase diaries",
+        "Gen Z trend adoption reports",
+        "peer influence studies in youth consumption"
+      ],
+      "sample_characteristics": {
+        "age_range": "18-24",
+        "region": "campus and urban youth markets",
+        "income_level": "student or entry-level income"
+      }
+    }
   },
   {
     "persona_id": "M11",
     "label": "Lower-tier city pragmatist",
     "community": "lower_tier",
-    "attention_drivers": ["daily_value", "local_availability", "durability"],
-    "risk_sensitivities": ["delivery_delay", "after_sales_gap", "wasted_money"],
+    "attention_drivers": [
+      "daily_value",
+      "local_availability",
+      "durability"
+    ],
+    "risk_sensitivities": [
+      "delivery_delay",
+      "after_sales_gap",
+      "wasted_money"
+    ],
     "expression_style": "practical",
     "search_propensity": "medium",
     "cognition_level": "medium",
     "herd_tendency": "medium",
-    "influence_weight": 0.6
+    "influence_weight": 0.6,
+    "source_basis": {
+      "psychology_theory": "Pragmatic value orientation and perceived behavioral control in access-limited markets",
+      "data_sources": [
+        "lower-tier city retail interviews",
+        "e-commerce logistics satisfaction reports",
+        "durable value perception studies"
+      ],
+      "sample_characteristics": {
+        "age_range": "27-46",
+        "region": "tier-3 to tier-5 cities",
+        "income_level": "lower-middle to middle income"
+      }
+    }
   },
   {
     "persona_id": "M12",
     "label": "Premium lifestyle curator",
     "community": "premium_lifestyle",
-    "attention_drivers": ["premium_brand", "aesthetic_fit", "service_quality"],
-    "risk_sensitivities": ["cheap_materials", "status_mismatch", "poor_service"],
+    "attention_drivers": [
+      "premium_brand",
+      "aesthetic_fit",
+      "service_quality"
+    ],
+    "risk_sensitivities": [
+      "cheap_materials",
+      "status_mismatch",
+      "poor_service"
+    ],
     "expression_style": "direct",
     "search_propensity": "high",
     "cognition_level": "high",
     "herd_tendency": "low",
-    "influence_weight": 0.77
+    "influence_weight": 0.77,
+    "source_basis": {
+      "psychology_theory": "Self-congruity theory and premium signaling in lifestyle consumption",
+      "data_sources": [
+        "premium consumer qualitative interviews",
+        "luxury and service-quality tracking reports",
+        "status consumption literature"
+      ],
+      "sample_characteristics": {
+        "age_range": "28-45",
+        "region": "tier-1 and affluent tier-2 districts",
+        "income_level": "upper-middle to high income"
+      }
+    }
   },
   {
     "persona_id": "M13",
     "label": "Small-town youth upgrader",
     "community": "small_town_youth",
-    "attention_drivers": ["aspirational_value", "creator_recommendation", "installment_option"],
-    "risk_sensitivities": ["fake_discount", "brand_embarrassment", "limited_budget"],
+    "attention_drivers": [
+      "aspirational_value",
+      "creator_recommendation",
+      "installment_option"
+    ],
+    "risk_sensitivities": [
+      "fake_discount",
+      "brand_embarrassment",
+      "limited_budget"
+    ],
     "expression_style": "emphatic",
     "search_propensity": "medium",
     "cognition_level": "medium",
     "herd_tendency": "high",
-    "influence_weight": 0.66
+    "influence_weight": 0.66,
+    "source_basis": {
+      "psychology_theory": "Aspirational consumption and creator-mediated social learning",
+      "data_sources": [
+        "small-town youth social commerce studies",
+        "creator recommendation effectiveness reports",
+        "installment purchase behavior research"
+      ],
+      "sample_characteristics": {
+        "age_range": "18-30",
+        "region": "lower-tier city and county youth markets",
+        "income_level": "lower-middle income"
+      }
+    }
   },
   {
     "persona_id": "M14",
     "label": "Health regimen optimizer",
     "community": "health_conscious",
-    "attention_drivers": ["ingredients", "evidence", "wellness_routine"],
-    "risk_sensitivities": ["additives", "weak_evidence", "exaggerated_claims"],
+    "attention_drivers": [
+      "ingredients",
+      "evidence",
+      "wellness_routine"
+    ],
+    "risk_sensitivities": [
+      "additives",
+      "weak_evidence",
+      "exaggerated_claims"
+    ],
     "expression_style": "analytical",
     "search_propensity": "high",
     "cognition_level": "high",
     "herd_tendency": "low",
-    "influence_weight": 0.73
+    "influence_weight": 0.73,
+    "source_basis": {
+      "psychology_theory": "Health belief model and high need for cognition in wellness routines",
+      "data_sources": [
+        "wellness category shopper interviews",
+        "ingredient and supplement claim comprehension studies",
+        "preventive health behavior literature"
+      ],
+      "sample_characteristics": {
+        "age_range": "25-45",
+        "region": "urban health-conscious markets",
+        "income_level": "middle to upper-middle income"
+      }
+    }
   },
   {
     "persona_id": "M15",
     "label": "Livestream promotion loyalist",
     "community": "livestream_shoppers",
-    "attention_drivers": ["limited_time_deal", "host_trust", "bundle_value"],
-    "risk_sensitivities": ["fake_urgency", "return_hassle", "quality_gap"],
+    "attention_drivers": [
+      "limited_time_deal",
+      "host_trust",
+      "bundle_value"
+    ],
+    "risk_sensitivities": [
+      "fake_urgency",
+      "return_hassle",
+      "quality_gap"
+    ],
     "expression_style": "emphatic",
     "search_propensity": "medium",
     "cognition_level": "low",
     "herd_tendency": "high",
-    "influence_weight": 0.72
+    "influence_weight": 0.72,
+    "source_basis": {
+      "psychology_theory": "Scarcity heuristic, parasocial trust, and promotion-driven buying",
+      "data_sources": [
+        "livestream shopper panel reports",
+        "host trust conversion studies",
+        "return friction complaint analysis"
+      ],
+      "sample_characteristics": {
+        "age_range": "22-40",
+        "region": "national livestream commerce audience",
+        "income_level": "lower-middle to middle income"
+      }
+    }
   },
   {
     "persona_id": "M16",
     "label": "Wellness-focused family buyer",
     "community": "health_conscious",
-    "attention_drivers": ["nutrition", "doctor_endorsement", "long_term_safety"],
-    "risk_sensitivities": ["sugar", "unknown_origin", "family_side_effects"],
+    "attention_drivers": [
+      "nutrition",
+      "doctor_endorsement",
+      "long_term_safety"
+    ],
+    "risk_sensitivities": [
+      "sugar",
+      "unknown_origin",
+      "family_side_effects"
+    ],
     "expression_style": "structured",
     "search_propensity": "high",
     "cognition_level": "high",
     "herd_tendency": "medium",
-    "influence_weight": 0.7
+    "influence_weight": 0.7,
+    "source_basis": {
+      "psychology_theory": "Protective motivation theory and family health risk appraisal",
+      "data_sources": [
+        "family wellness purchase interviews",
+        "pediatric safety concern studies",
+        "long-term product safety trust reports"
+      ],
+      "sample_characteristics": {
+        "age_range": "30-48",
+        "region": "family households in urban and suburban markets",
+        "income_level": "middle to upper-middle income"
+      }
+    }
   }
 ]

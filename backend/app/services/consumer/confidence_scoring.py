@@ -1,4 +1,11 @@
-"""Confidence scoring layer for consumer_test findings and reports."""
+"""Confidence scoring layer for consumer_test findings and reports.
+
+The P3 confidence formula is intentionally explicit: source quality and
+evidence sufficiency carry the largest weights, signal consistency and replay
+alignment stabilize simulation-derived claims, and the two calibration terms
+(`external_validity`, `expert_consensus`) keep high-confidence labels from
+resting only on synthetic agreement.
+"""
 
 from __future__ import annotations
 
@@ -8,6 +15,16 @@ from pydantic import BaseModel
 
 from .evidence_validator import EvidenceValidationResult
 from .models import ResearchSourceLane
+
+
+CONFIDENCE_WEIGHTS: Dict[str, float] = {
+    "source_quality": 0.30,
+    "evidence_sufficiency": 0.30,
+    "signal_consistency": 0.15,
+    "replay_alignment": 0.10,
+    "external_validity": 0.10,
+    "expert_consensus": 0.05,
+}
 
 
 class FindingConfidence(BaseModel):
@@ -96,11 +113,80 @@ def _signal_consistency_score(finding: Any, all_findings: List[Any]) -> float:
     return round(consistency, 4)
 
 
+
+
+def _replay_alignment_score(finding: Any, explicit_score: Optional[float] = None) -> float:
+    """Return a bounded replay alignment score from explicit or finding-provided data."""
+    candidates: List[Any] = []
+    if explicit_score is not None:
+        candidates.append(explicit_score)
+    if finding is not None:
+        getter = finding.get if isinstance(finding, dict) else lambda key, default=None: getattr(finding, key, default)
+        candidates.extend(
+            [
+                getter("replay_score", None),
+                getter("replay_alignment_score", None),
+                getter("benchmark_replay_score", None),
+            ]
+        )
+
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        try:
+            score = float(candidate)
+        except (TypeError, ValueError):
+            continue
+        return max(0.0, min(1.0, score))
+    return 0.5
+
+
+def _bounded_score(value: Any, fallback: float = 0.5) -> float:
+    try:
+        score = float(value)
+    except (TypeError, ValueError):
+        score = fallback
+    return max(0.0, min(1.0, score))
+
+
+def _finding_score_field(finding: Any, key: str, fallback: float = 0.5) -> float:
+    if finding is None:
+        return fallback
+    if isinstance(finding, dict):
+        return _bounded_score(finding.get(key), fallback)
+    return _bounded_score(getattr(finding, key, None), fallback)
+
+
+def compute_weighted_confidence_score(
+    *,
+    source_quality: float,
+    evidence_sufficiency: float,
+    signal_consistency: float,
+    replay_alignment: float,
+    external_validity: float = 0.5,
+    expert_consensus: float = 0.5,
+) -> float:
+    """Compute the P3 six-weight confidence formula."""
+    weights = CONFIDENCE_WEIGHTS
+    return round(
+        weights["source_quality"] * _bounded_score(source_quality)
+        + weights["evidence_sufficiency"] * _bounded_score(evidence_sufficiency)
+        + weights["signal_consistency"] * _bounded_score(signal_consistency)
+        + weights["replay_alignment"] * _bounded_score(replay_alignment)
+        + weights["external_validity"] * _bounded_score(external_validity)
+        + weights["expert_consensus"] * _bounded_score(expert_consensus),
+        4,
+    )
+
+
 def compute_finding_confidence(
     finding: Any,
     validation_result: EvidenceValidationResult,
     source: Optional[Any] = None,
     all_findings: Optional[List[Any]] = None,
+    replay_score: Optional[float] = None,
+    external_validity_score: Optional[float] = None,
+    expert_consensus_score: Optional[float] = None,
 ) -> FindingConfidence:
     """Compute structured confidence for a single finding."""
     finding_id = (
@@ -111,11 +197,25 @@ def compute_finding_confidence(
     ev_score = validation_result.evidence_sufficiency
     findings_list = all_findings or []
     sig_score = _signal_consistency_score(finding, findings_list)
-    replay_score = 0.5  # placeholder
+    replay_score_value = _replay_alignment_score(finding, replay_score)
+    external_score = _bounded_score(
+        external_validity_score
+        if external_validity_score is not None
+        else _finding_score_field(finding, "external_validity_score", 0.5)
+    )
+    expert_score = _bounded_score(
+        expert_consensus_score
+        if expert_consensus_score is not None
+        else _finding_score_field(finding, "expert_consensus_score", 0.5)
+    )
 
-    confidence_score = round(
-        0.35 * src_score + 0.35 * ev_score + 0.20 * sig_score + 0.10 * replay_score,
-        4,
+    confidence_score = compute_weighted_confidence_score(
+        source_quality=src_score,
+        evidence_sufficiency=ev_score,
+        signal_consistency=sig_score,
+        replay_alignment=replay_score_value,
+        external_validity=external_score,
+        expert_consensus=expert_score,
     )
 
     label = _label_from_score(confidence_score)
@@ -124,7 +224,9 @@ def compute_finding_confidence(
     confidence_reasons.append(f"source_quality:{round(src_score, 2)}")
     confidence_reasons.append(f"evidence_sufficiency:{round(ev_score, 2)}")
     confidence_reasons.append(f"signal_consistency:{round(sig_score, 2)}")
-    confidence_reasons.append("replay_alignment:placeholder")
+    confidence_reasons.append(f"replay_alignment:{round(replay_score_value, 4):g}")
+    confidence_reasons.append(f"external_validity:{round(external_score, 2):g}")
+    confidence_reasons.append(f"expert_consensus:{round(expert_score, 2):g}")
 
     if validation_result.validation_status == "supported":
         confidence_reasons.append("evidence_validated_supported")
@@ -327,3 +429,6 @@ def compute_comparison_confidence(
         "right_confidence_score": right_score,
         "support_summary": f"Comparison confidence: {comparison_label}; delta={delta}",
     }
+
+
+

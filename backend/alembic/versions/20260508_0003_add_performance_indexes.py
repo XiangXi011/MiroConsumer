@@ -3,6 +3,7 @@
 Revision ID: 20260508_0003_add_performance_indexes
 Revises: 20260508_0001_auth_persistence
 Create Date: 2026-05-08 00:00:00.000000
+Revision rationale: add query-path indexes for simulation, branch, report, task, and JSON payload lookups.
 
 """
 from typing import Sequence, Union
@@ -48,10 +49,10 @@ def _is_postgresql() -> bool:
 
 def upgrade() -> None:
     for index_name, table_name, columns in INDEXES:
-        op.create_index(index_name, table_name, columns)
+        op.create_index(index_name, table_name, columns, if_not_exists=True)
     if _is_postgresql():
         for index_name, table_name, column in POSTGRES_GIN_INDEXES:
-            op.create_index(index_name, table_name, [column], postgresql_using="gin")
+            op.create_index(index_name, table_name, [column], postgresql_using="gin", if_not_exists=True)
 
 
 def downgrade() -> None:

@@ -8,6 +8,7 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional
 
 from .access_policy import resolve_visible_findings
 from .convergence_detector import ConvergenceDetector
+from .domain.test_type_profiles import TestTypeProfile, get_test_type_profile, profile_to_dict
 from .event_engine import (
     build_propagation_event,
     classify_propagation_event,
@@ -24,6 +25,8 @@ from .social_topology import (
     build_social_topology,
     select_topology_aware_targets,
 )
+from .society.decision_layer import build_decision_signals
+from .society.perception_layer import build_perception_signals
 
 
 class ConsumerSimulationOrchestrator:
@@ -92,14 +95,12 @@ class ConsumerSimulationOrchestrator:
         return "\n".join(lines)
 
     @staticmethod
+    def _get_test_type_profile(task_type: Optional[str]) -> TestTypeProfile:
+        return get_test_type_profile(task_type)
+
+    @staticmethod
     def _task_aware_focus_line(task_type: Optional[str]) -> str:
-        if task_type == "packaging_test":
-            return "Focus on packaging design, shelf appeal, and trust cues."
-        if task_type == "ab_test":
-            return "Focus on comparing messaging variants and preference differences."
-        if task_type == "price_test":
-            return "Focus on price perception, value trade-offs, and purchase intent."
-        return "Focus only on the product concept, copy, and discussion context listed below."
+        return ConsumerSimulationOrchestrator._get_test_type_profile(task_type).focus_line
 
     def _active_interventions_for_round(
         self,
@@ -177,6 +178,19 @@ class ConsumerSimulationOrchestrator:
             findings=research_findings or [],
             round_index=round_num,
         )
+        profile = self._get_test_type_profile(task_type)
+        perception_signals = build_perception_signals(
+            profile=profile,
+            visible_nodes=normalized_nodes,
+            brief_summary=brief_summary,
+            agent_traits=agent_traits,
+        )
+        decision_signals = build_decision_signals(
+            profile=profile,
+            visible_nodes=normalized_nodes,
+            agent_traits=agent_traits,
+            prior_state=prior_state,
+        )
         attitude_label, bucket, quote = self._generate_response(
             round_num=round_num,
             agent_traits=agent_traits,
@@ -200,6 +214,9 @@ class ConsumerSimulationOrchestrator:
             "bucket": bucket,
             "quote": quote,
             "engagement": engagement,
+            "test_type_profile": profile_to_dict(profile),
+            "perception_signals": perception_signals,
+            "decision_signals": decision_signals,
         }
 
     def persist_round_snapshot(self, snapshot: Mapping[str, Any]) -> None:

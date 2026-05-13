@@ -1,19 +1,13 @@
-"""
-配置管理
-统一从项目根目录的 .env 文件加载配置
-"""
+"""Application configuration loaded from environment variables."""
 
 import os
 from dotenv import load_dotenv
 
-# 加载项目根目录的 .env 文件
-# 路径: 项目根目录/.env (相对于 backend/app/config.py)
 project_root_env = os.path.join(os.path.dirname(__file__), '../../.env')
 
 if os.path.exists(project_root_env):
     load_dotenv(project_root_env, override=True)
 else:
-    # 如果根目录没有 .env，尝试加载环境变量（用于生产环境）
     load_dotenv(override=True)
 
 
@@ -33,32 +27,38 @@ WEAK_SECRET_KEYS = {'dev-only-change-me', 'dev-secret', 'secret', 'change-me', '
 
 
 class Config:
-    """Flask配置类"""
+    """Flask configuration."""
 
-    # Flask配置
     SECRET_KEY = os.environ.get('SECRET_KEY', '')
     JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY', '')
     DEBUG = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
-    CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:3000')
+    ENVIRONMENT = os.environ.get('FLASK_ENV', 'development').lower()
+    CORS_ALLOW_ORIGINS = os.environ.get(
+        'CORS_ALLOW_ORIGINS',
+        os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:3000'),
+    )
+    CORS_ALLOWED_ORIGINS = CORS_ALLOW_ORIGINS
 
-    # JSON配置 - 禁用ASCII转义，让中文直接显示（而不是 \uXXXX 格式）
     JSON_AS_ASCII = False
 
-    # LLM配置（统一使用OpenAI格式）
     LLM_API_KEY = os.environ.get('LLM_API_KEY')
     LLM_BASE_URL = os.environ.get('LLM_BASE_URL', 'https://api.openai.com/v1')
     LLM_MODEL_NAME = os.environ.get('LLM_MODEL_NAME', 'gpt-4o-mini')
+    LLM_CACHE_ENABLED = os.environ.get('LLM_CACHE_ENABLED', 'true').lower() == 'true'
+    LLM_CACHE_TTL_SECONDS = int(os.environ.get('LLM_CACHE_TTL_SECONDS', '300'))
 
-    # Zep配置
     ZEP_API_KEY = os.environ.get('ZEP_API_KEY')
 
-    # 文件上传配置
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB
 
-    RATE_LIMIT_ENABLED = os.environ.get('RATE_LIMIT_ENABLED', 'false').lower() == 'true'
+    RATE_LIMIT_ENABLED = os.environ.get('RATE_LIMIT_ENABLED', 'true').lower() == 'true'
     RATE_LIMIT_PER_MINUTE = int(os.environ.get('RATE_LIMIT_PER_MINUTE', '60'))
+    RATE_LIMIT_IP = os.environ.get('RATE_LIMIT_IP', '100/minute')
+    RATE_LIMIT_USER = os.environ.get('RATE_LIMIT_USER', '60/minute')
+    RATE_LIMIT_TENANT = os.environ.get('RATE_LIMIT_TENANT', '1000/minute')
     RATE_LIMIT_BACKEND = os.environ.get('RATE_LIMIT_BACKEND', 'memory').lower()
     AUTH_RATE_LIMIT_PER_MINUTE = int(os.environ.get('AUTH_RATE_LIMIT_PER_MINUTE', '10'))
+    EXPORT_RATE_LIMIT = os.environ.get('EXPORT_RATE_LIMIT', '5/hour')
     EXPORT_RATE_LIMIT_PER_MINUTE = int(os.environ.get('EXPORT_RATE_LIMIT_PER_MINUTE', '10'))
     AUDIT_LOG_PATH = os.environ.get('AUDIT_LOG_PATH', '')
     LOG_FORMAT = os.environ.get('LOG_FORMAT', 'json')
@@ -66,18 +66,17 @@ class Config:
     CSP_POLICY = os.environ.get('CSP_POLICY', '')
     ENABLE_REASONING_TRACE = os.environ.get('ENABLE_REASONING_TRACE', 'true').lower() == 'true'
     SENTRY_DSN = os.environ.get('SENTRY_DSN', '')
+    SENTRY_ENVIRONMENT = os.environ.get('SENTRY_ENVIRONMENT', os.environ.get('FLASK_ENV', 'development'))
+    SENTRY_TRACES_SAMPLE_RATE = float(os.environ.get('SENTRY_TRACES_SAMPLE_RATE', '0.05'))
     UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), '../uploads')
     ALLOWED_EXTENSIONS = {'pdf', 'md', 'txt', 'markdown'}
 
-    # 文本处理配置
-    DEFAULT_CHUNK_SIZE = 500  # 默认切块大小
-    DEFAULT_CHUNK_OVERLAP = 50  # 默认重叠大小
+    DEFAULT_CHUNK_SIZE = 500
+    DEFAULT_CHUNK_OVERLAP = 50
 
-    # OASIS模拟配置
     OASIS_DEFAULT_MAX_ROUNDS = int(os.environ.get('OASIS_DEFAULT_MAX_ROUNDS', '10'))
     OASIS_SIMULATION_DATA_DIR = os.path.join(os.path.dirname(__file__), '../uploads/simulations')
 
-    # OASIS平台可用动作配置
     OASIS_TWITTER_ACTIONS = [
         'CREATE_POST', 'LIKE_POST', 'REPOST', 'FOLLOW', 'DO_NOTHING', 'QUOTE_POST'
     ]
@@ -87,7 +86,6 @@ class Config:
         'TREND', 'REFRESH', 'DO_NOTHING', 'FOLLOW', 'MUTE'
     ]
 
-    # Report Agent配置
     REPORT_AGENT_MAX_TOOL_CALLS = int(os.environ.get('REPORT_AGENT_MAX_TOOL_CALLS', '5'))
     REPORT_AGENT_MAX_REFLECTION_ROUNDS = int(os.environ.get('REPORT_AGENT_MAX_REFLECTION_ROUNDS', '2'))
     REPORT_AGENT_TEMPERATURE = float(os.environ.get('REPORT_AGENT_TEMPERATURE', '0.5'))
@@ -99,6 +97,7 @@ class Config:
     # Queue configuration
     _queue_backend_cache = None
     _redis_url_cache = None
+    _redis_persistence_enabled_cache = None
     _lock_backend_cache = None
     _rq_queue_name_cache = None
     _queue_retry_limit_cache = None
@@ -134,6 +133,12 @@ class Config:
         if cls._redis_url_cache is not None:
             return cls._redis_url_cache
         return os.environ.get('REDIS_URL', '')
+
+    @_ClassProperty
+    def REDIS_PERSISTENCE_ENABLED(cls):
+        if cls._redis_persistence_enabled_cache is not None:
+            return cls._redis_persistence_enabled_cache
+        return os.environ.get('REDIS_PERSISTENCE_ENABLED', 'false').lower() in {'1', 'true', 'yes', 'on'}
 
     @_ClassProperty
     def LOCK_BACKEND(cls):
@@ -251,12 +256,12 @@ class Config:
 
     @classmethod
     def validate(cls):
-        """验证必要配置"""
+        """Validate required configuration."""
         errors = []
         if not cls.LLM_API_KEY:
-            errors.append("LLM_API_KEY 未配置")
+            errors.append("LLM_API_KEY is not configured")
         if not cls.ZEP_API_KEY:
-            errors.append("ZEP_API_KEY 未配置")
+            errors.append("ZEP_API_KEY is not configured")
 
         db_url = cls.DB_URL
         if db_url:
@@ -270,7 +275,8 @@ class Config:
             errors.append(f"RATE_LIMIT_BACKEND must be one of {valid_rate_limit_backends}, got: {cls.RATE_LIMIT_BACKEND}")
         if cls.RATE_LIMIT_ENABLED and cls.RATE_LIMIT_BACKEND == 'redis' and not cls.REDIS_URL:
             errors.append("REDIS_URL is required when RATE_LIMIT_BACKEND=redis")
-        if cls.RATE_LIMIT_ENABLED and cls.RATE_LIMIT_BACKEND == 'memory' and not (cls.DEBUG or getattr(cls, 'TESTING', False)):
+        is_production = getattr(cls, 'ENVIRONMENT', 'development') in {'production', 'prod'}
+        if cls.RATE_LIMIT_ENABLED and cls.RATE_LIMIT_BACKEND == 'memory' and is_production and not (cls.DEBUG or getattr(cls, 'TESTING', False)):
             errors.append("memory rate limiter is not allowed in production")
 
         valid_backends = ('thread', 'sqlite', 'rq')
@@ -314,4 +320,8 @@ class Config:
                 errors.append(f"STORAGE_BACKEND=s3 requires: {', '.join(missing)}")
 
         return errors
+
+
+
+
 

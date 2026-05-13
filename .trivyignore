@@ -1,0 +1,12 @@
+# Trivy vulnerability exception registry.
+#
+# Format: one CVE ID per line, with an inline reason, approver, and expiry date.
+# Example:
+# CVE-2026-0001 # reason: false positive in unused binary; approver: security; expires: 2026-08-10
+#
+# Rules:
+# - Exceptions require security approval.
+# - Exceptions expire within 90 days.
+# - Prefer upgrading or removing the vulnerable component over adding an exception.
+#
+# Current accepted exceptions: none.

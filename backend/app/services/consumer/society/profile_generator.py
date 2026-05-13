@@ -12,6 +12,34 @@ from .mirofish_profile_adapter import CHANNEL_LABELS, MiroFishProfileAdapter
 
 PROFILE_VERSION = "phase7g_v1"
 ALLOWED_SOURCES = {"mirofish_adapter", "rule_fallback", "hybrid"}
+PROFILE_REQUIRED_FIELDS = (
+    "persona_id",
+    "name",
+    "age_range",
+    "city_tier",
+    "income_level",
+    "family_structure",
+    "purchase_channel",
+    "category_usage_frequency",
+    "price_sensitivity",
+    "evidence_sensitivity",
+    "risk_sensitivities",
+    "expression_style",
+    "bio",
+    "persona",
+    "age",
+    "gender",
+    "mbti",
+    "country",
+    "profession",
+    "interested_topics",
+    "source",
+    "zep_context_status",
+    "education_level",
+    "geography_level",
+    "values_tags",
+    "brand_preference",
+)
 ENGLISH_DEFAULT_LABELS = {
     "Care-driven urban mom",
     "Social proof explorer",
@@ -46,6 +74,10 @@ class ConsumerProfile:
     country: str = "China"
     profession: str = "消费者"
     interested_topics: List[str] = field(default_factory=list)
+    education_level: str = "本科"
+    geography_level: str = "城市核心区"
+    values_tags: List[str] = field(default_factory=list)
+    brand_preference: str = "可信赖品牌"
     source: str = "rule_fallback"
     zep_context_status: str = "unavailable"
 
@@ -153,6 +185,10 @@ class CategoryRuleProfileBuilder:
                     "evidence_sensitivity": evidence,
                     "risk_sensitivities": risks,
                     "expression_style": _expression_for(index),
+                    "education_level": _education_for(index),
+                    "geography_level": _geography_level_for(index),
+                    "values_tags": _values_for(index, rules["drivers"]),
+                    "brand_preference": _brand_preference_for(index, price_band),
                 }
             )
         return blueprints
@@ -179,6 +215,7 @@ class ProfileValidator:
         data["purchase_channel"] = _as_text_list(data.get("purchase_channel")) or ["小红书"]
         data["risk_sensitivities"] = _as_text_list(data.get("risk_sensitivities")) or ["可信度"]
         data["interested_topics"] = _as_text_list(data.get("interested_topics")) or list(data["risk_sensitivities"])
+        data["values_tags"] = _as_text_list(data.get("values_tags")) or ["安全", "真实", "性价比"]
         data["price_sensitivity"] = _clamp(data.get("price_sensitivity", 0.5))
         data["evidence_sensitivity"] = _clamp(data.get("evidence_sensitivity", 0.5))
         data.setdefault("profile_source", "rule")
@@ -200,6 +237,9 @@ class ProfileValidator:
             "country": "China",
             "profession": "消费者",
             "zep_context_status": "unavailable",
+            "education_level": "本科",
+            "geography_level": data.get("city_tier", "城市核心区"),
+            "brand_preference": "可信赖品牌",
         }
         for key, value in defaults.items():
             data.setdefault(key, value)
@@ -362,6 +402,26 @@ def _expression_for(index: int) -> str:
     return ["谨慎但愿意尝新", "直接比较", "重视证据", "冲动尝鲜"][index % 4]
 
 
+def _education_for(index: int) -> str:
+    return ["本科", "大专", "硕士及以上", "高中/中专"][index % 4]
+
+
+def _geography_level_for(index: int) -> str:
+    return ["城市核心区", "城市通勤区", "区域中心", "下沉市场"][index % 4]
+
+
+def _values_for(index: int, drivers: Sequence[str]) -> List[str]:
+    base = list(drivers[:2]) if drivers else ["安全", "真实"]
+    rotated = ["安全", "效率", "真实", "性价比", "品质"]
+    return list(dict.fromkeys(base + [rotated[index % len(rotated)]]))[:3]
+
+
+def _brand_preference_for(index: int, price_band: str) -> str:
+    if price_band in {"premium", "mid_premium", "high"}:
+        return ["专业高端品牌", "成分透明品牌", "口碑验证品牌", "创新品牌"][index % 4]
+    return ["可信赖品牌", "性价比品牌", "熟人推荐品牌", "平台热销品牌"][index % 4]
+
+
 def _as_text_list(value: Any) -> List[str]:
     if value is None:
         return []
@@ -383,6 +443,7 @@ __all__ = [
     "ConsumerProfile",
     "ConsumerProfileGenerator",
     "ConsumerProfileSnapshot",
+    "PROFILE_REQUIRED_FIELDS",
     "PROFILE_VERSION",
     "ProfileValidator",
     "normalize_category",

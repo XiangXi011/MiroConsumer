@@ -141,7 +141,8 @@
   </section>
 </template>
 
-<script setup>
+<script setup lang="ts">
+// @ts-nocheck
 import { ref, computed, watch } from 'vue'
 import RepresentativeConsumerCard from './RepresentativeConsumerCard.vue'
 import {

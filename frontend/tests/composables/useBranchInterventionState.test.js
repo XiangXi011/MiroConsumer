@@ -1,7 +1,7 @@
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
 
-import { useBranchInterventionState } from '../../src/composables/consumer/useBranchInterventionState.js'
+import { useBranchInterventionState } from '../../src/composables/consumer/useBranchInterventionState.ts'
 
 test('useBranchInterventionState returns refs with default values', () => {
   const state = useBranchInterventionState()

@@ -2,7 +2,7 @@ import { test } from 'vitest'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
-import { INTERVIEW_ROLE_PRESETS, buildInterviewRequest } from '../src/utils/consumerInterview.js'
+import { INTERVIEW_ROLE_PRESETS, buildInterviewRequest } from '../src/utils/consumerInterview.ts'
 
 test('buildInterviewRequest emits fixed Phase 6I request body', () => {
   const payload = buildInterviewRequest({

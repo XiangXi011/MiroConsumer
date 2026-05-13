@@ -5,6 +5,8 @@ Report API路由
 
 import os
 import tempfile
+from typing import Any, Dict, Iterable, List, Mapping
+
 from flask import request, jsonify, send_file, g
 
 from . import report_bp, api_error_payload
@@ -19,6 +21,7 @@ from ..services.application.benchmark_app_service import BenchmarkAppService
 from ..services.application.research_asset_app_service import ResearchAssetAppService
 from ..services.application.comparison_app_service import ComparisonAppService
 from ..contracts.errors import ConcurrencyConflictError
+from ..services.consumer.research_boundary import default_applicability_boundary
 from ..utils.pagination import paginate_query
 from ..auth.middleware import require_permission
 from ..auth.tenant_guard import TenantAccessDenied, TenantGuard, tenant_forbidden_response
@@ -49,6 +52,166 @@ def _build_methodology_limits(simulation_id: str) -> dict:
                                       evidence_support=evidence_support)
     except Exception:
         return get_methodology_limits(8, 1, "quick")
+
+
+def _build_methodology_page(simulation_id: str, report=None) -> str:
+    """Build the compliance methodology page used by JSON and downloads."""
+    try:
+        return ReportAppService._build_methodology_page(simulation_id or "", report)
+    except Exception:
+        return ReportAppService._build_methodology_page("", report)
+
+
+def _ratio(numerator: int, denominator: int) -> float:
+    if denominator <= 0:
+        return 0.0
+    return round(numerator / denominator, 4)
+
+
+def _diagnostic_events_from_context(context: Mapping[str, Any] | None) -> List[Mapping[str, Any]]:
+    if not isinstance(context, Mapping):
+        return []
+
+    for key in ("llm_diagnostic_events", "diagnostic_events", "events", "event_stream"):
+        value = context.get(key)
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, Mapping)]
+
+    evidence_bundle = context.get("evidence_bundle")
+    if isinstance(evidence_bundle, Mapping):
+        quote_metadata = evidence_bundle.get("quote_metadata")
+        if isinstance(quote_metadata, list):
+            return [item for item in quote_metadata if isinstance(item, Mapping)]
+
+    representative = context.get("representative_voc_quotes")
+    if isinstance(representative, Mapping):
+        events: List[Mapping[str, Any]] = []
+        for bucket in representative.values():
+            if isinstance(bucket, list):
+                events.extend(item for item in bucket if isinstance(item, Mapping))
+        return events
+
+    return []
+
+
+def _is_template_generated(event: Mapping[str, Any]) -> bool | None:
+    metadata = event.get("quote_metadata") or {}
+    if isinstance(metadata, Mapping) and "template_generated" in metadata:
+        return bool(metadata.get("template_generated"))
+    backend = str(event.get("reasoning_backend", "") or "").strip().lower()
+    if backend in {"unknown", ""}:
+        return None
+    if "template" in backend or backend in {"mock", "rules_fallback"}:
+        return True
+    if backend == "llm" or event.get("llm_invoked") is True:
+        return False
+    return None
+
+
+def _build_llm_diagnostics(report) -> Dict[str, Any]:
+    context = getattr(report, "report_context", None)
+    if isinstance(context, Mapping) and isinstance(context.get("llm_diagnostics"), Mapping):
+        diagnostics = dict(context["llm_diagnostics"])
+        diagnostics.setdefault("llm_coverage_rate", 0.0)
+        diagnostics.setdefault("template_fallback_rate", 0.0)
+        diagnostics.setdefault("fallback_reasons", [])
+        diagnostics.setdefault("unknown_rate", 0.0)
+        return diagnostics
+
+    events = _diagnostic_events_from_context(context)
+    if not events and isinstance(context, Mapping):
+        summary = context.get("society_reasoning_summary")
+        if isinstance(summary, Mapping) and isinstance(summary.get("backend_counts"), Mapping):
+            expanded: List[Mapping[str, Any]] = []
+            for backend, count in summary["backend_counts"].items():
+                try:
+                    backend_count = int(count)
+                except (TypeError, ValueError):
+                    backend_count = 0
+                expanded.extend({"reasoning_backend": backend} for _ in range(max(0, backend_count)))
+            events = expanded
+
+    total = len(events)
+    llm_count = 0
+    template_count = 0
+    unknown_count = 0
+    fallback_reasons: List[str] = []
+
+    for event in events:
+        template_generated = _is_template_generated(event)
+        if template_generated is True:
+            template_count += 1
+        elif template_generated is False:
+            llm_count += 1
+        else:
+            unknown_count += 1
+
+        reason = str(event.get("fallback_reason") or event.get("reasoning_error") or "").strip()
+        if reason and reason not in fallback_reasons:
+            fallback_reasons.append(reason)
+
+    return {
+        "llm_coverage_rate": _ratio(llm_count, total),
+        "template_fallback_rate": _ratio(template_count, total),
+        "fallback_reasons": sorted(fallback_reasons),
+        "unknown_rate": _ratio(unknown_count, total),
+    }
+
+
+def _quality_warning_banner(diagnostics: Mapping[str, Any]) -> Dict[str, Any]:
+    fallback_rate = float(diagnostics.get("template_fallback_rate", 0.0) or 0.0)
+    visible = fallback_rate > 0.1
+    return {
+        "visible": visible,
+        "severity": "warning" if visible else "info",
+        "message": (
+            "Template fallback exceeded 10%; some quotes are simulated and not LLM reasoning."
+            if visible
+            else ""
+        ),
+    }
+
+
+def _report_data_with_diagnostics(report) -> Dict[str, Any]:
+    data = report.to_dict()
+    diagnostics = _build_llm_diagnostics(report)
+    banner = _quality_warning_banner(diagnostics)
+    boundary = _report_applicability_boundary(report)
+    data["llm_diagnostics"] = diagnostics
+    data["quality_warning_banner"] = banner
+    data["applicability_boundary"] = boundary
+    return data
+
+
+def _report_response_fields(report) -> Dict[str, Any]:
+    diagnostics = _build_llm_diagnostics(report)
+    return {
+        "llm_diagnostics": diagnostics,
+        "quality_warning_banner": _quality_warning_banner(diagnostics),
+        "applicability_boundary": _report_applicability_boundary(report),
+    }
+
+
+def _report_applicability_boundary(report) -> Dict[str, Any]:
+    context = getattr(report, "report_context", None)
+    if isinstance(context, Mapping):
+        boundary = context.get("applicability_boundary")
+        if isinstance(boundary, Mapping):
+            return dict(boundary)
+
+    simulation_id = getattr(report, "simulation_id", "")
+    if simulation_id:
+        try:
+            from ..services.consumer.society.state_store import SocietyStateStore
+
+            store = SocietyStateStore()
+            boundary = store.read_research_boundary(simulation_id)
+            if boundary:
+                return boundary
+        except Exception:
+            pass
+
+    return default_applicability_boundary()
 
 
 def _status_from_value_error(e: ValueError) -> int:
@@ -142,6 +305,7 @@ def generate_report():
             "data": result,
             "disclaimer": REPORT_DISCLAIMER,
             "methodology_limits": _build_methodology_limits(simulation_id),
+            "methodology_page": _build_methodology_page(simulation_id),
         })
 
     except ValueError as e:
@@ -242,12 +406,16 @@ def get_report(report_id: str):
             return denied
 
         methodology_limits = _build_methodology_limits(report.simulation_id)
+        methodology_page = _build_methodology_page(report.simulation_id, report)
+        report_fields = _report_response_fields(report)
 
         return jsonify({
             "success": True,
-            "data": report.to_dict(),
+            "data": _report_data_with_diagnostics(report),
             "disclaimer": REPORT_DISCLAIMER,
             "methodology_limits": methodology_limits,
+            "methodology_page": methodology_page,
+            **report_fields,
         })
 
     except Exception as e:
@@ -285,10 +453,12 @@ def get_report_by_simulation(simulation_id: str):
 
         return jsonify({
             "success": True,
-            "data": report.to_dict(),
+            "data": _report_data_with_diagnostics(report),
             "has_report": True,
             "disclaimer": REPORT_DISCLAIMER,
             "methodology_limits": _build_methodology_limits(simulation_id),
+            "methodology_page": _build_methodology_page(simulation_id, report),
+            **_report_response_fields(report),
         })
 
     except Exception as e:
@@ -341,8 +511,10 @@ def list_reports():
 
         report_dicts = []
         for r in reports:
-            d = r.to_dict()
+            d = _report_data_with_diagnostics(r)
             d["methodology_limits"] = _build_methodology_limits(r.simulation_id)
+            d["methodology_page"] = _build_methodology_page(r.simulation_id, r)
+            d["disclaimer"] = REPORT_DISCLAIMER
             report_dicts.append(d)
         result = paginate_query(report_dicts, page=page, per_page=per_page)
 
@@ -351,7 +523,8 @@ def list_reports():
             "data": result["items"],
             "count": len(result["items"]),
             "pagination": result["pagination"],
-            "disclaimer": REPORT_DISCLAIMER
+            "disclaimer": REPORT_DISCLAIMER,
+            "methodology_page": _build_methodology_page(simulation_id or ""),
         })
 
     except Exception as e:

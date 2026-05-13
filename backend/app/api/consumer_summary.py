@@ -30,7 +30,7 @@ def get_consumer_summary(simulation_id: str):
             return jsonify({"success": False, "error": str(e)}), 404
         return jsonify({"success": False, "error": str(e)}), 400
     except Exception as e:
-        logger.error(f"获取消费者传播摘要失败: {str(e)}")
+        logger.error(f"消费者传播摘要获取失败: {str(e)}")
         return jsonify(api_error_payload(str(e))), 500
 
 
@@ -46,7 +46,7 @@ def get_channel_summary(simulation_id: str):
     except ValueError as e:
         return _value_error_response(e)
     except Exception as e:
-        logger.error(f"鑾峰彇娓犻亾鎽樿澶辫触: {str(e)}")
+        logger.error(f"渠道摘要获取失败: {str(e)}")
         return jsonify(api_error_payload(str(e))), 500
 
 
@@ -62,7 +62,7 @@ def get_channel_events(simulation_id: str):
     except ValueError as e:
         return _value_error_response(e)
     except Exception as e:
-        logger.error(f"鑾峰彇娓犻亾浜嬩欢澶辫触: {str(e)}")
+        logger.error(f"渠道事件获取失败: {str(e)}")
         return jsonify(api_error_payload(str(e))), 500
 
 
@@ -78,5 +78,5 @@ def get_propagation_paths(simulation_id: str):
     except ValueError as e:
         return jsonify({"success": False, "error": str(e)}), _status_from_value_error(e)
     except Exception as e:
-        logger.error(f"鑾峰彇浼犳挱璺緞澶辫触: {str(e)}")
+        logger.error(f"传播路径获取失败: {str(e)}")
         return jsonify(api_error_payload(str(e))), 500

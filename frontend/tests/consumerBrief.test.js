@@ -5,7 +5,7 @@ import {
   buildConsumerBrief,
   isConsumerBriefComplete,
   resolveSimulationRequirement,
-} from '../src/utils/consumerBrief.js'
+} from '../src/utils/consumerBrief.ts'
 
 test('buildConsumerBrief normalizes multiline and delimited fields', () => {
   const brief = buildConsumerBrief({

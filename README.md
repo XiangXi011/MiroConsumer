@@ -44,6 +44,9 @@ MiroConsumer is built around a different loop:
 
 That makes it useful for **pre-launch rehearsal**, not just static scoring.
 
+For a deeper market comparison, see the
+[competitive landscape](docs/product/competitive-landscape.md).
+
 ## What You Can Test
 
 - **Concept testing**
@@ -273,6 +276,24 @@ MiroConsumer is built on a robust multi-agent simulation execution backbone:
 - post-report interaction
 
 The current product direction specializes that backbone for **consumer concept and copy propagation testing**.
+
+See the [technology evolution roadmap](docs/architecture.md#技术栈演进路线图)
+for the Phase 1-7 stack history and the next six months of planned technical work.
+
+### Architecture Deviations
+
+The current implementation intentionally documents several architecture deviations
+while the repository migration finishes:
+
+- Service Locator resolution remains at the Flask/application boundary.
+- `@classmethod` application-service facades are retained for compatibility.
+- `create_app()` is split into helper functions but still orchestrates route and
+  OpenAPI registration.
+- Repository+Manager persistence is a transition path, with repositories owning
+  new durable state and managers acting as legacy read fallbacks.
+
+See [Architecture Decision Records](docs/architecture.md#architecture-decision-records)
+for the migration plan and the red-highlighted architecture diagram.
 
 ## Acknowledgments
 

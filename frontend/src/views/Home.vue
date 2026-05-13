@@ -457,7 +457,8 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
+// @ts-nocheck
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
@@ -468,8 +469,8 @@ import {
   isConsumerBriefComplete,
   resolveSimulationRequirement
 } from '../utils/consumerBrief'
-import { setPendingUpload } from '../store/pendingUpload.js'
-import { listPersonaPacks } from '../api/graph.js'
+import { setPendingUpload } from '../store/pendingUpload.ts'
+import { listPersonaPacks } from '../api/graph.ts'
 
 const router = useRouter()
 const { t } = useI18n()

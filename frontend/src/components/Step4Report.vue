@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="report-panel">
     <!-- Main Split Layout -->
     <div class="main-split-layout">
@@ -474,7 +474,8 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
+// @ts-nocheck
 import { ref, computed, watch, onMounted, onUnmounted, nextTick, h, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'

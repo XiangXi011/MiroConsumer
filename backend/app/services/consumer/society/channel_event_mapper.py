@@ -20,7 +20,9 @@ class ChannelEventMapper:
         sequence: int,
     ) -> dict:
         event_type = str(event.get("consumer_event_type") or ConsumerEventType.FIRST_IMPRESSION.value)
-        if event_type not in policy.allowed_event_types:
+        if event_type == ConsumerEventType.PARTICIPATION_SKIPPED.value:
+            event_type = ConsumerEventType.IGNORE.value
+        elif event_type not in policy.allowed_event_types:
             event_type = ConsumerEventType.FIRST_IMPRESSION.value
         strength = self._strength_for_event(event_type, policy)
         actor_id = str(event.get("agent_id") or event.get("actor_id") or "")
@@ -44,6 +46,8 @@ class ChannelEventMapper:
 
     def _strength_for_event(self, event_type: str, policy: ConsumerChannelPolicy) -> float:
         base = 0.35
+        if event_type == ConsumerEventType.IGNORE.value:
+            return 0.0
         if event_type in {
             ConsumerEventType.AMPLIFY_CLAIM.value,
             ConsumerEventType.SHARE_TO_CHANNEL.value,

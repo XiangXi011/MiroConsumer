@@ -1,4 +1,4 @@
-"""Tests for SQLAlchemy schema and Alembic migration coverage.
+﻿"""Tests for SQLAlchemy schema and Alembic migration coverage.
 
 These tests use SQLite in-memory (no PostgreSQL server required).
 """
@@ -29,6 +29,7 @@ ALL_TABLES = [
     "society_agents",
     "persona_packs",
     "round_snapshots",
+    "graph_snapshots",
     "consumer_events",
     "branches",
     "interventions",
@@ -62,6 +63,8 @@ SIMULATION_CHILD_TABLES = [
 
 SHARED_COLUMNS = ["id", "created_at", "updated_at", "version"]
 
+INITIAL_MIGRATION_TABLES = [table for table in ALL_TABLES if table != "graph_snapshots"]
+
 
 class TestSqlalchemySchema:
     """Verify SQLAlchemy metadata defines all required tables and columns."""
@@ -71,7 +74,7 @@ class TestSqlalchemySchema:
         from app.repositories.sqlalchemy import metadata
         return {t.name: t for t in metadata.sorted_tables}
 
-    def test_all_twenty_tables_present(self, metadata_tables):
+    def test_all_required_tables_present(self, metadata_tables):
         present = set(metadata_tables.keys())
         expected = set(ALL_TABLES)
         assert present == expected, f"Missing tables: {expected - present}, Extra tables: {present - expected}"
@@ -90,6 +93,11 @@ class TestSqlalchemySchema:
         assert "simulation_id" in column_names, f"Table {table_name} missing simulation_id"
         assert "run_id" in column_names, f"Table {table_name} missing run_id"
 
+
+    def test_graph_snapshots_has_checkpoint_columns(self, metadata_tables):
+        table = metadata_tables["graph_snapshots"]
+        column_names = {c.name for c in table.columns}
+        assert {"simulation_id", "round_index", "snapshot_data"}.issubset(column_names)
     def test_metadata_uses_json_type(self, metadata_tables):
         """At least some tables should use JSON column type for flexible data."""
         json_found = False
@@ -128,7 +136,7 @@ class TestSqlalchemySchema:
 
 
 class TestAlembicMigration:
-    """Verify initial migration creates all 20 tables with required columns."""
+    """Verify initial migration creates the base tables with required columns."""
 
     @pytest.fixture(scope="class")
     def migration_module(self):
@@ -150,7 +158,7 @@ class TestAlembicMigration:
         return inspect.getsource(migration_module)
 
     def test_migration_mentions_all_tables(self, migration_source):
-        for table in ALL_TABLES:
+        for table in INITIAL_MIGRATION_TABLES:
             assert table in migration_source, f"Migration missing table name: {table}"
 
     def test_migration_mentions_shared_columns(self, migration_source):
@@ -171,4 +179,5 @@ class TestAlembicMigration:
 
             inspector = sa_inspect(connection)
             actual = set(inspector.get_table_names())
-        assert actual == set(ALL_TABLES)
+        assert actual == set(INITIAL_MIGRATION_TABLES)
+

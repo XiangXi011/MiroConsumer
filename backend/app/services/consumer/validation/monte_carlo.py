@@ -1,4 +1,11 @@
-"""蒙特卡洛验证框架 — 验证仿真结果的统计显著性"""
+"""蒙特卡洛验证框架 — 验证仿真结果的统计显著性.
+
+Null-model tuning parameters are documented in
+``docs/research/monte-carlo-tuning.md``. The key knobs are
+``random_walk_std`` for Gaussian random-walk shock size,
+``baseline_floor`` for the minimum variance scale, and
+``baseline_relative_noise`` for history-based baseline jitter.
+"""
 
 import random
 import math
@@ -24,10 +31,24 @@ class ValidationResult:
 
 
 class MonteCarloValidator:
-    """蒙特卡洛验证器"""
+    """蒙特卡洛验证器.
 
-    def __init__(self, seed=None):
+    See ``docs/research/monte-carlo-tuning.md`` before changing the null
+    model defaults; those values are part of the statistical acceptance
+    contract for P3-004.
+    """
+
+    def __init__(
+        self,
+        seed=None,
+        random_walk_std: float = 1.0,
+        baseline_floor: float = 1.0,
+        baseline_relative_noise: float = 0.1,
+    ):
         self.rng = random.Random(seed)
+        self.random_walk_std = float(random_walk_std)
+        self.baseline_floor = float(baseline_floor)
+        self.baseline_relative_noise = float(baseline_relative_noise)
 
     def validate_metric(self,
                         observed: float,
@@ -74,6 +95,18 @@ class MonteCarloValidator:
             null_values.append(sum(shuffled) / len(shuffled))
         return null_values
 
+    def null_under_random_walk(
+        self,
+        baseline_value: float,
+        n_simulations: int = 1000,
+    ) -> List[float]:
+        """Generate a random-walk null distribution around one baseline value."""
+        scale = math.sqrt(max(abs(float(baseline_value)), self.baseline_floor))
+        return [
+            float(baseline_value) + self.rng.gauss(0, self.random_walk_std) * scale
+            for _ in range(n_simulations)
+        ]
+
     def validate_simulation_results(self,
                                      observed_metrics: Dict[str, float],
                                      baseline_metrics: Dict[str, float],
@@ -87,8 +120,16 @@ class MonteCarloValidator:
                 continue
 
             null_dist = self.generate_null_distribution(
-                [baseline + self.rng.gauss(0, abs(baseline) * 0.1) for _ in range(n_simulations)],
-                n_simulations
+                [
+                    baseline
+                    + self.rng.gauss(
+                        0,
+                        max(abs(baseline), self.baseline_floor)
+                        * self.baseline_relative_noise,
+                    )
+                    for _ in range(n_simulations)
+                ],
+                n_simulations,
             )
 
             result = self.validate_metric(observed, null_dist, alpha)

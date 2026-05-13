@@ -16,7 +16,8 @@ def resolve_visible_findings(
     """Filter research findings based on persona traits and round.
 
     Rules:
-    - Round 0: only Initial visibility findings.
+    - GraphVisible findings are visible in every round.
+    - Round 0: Initial visibility findings.
     - Round 1+: Propagation_Only visible to all consumer personas.
     - Restricted only visible to high-search + high-cognition personas.
     """
@@ -26,6 +27,9 @@ def resolve_visible_findings(
 
     for finding in findings:
         visibility = finding.visibility
+        if visibility == GraphVisibility.GraphVisible:
+            visible.append(finding)
+            continue
         if visibility == GraphVisibility.Initial:
             visible.append(finding)
             continue
@@ -72,6 +76,9 @@ def _filter_visible_nodes(
             "visibility": visibility,
         }
 
+        if visibility == GraphVisibility.GraphVisible:
+            filtered.append(normalized)
+            continue
         if visibility == GraphVisibility.Initial:
             filtered.append(normalized)
             continue

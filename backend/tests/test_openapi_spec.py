@@ -93,7 +93,10 @@ def test_openapi_spec_documents_v1_resource_paths():
     assert "/api/v1/auth/api-keys" in paths
     assert "/api/v1/consumer/task-queue/dead-letters" in paths
     assert "/health" in paths
-    assert "/api/consumer/simulation/{simulation_id}/consumer-summary" not in paths
+    legacy_path = "/api/consumer/simulation/{simulation_id}/consumer-summary"
+    assert legacy_path in paths
+    assert paths[legacy_path]["get"]["deprecated"] is True
+    assert paths[legacy_path]["get"]["x-sunset"] == "Sun, 01 Dec 2026 00:00:00 GMT"
 
 
 def test_openapi_v1_route_inventory_matches_registered_flask_routes():

@@ -18,6 +18,7 @@ from .profile_generator import ConsumerProfileGenerator
 from .reasoning_engine import LayeredSocietyReasoningEngine
 from .report_adapter import SocietyReportAdapter
 from .run_controller import RunController
+from ..research_boundary import enforce_research_boundary
 from .state_store import SocietyStateStore
 from ....utils.atomic_json import atomic_write_json
 from ..reasoning_trace import ReasoningTrace, write_reasoning_traces
@@ -51,6 +52,14 @@ class ConsumerSocietyRuntime:
         brief_context: Mapping[str, Any],
         research_findings: Iterable[Any],
     ) -> Dict[str, Any]:
+        persona_pack_list = list(persona_pack or [])
+        boundary = enforce_research_boundary(
+            simulation_id=simulation_id,
+            brief_context=brief_context,
+            persona_pack=persona_pack_list,
+        )
+        self.store.ensure_started(simulation_id)
+        self.store.write_research_boundary(simulation_id, boundary)
         controller = RunController(
             store=self.store,
             population_factory=self.population_factory,
@@ -64,10 +73,10 @@ class ConsumerSocietyRuntime:
             simulation_id=simulation_id,
             run_id=run_id,
             config=config,
-            persona_pack=persona_pack,
+            persona_pack=persona_pack_list,
             brief_context=brief_context,
             research_findings=research_findings,
-        )
+        ) | {"applicability_boundary": boundary}
 
     def _progress(
         self,

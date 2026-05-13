@@ -20,7 +20,7 @@ import {
   buildConfidenceAwarePrompts,
   formatComparisonConfidence,
   getConsumerTaskType,
-} from '../src/utils/consumerMode.js'
+} from '../src/utils/consumerMode.ts'
 
 test('isConsumerProject supports backend and frontend project type shapes', () => {
   assert.equal(isConsumerProject({ project_type: 'consumer_test' }), true)
@@ -77,7 +77,7 @@ test('buildConsumerQuickPrompts turns top findings into follow-up questions', ()
   ])
 })
 
-import { getConsumerEventLabel } from '../src/utils/consumerMode.js'
+import { getConsumerEventLabel } from '../src/utils/consumerMode.ts'
 
 test('getConsumerEventLabel returns label for known phase2 event types', () => {
   assert.ok(getConsumerEventLabel('risk_discovery').toLowerCase().includes('risk'))
@@ -326,7 +326,7 @@ import {
   buildInterventionPayload,
   getInterventionDisplayText,
   restorePersistedBranchSelectionAfterLoad,
-} from '../src/utils/consumerMode.js'
+} from '../src/utils/consumerMode.ts'
 
 test('loadSelectedBranch returns null in non-browser environment', () => {
   assert.equal(loadSelectedBranch('sim_123'), null)

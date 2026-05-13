@@ -1,6 +1,4 @@
-"""
-API路由模块
-"""
+"""API blueprint registration and legacy error payload helpers."""
 
 import traceback
 
@@ -15,7 +13,7 @@ consumer_bp = Blueprint('consumer', __name__)
 
 
 def api_error_payload(message: str) -> dict:
-    """Build a JSON error payload; include traceback only when Config.DEBUG is true."""
+    """Build a legacy API error payload; response hooks normalize it on the wire."""
     payload = {"success": False, "error": message}
     if Config.DEBUG:
         payload["traceback"] = traceback.format_exc()

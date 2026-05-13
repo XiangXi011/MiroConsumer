@@ -291,6 +291,62 @@ class TestReportAppServiceGetReportDownloadInfo:
         assert info["is_temp"] is True
         assert info["content"] == "# Test"
 
+    def test_download_prepends_methodology_page_for_consumer_reports(self, monkeypatch):
+        fake_report = MagicMock()
+        fake_report.markdown_content = "# Findings"
+        fake_report.simulation_id = "sim_consumer"
+        fake_report.report_id = "report_123"
+
+        monkeypatch.setattr(
+            "app.services.application.report_app_service.ReportManager.get_report",
+            lambda rid: fake_report,
+        )
+        monkeypatch.setattr(
+            "app.services.application.report_app_service.ReportManager._get_report_markdown_path",
+            lambda rid: "/nonexistent/report_123.md",
+        )
+        monkeypatch.setattr(
+            "app.services.application.report_app_service.ReportAppService._simulation_repo.get_simulation_config",
+            lambda sim_id: {
+                "core_persona_count": 16,
+                "expanded_persona_count": 32,
+                "max_rounds": 3,
+                "mode": "standard",
+                "random_seed": 42,
+                "evidence_support": "validated",
+            },
+        )
+
+        info = ReportAppService.get_report_download_info("report_123")
+
+        assert info["is_temp"] is True
+        assert info["content"].startswith("# Methodology Page")
+        assert "Agent-based consumer propagation simulation" in info["content"]
+        assert "Consumer count: 48" in info["content"]
+        assert info["content"].index("# Methodology Page") < info["content"].index("# Findings")
+
+    def test_methodology_page_contains_required_compliance_sections(self, monkeypatch):
+        monkeypatch.setattr(
+            "app.services.application.report_app_service.ReportAppService._simulation_repo.get_simulation_config",
+            lambda sim_id: {
+                "core_persona_count": 8,
+                "expanded_persona_count": 8,
+                "max_rounds": 2,
+                "mode": "quick",
+                "random_seed": 7,
+                "evidence_support": "none",
+            },
+        )
+
+        page = ReportAppService._build_methodology_page("sim_123")
+
+        assert "Simulation method" in page
+        assert "Sample description" in page
+        assert "Limitations" in page
+        assert "Confidence scoring" in page
+        assert "Data privacy" in page
+        assert "Disclaimer" in page
+
 
 class TestReportAppServicePhase6JHardGate:
     def test_blocks_consumer_report_when_phase6j_artifact_blocks_entry(self, monkeypatch, tmp_path):

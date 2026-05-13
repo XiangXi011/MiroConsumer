@@ -1,0 +1,9 @@
+﻿{
+  "benchmarks": [
+    {"name": "test_benchmark_create_concept_test_path", "stats": {"mean": 0.5}},
+    {"name": "test_benchmark_start_simulation_path", "stats": {"mean": 0.5}},
+    {"name": "test_benchmark_generate_report_path", "stats": {"mean": 0.5}},
+    {"name": "test_benchmark_export_pdf_path", "stats": {"mean": 0.5}},
+    {"name": "test_benchmark_health_readiness_paths", "stats": {"mean": 0.5}}
+  ]
+}

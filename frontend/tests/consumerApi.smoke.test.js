@@ -3,11 +3,11 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
 const consumerSrc = readFileSync(
-  new URL('../src/api/consumer.js', import.meta.url),
+  new URL('../src/api/consumer.ts', import.meta.url),
   'utf-8'
 )
 const factorySrc = readFileSync(
-  new URL('../src/api/consumerFactory.js', import.meta.url),
+  new URL('../src/api/consumerFactory.ts', import.meta.url),
   'utf-8'
 )
 
@@ -170,7 +170,7 @@ test('consumer.js exports all required consumer functions', () => {
 
 import { readFileSync as readFile } from 'node:fs'
 const simulationSrc = readFile(
-  new URL('../src/api/simulation.js', import.meta.url),
+  new URL('../src/api/simulation.ts', import.meta.url),
   'utf-8'
 )
 
@@ -193,7 +193,7 @@ test('simulation.js re-exports consumer functions from consumer.js', () => {
 // ============== Backward compatibility: report.js re-exports ==============
 
 const reportSrc = readFile(
-  new URL('../src/api/report.js', import.meta.url),
+  new URL('../src/api/report.ts', import.meta.url),
   'utf-8'
 )
 

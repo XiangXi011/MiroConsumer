@@ -4,7 +4,7 @@ import { readFileSync } from 'fs'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
 
-import { buildChannelFitItems } from '../src/utils/channelPropagation.js'
+import { buildChannelFitItems } from '../src/utils/channelPropagation.ts'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)

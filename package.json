@@ -1,6 +1,6 @@
 {
   "name": "miroconsumer",
-  "version": "0.1.0",
+  "version": "0.7.1",
   "description": "MiroConsumer - AI-powered consumer propagation testing for concept and copy validation",
   "scripts": {
     "setup": "npm install && cd frontend && npm install",

@@ -12,7 +12,7 @@ function source(path) {
 
 describe('process navigation', () => {
   test('router uses MainView for process route and does not reference stale Process view', () => {
-    const router = source('src/router/index.js')
+    const router = source('src/router/index.ts')
     const staleProcessPath = join(root, 'src/views/Process.vue')
 
     expect(router).toContain("import('../views/MainView.vue')")

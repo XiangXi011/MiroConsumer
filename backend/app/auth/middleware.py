@@ -10,6 +10,7 @@ import jwt
 from flask import current_app, g, has_app_context, jsonify, request
 
 from ..config import WEAK_SECRET_KEYS
+from ..core.errors import MCErrCode, build_error_payload
 from ..security.audit_log import audit_event
 from .models import ROLE_PERMISSIONS, extract_api_key_id, verify_api_key
 from .repository import AuthRepository, MemoryAuthRepository
@@ -73,11 +74,12 @@ def init_auth(app, auth_repository=None):
         user = _authenticate_api_key(repository) or _authenticate_jwt(repository)
 
         if not user or not user.is_active:
-            return jsonify({
-                "success": False,
-                "error": "AUTH_REQUIRED",
-                "message": "Authentication required. Provide X-API-Key or Bearer token.",
-            }), 401
+            return jsonify(build_error_payload(
+                MCErrCode.AUTH_REQUIRED,
+                message="Authentication required. Provide X-API-Key or Bearer token.",
+                request_id=getattr(g, "request_id", None),
+                legacy_error="AUTH_REQUIRED",
+            )), 401
 
         g.current_user = user
         g.current_tenant = user.tenant_id
@@ -155,7 +157,11 @@ def require_permission(permission):
 
             user = getattr(g, "current_user", None)
             if not user:
-                return jsonify({"success": False, "error": "AUTH_REQUIRED", "message": "Authentication required"}), 401
+                return jsonify(build_error_payload(
+                    MCErrCode.AUTH_REQUIRED,
+                    request_id=getattr(g, "request_id", None),
+                    legacy_error="AUTH_REQUIRED",
+                )), 401
 
             user_permissions = ROLE_PERMISSIONS.get(user.role, set())
             if permission not in user_permissions:
@@ -171,11 +177,12 @@ def require_permission(permission):
                     reason="missing_permission",
                     details={"permission": permission, "role": user.role},
                 )
-                return jsonify({
-                    "success": False,
-                    "error": "FORBIDDEN",
-                    "message": f"Permission '{permission}' required. Your role '{user.role}' does not have this permission.",
-                }), 403
+                return jsonify(build_error_payload(
+                    MCErrCode.PERMISSION_DENIED,
+                    message=f"Permission '{permission}' required. Your role '{user.role}' does not have this permission.",
+                    request_id=getattr(g, "request_id", None),
+                    legacy_error="FORBIDDEN",
+                )), 403
 
             api_key_record = getattr(g, "current_api_key", None)
             if api_key_record is not None and permission not in set(api_key_record.scopes or set()):
@@ -195,11 +202,12 @@ def require_permission(permission):
                         "scopes": sorted(api_key_record.scopes or set()),
                     },
                 )
-                return jsonify({
-                    "success": False,
-                    "error": "FORBIDDEN",
-                    "message": f"API key scope '{permission}' required.",
-                }), 403
+                return jsonify(build_error_payload(
+                    MCErrCode.PERMISSION_DENIED,
+                    message=f"API key scope '{permission}' required.",
+                    request_id=getattr(g, "request_id", None),
+                    legacy_error="FORBIDDEN",
+                )), 403
 
             return f(*args, **kwargs)
         return decorated

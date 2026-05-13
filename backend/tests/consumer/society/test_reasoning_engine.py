@@ -212,3 +212,83 @@ def test_reasoning_engine_per_call_timeout_falls_back(monkeypatch):
     assert result["reasoning_backend"] == "template_fallback"
     assert result["llm_invoked"] is False
     assert "TimeoutError" in result["reasoning_error"]
+
+def test_reasoning_engine_llm_preserves_segmented_reasoning_fields(monkeypatch):
+    monkeypatch.setenv("SOCIETY_REASONING_BACKEND", "llm")
+    monkeypatch.delenv("SOCIETY_DETERMINISTIC_MODE", raising=False)
+    fake_client = _FakeLLMClient(
+        {
+            "consumer_event_type": "ASK_PROOF",
+            "quote": "I need source proof before I buy.",
+            "trust": 0.42,
+            "purchase_intent": 0.31,
+            "reasoning_summary": "segmented reasoning",
+            "perception_reasoning": "Perception: noticed low sugar claim and proof gap.",
+            "decision_reasoning": "Decision: skepticism stays high until evidence appears.",
+            "expression_reasoning": "Expression: asks for source proof.",
+        }
+    )
+    engine = LayeredSocietyReasoningEngine(llm_client_factory=lambda: fake_client)
+
+    result = engine.reason(
+        agent=_agent(),
+        base_event={"consumer_event_type": "ASK_PROOF", "claim": "low sugar", "trust": 0.4},
+        brief_context={"claims": ["low sugar"]},
+        research_findings=[],
+        reasoning_mode="llm_deep_reasoning",
+    )
+
+    assert result["perception_reasoning"].startswith("Perception:")
+    assert result["decision_reasoning"].startswith("Decision:")
+    assert result["expression_reasoning"].startswith("Expression:")
+    assert result["reasoning_triplets"][0]["input"] == result["perception_reasoning"]
+    assert result["quote_metadata"]["template_generated"] is False
+
+
+def test_reasoning_engine_llm_missing_segments_gets_summary_fallback(monkeypatch):
+    monkeypatch.setenv("SOCIETY_REASONING_BACKEND", "llm")
+    monkeypatch.delenv("SOCIETY_DETERMINISTIC_MODE", raising=False)
+    fake_client = _FakeLLMClient(
+        {
+            "consumer_event_type": "ASK_PROOF",
+            "quote": "The proof is not enough yet.",
+            "trust": 0.4,
+            "purchase_intent": 0.3,
+            "reasoning_summary": "Agent sees a low-sugar claim, weighs missing source evidence, then asks for proof.",
+        }
+    )
+    engine = LayeredSocietyReasoningEngine(llm_client_factory=lambda: fake_client)
+
+    result = engine.reason(
+        agent=_agent(),
+        base_event={"consumer_event_type": "ASK_PROOF", "claim": "low sugar", "trust": 0.4},
+        brief_context={"claims": ["low sugar"]},
+        research_findings=[],
+        reasoning_mode="llm_deep_reasoning",
+    )
+
+    assert result["perception_reasoning"]
+    assert result["decision_reasoning"]
+    assert result["expression_reasoning"]
+    assert "low sugar" in result["perception_reasoning"]
+    assert result["reasoning_triplets"][0]["conclusion"] == result["expression_reasoning"]
+
+
+def test_reasoning_engine_template_reasoning_sets_segments_and_template_metadata(monkeypatch):
+    monkeypatch.setenv("SOCIETY_REASONING_BACKEND", "template")
+    monkeypatch.delenv("SOCIETY_DETERMINISTIC_MODE", raising=False)
+    engine = LayeredSocietyReasoningEngine()
+
+    result = engine.reason(
+        agent=_agent(),
+        base_event={"consumer_event_type": "ASK_PROOF", "claim": "low sugar", "trust": 0.4},
+        brief_context={"claims": ["low sugar"]},
+        research_findings=[],
+        reasoning_mode="llm_deep_reasoning",
+    )
+
+    assert result["quote_metadata"] == {"template_generated": True, "source": "template"}
+    assert result["perception_reasoning"]
+    assert result["decision_reasoning"]
+    assert result["expression_reasoning"]
+    assert result["reasoning_triplets"][0]["input"] == result["perception_reasoning"]

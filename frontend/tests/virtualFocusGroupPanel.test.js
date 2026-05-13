@@ -2,7 +2,7 @@ import { test } from 'vitest'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
-import { buildFocusGroupRequest } from '../src/utils/consumerInterview.js'
+import { buildFocusGroupRequest } from '../src/utils/consumerInterview.ts'
 
 test('buildFocusGroupRequest emits fixed Phase 6I request body and caps max agents', () => {
   const payload = buildFocusGroupRequest({

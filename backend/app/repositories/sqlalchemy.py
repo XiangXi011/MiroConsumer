@@ -11,6 +11,7 @@ from sqlalchemy import (
     Column,
     DateTime,
     Integer,
+    Index,
     MetaData,
     String,
     JSON,
@@ -39,7 +40,7 @@ from ..contracts.errors import ConcurrencyConflictError
 
 metadata = MetaData()
 
-# 鈹€鈹€ Shared column helpers 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+# 閳光偓閳光偓 Shared column helpers 閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓
 
 
 def _shared_columns():
@@ -62,7 +63,7 @@ def _json_type():
     return JSON().with_variant(JSONB, "postgresql")
 
 
-# 鈹€鈹€ 20 table definitions 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+# 閳光偓閳光偓 20 table definitions 閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓
 
 projects = Table(
     "projects",
@@ -70,6 +71,7 @@ projects = Table(
     *_shared_columns(),
     Column("name", String(255), nullable=False),
     Column("project_type", String(50), default="default"),
+    Column("tenant_id", String(255), nullable=False, default=""),
     Column("status", String(50), default="created"),
     Column("data", _json_type(), default=dict),
 )
@@ -89,6 +91,7 @@ simulations = Table(
     Column("project_id", String(36), nullable=False),
     Column("graph_id", String(36)),
     Column("project_type", String(50), default="default"),
+    Column("tenant_id", String(255), nullable=False, default=""),
     Column("consumer_mode", Integer, default=0),
     Column("status", String(50), default="created"),
     Column("data", _json_type(), default=dict),
@@ -130,6 +133,14 @@ round_snapshots = Table(
     Column("snapshot_data", _json_type(), default=dict),
 )
 
+graph_snapshots = Table(
+    "graph_snapshots",
+    metadata,
+    *_shared_columns(),
+    Column("simulation_id", String(36), nullable=False),
+    Column("round_index", Integer, nullable=False),
+    Column("snapshot_data", _json_type(), default=dict),
+)
 consumer_events = Table(
     "consumer_events",
     metadata,
@@ -168,6 +179,7 @@ reports = Table(
     metadata,
     *_shared_columns(),
     *_sim_child_columns(),
+    Column("tenant_id", String(255), nullable=False, default=""),
     Column("report_type", String(50)),
     Column("status", String(50), default="pending"),
     Column("progress", Integer, default=0),
@@ -264,8 +276,16 @@ locks = Table(
     Column("expires_at", DateTime),
 )
 
+Index("ix_projects_tenant_id", projects.c.tenant_id)
+Index("ix_simulations_tenant_id", simulations.c.tenant_id)
+Index("ix_simulations_created_at", simulations.c.created_at)
+Index("ix_simulations_status", simulations.c.status)
+Index("ix_simulations_tenant_status", simulations.c.tenant_id, simulations.c.status)
+Index("ix_reports_tenant_id", reports.c.tenant_id)
+Index("ix_reports_simulation_id", reports.c.simulation_id)
+Index("ix_graph_snapshots_sim_round", graph_snapshots.c.simulation_id, graph_snapshots.c.round_index)
 
-# 鈹€鈹€ Helper utilities 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+# 閳光偓閳光偓 Helper utilities 閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓
 
 
 def _generate_id(prefix: str = "") -> str:
@@ -319,6 +339,7 @@ def _delete_simulation_tree(session: Session, simulation_ids: List[str]) -> None
         reports,
         interventions,
         branches,
+        graph_snapshots,
         consumer_events,
         round_snapshots,
         society_agents,
@@ -336,7 +357,7 @@ def _delete_simulation_tree(session: Session, simulation_ids: List[str]) -> None
     session.execute(delete(simulations).where(simulations.c.id.in_(simulation_ids)))
 
 
-# 鈹€鈹€ SQLAlchemy repository implementations 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+# 閳光偓閳光偓 SQLAlchemy repository implementations 閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓
 
 class SQLAlchemyProjectRepository(ProjectRepository):
     def __init__(self, session_factory: Optional[sessionmaker] = None) -> None:
@@ -361,6 +382,7 @@ class SQLAlchemyProjectRepository(ProjectRepository):
                 created_at=data.get("created_at", ""),
                 updated_at=data.get("updated_at", ""),
                 project_type=row["project_type"] or "default",
+                tenant_id=row.get("tenant_id") or data.get("tenant_id", ""),
                 files=data.get("files", []),
                 total_text_length=data.get("total_text_length", 0),
                 ontology=data.get("ontology"),
@@ -381,6 +403,7 @@ class SQLAlchemyProjectRepository(ProjectRepository):
         data.pop("project_id", None)
         data.pop("name", None)
         data.pop("project_type", None)
+        data.pop("tenant_id", None)
         data.pop("status", None)
         with self._session() as session:
             existing = session.execute(
@@ -395,6 +418,7 @@ class SQLAlchemyProjectRepository(ProjectRepository):
                     .values(
                         name=project.name,
                         project_type=project.project_type or "default",
+                        tenant_id=getattr(project, "tenant_id", "") or "",
                         status=project.status.value if hasattr(project.status, "value") else str(project.status),
                         data=data,
                         version=expected + 1,
@@ -410,6 +434,7 @@ class SQLAlchemyProjectRepository(ProjectRepository):
                         id=project.project_id,
                         name=project.name,
                         project_type=project.project_type or "default",
+                        tenant_id=getattr(project, "tenant_id", "") or "",
                         status=project.status.value if hasattr(project.status, "value") else str(project.status),
                         data=data,
                         version=1,
@@ -589,7 +614,7 @@ class SQLAlchemySimulationRepository(SimulationRepository):
             reddit_status=data.get("reddit_status", "not_started"),
             created_at=data.get("created_at", ""),
             updated_at=data.get("updated_at", ""),
-            tenant_id=data.get("tenant_id", ""),
+            tenant_id=row.get("tenant_id") or data.get("tenant_id", ""),
             error=data.get("error"),
         ), row["version"])
 
@@ -610,6 +635,7 @@ class SQLAlchemySimulationRepository(SimulationRepository):
         data.pop("graph_id", None)
         data.pop("project_type", None)
         data.pop("consumer_mode", None)
+        data.pop("tenant_id", None)
         data.pop("status", None)
         with self._session() as session:
             existing = session.execute(
@@ -626,6 +652,7 @@ class SQLAlchemySimulationRepository(SimulationRepository):
                         graph_id=state.graph_id,
                         project_type=state.project_type or "default",
                         consumer_mode=1 if state.consumer_mode else 0,
+                        tenant_id=getattr(state, "tenant_id", "") or "",
                         status=state.status.value if hasattr(state.status, "value") else str(state.status),
                         data=data,
                         version=expected + 1,
@@ -643,6 +670,7 @@ class SQLAlchemySimulationRepository(SimulationRepository):
                         graph_id=state.graph_id,
                         project_type=state.project_type or "default",
                         consumer_mode=1 if state.consumer_mode else 0,
+                        tenant_id=getattr(state, "tenant_id", "") or "",
                         status=state.status.value if hasattr(state.status, "value") else str(state.status),
                         data=data,
                         version=1,
@@ -990,7 +1018,7 @@ class SQLAlchemyReportRepository(ReportRepository):
                 summary=outline_data.get("summary", ""),
                 sections=sections,
             )
-        return _attach_version(Report(
+        report = Report(
             report_id=row["id"],
             simulation_id=row["simulation_id"],
             graph_id=data.get("graph_id", ""),
@@ -1003,7 +1031,10 @@ class SQLAlchemyReportRepository(ReportRepository):
             created_at=data.get("created_at", ""),
             completed_at=data.get("completed_at", ""),
             error=data.get("error"),
-        ), row["version"])
+        )
+        report_context = data.get("report_context") if isinstance(data.get("report_context"), dict) else {}
+        setattr(report, "tenant_id", row.get("tenant_id") or report_context.get("tenant_id", ""))
+        return _attach_version(report, row["version"])
 
     def get_report(self, report_id: str) -> Optional[Any]:
         with self._session() as session:
@@ -1040,6 +1071,9 @@ class SQLAlchemyReportRepository(ReportRepository):
         data.pop("simulation_id", None)
         data.pop("status", None)
         data.pop("outline", None)
+        report_context = data.get("report_context") if isinstance(data.get("report_context"), dict) else {}
+        tenant_id = getattr(report, "tenant_id", None) or report_context.get("tenant_id", "") or ""
+        data.pop("tenant_id", None)
         # Preserve _outline and _progress if already stored
         with self._session() as session:
             existing = session.execute(
@@ -1060,6 +1094,7 @@ class SQLAlchemyReportRepository(ReportRepository):
                         simulation_id=report.simulation_id,
                         run_id="base",
                         report_type=data.get("report_type"),
+                        tenant_id=tenant_id,
                         status=report.status.value if hasattr(report.status, "value") else str(report.status),
                         progress=data.get("progress", 0),
                         data=data,
@@ -1077,6 +1112,7 @@ class SQLAlchemyReportRepository(ReportRepository):
                         simulation_id=report.simulation_id,
                         run_id="base",
                         report_type=data.get("report_type"),
+                        tenant_id=tenant_id,
                         status=report.status.value if hasattr(report.status, "value") else str(report.status),
                         progress=data.get("progress", 0),
                         data=data,
@@ -1400,6 +1436,7 @@ __all__ = [
     "society_agents",
     "persona_packs",
     "round_snapshots",
+    "graph_snapshots",
     "consumer_events",
     "branches",
     "interventions",
@@ -1421,3 +1458,7 @@ __all__ = [
     "SQLAlchemyReportRepository",
     "SQLAlchemyBenchmarkRepository",
 ]
+
+
+
+

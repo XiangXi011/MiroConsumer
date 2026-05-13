@@ -1,0 +1,15 @@
+{
+  "status": "pending_expert_review",
+  "method": "baseline_documented_weights",
+  "sample_size": 0,
+  "weights": {
+    "source": 0.35,
+    "evidence": 0.35,
+    "signal": 0.2,
+    "replay": 0.1
+  },
+  "metrics": {
+    "accuracy": null,
+    "expected_calibration_error": null
+  }
+}

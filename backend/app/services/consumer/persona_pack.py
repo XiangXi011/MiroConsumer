@@ -7,6 +7,18 @@ from pathlib import Path
 from typing import Any, Dict, List, Mapping, TypedDict
 
 
+class SampleCharacteristics(TypedDict):
+    age_range: str
+    region: str
+    income_level: str
+
+
+class SourceBasis(TypedDict):
+    psychology_theory: str
+    data_sources: List[str]
+    sample_characteristics: SampleCharacteristics
+
+
 class PersonaRecord(TypedDict):
     persona_id: str
     label: str
@@ -19,6 +31,7 @@ class PersonaRecord(TypedDict):
     influence_weight: float
     source_trust: str
     skepticism: str
+    source_basis: SourceBasis
 
 
 class AgentTraitProfile(TypedDict):
@@ -32,6 +45,7 @@ class AgentTraitProfile(TypedDict):
     propagation_profile: Dict[str, str]
     source_trust: str
     skepticism: str
+    source_basis: SourceBasis
 
 
 _DEFAULT_PERSONA_PATH = Path(__file__).with_name("data") / "default_personas.json"
@@ -67,6 +81,7 @@ def map_persona_to_agent_traits(persona: Mapping[str, Any]) -> AgentTraitProfile
         "propagation_profile": propagation_profile,
         "source_trust": normalized["source_trust"],
         "skepticism": normalized["skepticism"],
+        "source_basis": normalized["source_basis"],
     }
 
 
@@ -112,6 +127,9 @@ def _normalize_persona(persona: Mapping[str, Any]) -> PersonaRecord:
         "influence_weight": _normalize_influence_weight(persona["influence_weight"]),
         "source_trust": _normalize_level(persona.get("source_trust", "medium"), "source_trust"),
         "skepticism": _normalize_level(persona.get("skepticism", "medium"), "skepticism"),
+        "source_basis": _normalize_source_basis(
+            persona.get("source_basis"), str(persona.get("persona_id", "unknown"))
+        ),
     }
 
 
@@ -149,6 +167,51 @@ def _normalize_influence_weight(value: Any) -> float:
     return normalized
 
 
+def _normalize_source_basis(value: Any, persona_id: str) -> SourceBasis:
+    if value is None:
+        return {
+            "psychology_theory": "Default consumer segmentation heuristic; custom pack source_basis not supplied.",
+            "data_sources": ["custom persona pack upload"],
+            "sample_characteristics": {
+                "age_range": "not specified",
+                "region": "not specified",
+                "income_level": "not specified",
+            },
+        }
+    if not isinstance(value, Mapping):
+        raise ValueError(f"source_basis for {persona_id} must be a mapping")
+
+    psychology_theory = _normalize_text(
+        value.get("psychology_theory"), f"source_basis.psychology_theory for {persona_id}"
+    )
+    data_sources = _normalize_string_list(
+        value.get("data_sources"), f"source_basis.data_sources for {persona_id}"
+    )
+
+    sample = value.get("sample_characteristics")
+    if not isinstance(sample, Mapping):
+        raise ValueError(f"source_basis.sample_characteristics for {persona_id} must be a mapping")
+
+    return {
+        "psychology_theory": psychology_theory,
+        "data_sources": data_sources,
+        "sample_characteristics": {
+            "age_range": _normalize_text(
+                sample.get("age_range"),
+                f"source_basis.sample_characteristics.age_range for {persona_id}",
+            ),
+            "region": _normalize_text(
+                sample.get("region"),
+                f"source_basis.sample_characteristics.region for {persona_id}",
+            ),
+            "income_level": _normalize_text(
+                sample.get("income_level"),
+                f"source_basis.sample_characteristics.income_level for {persona_id}",
+            ),
+        },
+    }
+
+
 def _validate_unique_persona_ids(personas: List[PersonaRecord]) -> None:
     seen_persona_ids = set()
     for persona in personas:
@@ -161,6 +224,8 @@ def _validate_unique_persona_ids(personas: List[PersonaRecord]) -> None:
 __all__ = [
     "AgentTraitProfile",
     "PersonaRecord",
+    "SampleCharacteristics",
+    "SourceBasis",
     "can_access_deep_graph",
     "load_default_persona_pack",
     "map_persona_to_agent_traits",

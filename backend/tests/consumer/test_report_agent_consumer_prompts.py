@@ -201,3 +201,122 @@ class TestReportAgentPromptSelection:
         assert SECTION_SYSTEM_PROMPT_TEMPLATE
         assert SECTION_USER_PROMPT_TEMPLATE
         assert CHAT_SYSTEM_PROMPT_TEMPLATE
+
+
+def test_format_quotes_prioritizes_llm_quotes_and_marks_template_sources():
+    agent = ReportAgent(
+        graph_id="g1",
+        simulation_id="sim_1",
+        simulation_requirement="test req",
+        llm_client=MagicMock(),
+        zep_tools=MagicMock(),
+        project_type="consumer_test",
+    )
+
+    rendered = agent._format_quotes([
+        {
+            "quote": "Template quote",
+            "engagement": 2,
+            "quote_metadata": {"template_generated": True},
+        },
+        {
+            "quote": "LLM quote",
+            "engagement": 5,
+            "quote_metadata": {"template_generated": False},
+        },
+        {"quote": "Legacy quote without metadata", "engagement": 1},
+    ])
+
+    lines = rendered.splitlines()
+    assert "LLM生成 1" in lines[0]
+    assert "模拟生成 2" in lines[0]
+    assert "LLM quote" in lines[1]
+    assert "[模拟生成，非LLM推理]" not in lines[1]
+    assert "Template quote" in lines[2]
+    assert "[模拟生成，非LLM推理]" in lines[2]
+    assert "Legacy quote without metadata" in lines[3]
+    assert "[模拟生成，非LLM推理]" in lines[3]
+
+def test_consumer_report_section_uses_llm_when_feature_flag_enabled(monkeypatch):
+    from app.services.report_agent import ReportOutline, ReportSection
+
+    agent = ReportAgent(
+        graph_id="g1",
+        simulation_id="sim_1",
+        simulation_requirement="test req",
+        llm_client=MagicMock(),
+        zep_tools=MagicMock(),
+        project_type="consumer_test",
+    )
+    section = ReportSection(title="Section")
+    outline = ReportOutline(title="Report", summary="Summary", sections=[section])
+    monkeypatch.setenv("CONSUMER_REPORT_LLM_ENABLED", "true")
+    agent._generate_section_react = MagicMock(return_value="LLM generated section")
+    agent._render_consumer_section = MagicMock(return_value="Template section")
+
+    result = agent._render_consumer_section_with_optional_llm(
+        section=section,
+        outline=outline,
+        context={"task_type": "concept_test"},
+        previous_sections=[],
+    )
+
+    assert result == "LLM generated section"
+    agent._generate_section_react.assert_called_once()
+    agent._render_consumer_section.assert_not_called()
+
+
+def test_consumer_report_section_falls_back_to_template_when_llm_fails(monkeypatch):
+    from app.services.report_agent import ReportOutline, ReportSection
+
+    agent = ReportAgent(
+        graph_id="g1",
+        simulation_id="sim_1",
+        simulation_requirement="test req",
+        llm_client=MagicMock(),
+        zep_tools=MagicMock(),
+        project_type="consumer_test",
+    )
+    section = ReportSection(title="Section")
+    outline = ReportOutline(title="Report", summary="Summary", sections=[section])
+    monkeypatch.setenv("CONSUMER_REPORT_LLM_ENABLED", "true")
+    agent._generate_section_react = MagicMock(side_effect=RuntimeError("llm down"))
+    agent._render_consumer_section = MagicMock(return_value="Template section")
+
+    result = agent._render_consumer_section_with_optional_llm(
+        section=section,
+        outline=outline,
+        context={"task_type": "concept_test"},
+        previous_sections=[],
+    )
+
+    assert result == "Template section"
+    agent._render_consumer_section.assert_called_once_with("Section", {"task_type": "concept_test"})
+
+
+def test_consumer_report_section_uses_template_when_feature_flag_disabled(monkeypatch):
+    from app.services.report_agent import ReportOutline, ReportSection
+
+    agent = ReportAgent(
+        graph_id="g1",
+        simulation_id="sim_1",
+        simulation_requirement="test req",
+        llm_client=MagicMock(),
+        zep_tools=MagicMock(),
+        project_type="consumer_test",
+    )
+    section = ReportSection(title="Section")
+    outline = ReportOutline(title="Report", summary="Summary", sections=[section])
+    monkeypatch.delenv("CONSUMER_REPORT_LLM_ENABLED", raising=False)
+    agent._generate_section_react = MagicMock(return_value="LLM generated section")
+    agent._render_consumer_section = MagicMock(return_value="Template section")
+
+    result = agent._render_consumer_section_with_optional_llm(
+        section=section,
+        outline=outline,
+        context={"task_type": "concept_test"},
+        previous_sections=[],
+    )
+
+    assert result == "Template section"
+    agent._generate_section_react.assert_not_called()

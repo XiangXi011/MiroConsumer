@@ -1,12 +1,15 @@
-"""File-system state store for Phase 6G society runtime."""
+﻿"""File-system state store for Phase 6G society runtime."""
 
 from __future__ import annotations
 
 import json
+import uuid
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping
+
+from sqlalchemy import insert, select, update
 
 from ....config import Config
 from ....utils.atomic_json import atomic_write_json, safe_read_json
@@ -39,6 +42,16 @@ class SocietyStateStore:
 
     def write_profile_snapshot(self, simulation_id: str, snapshot: Mapping[str, Any]) -> None:
         self._write_json(self.society_dir(simulation_id) / "profile_snapshot.json", dict(snapshot))
+
+    def write_research_boundary(self, simulation_id: str, boundary: Mapping[str, Any]) -> None:
+        self._write_json(self.society_dir(simulation_id) / "research_boundary.json", dict(boundary))
+
+    def read_research_boundary(self, simulation_id: str) -> Dict[str, Any]:
+        path = self.society_dir(simulation_id) / "research_boundary.json"
+        if not path.exists():
+            return {}
+        payload = safe_read_json(path, default={})
+        return payload if isinstance(payload, dict) else {}
 
     def read_profile_snapshot(self, simulation_id: str) -> Dict[str, Any]:
         path = self.society_dir(simulation_id) / "profile_snapshot.json"
@@ -212,5 +225,87 @@ class SocietyStateStore:
         with path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n")
 
+class PostgreSQLStateStore:
+    """Database-backed state store for resumable graph snapshots."""
 
-__all__ = ["SocietyStateStore"]
+    def __init__(self, session_factory) -> None:
+        self._session_factory = session_factory
+
+    def write_graph_snapshot(
+        self,
+        simulation_id: str,
+        round_index: int,
+        snapshot_data: Mapping[str, Any],
+    ) -> Dict[str, Any]:
+        from ....repositories.sqlalchemy import graph_snapshots
+
+        round_number = int(round_index)
+        with self._session_factory() as session:
+            existing = session.execute(
+                select(graph_snapshots.c.id, graph_snapshots.c.version)
+                .where(graph_snapshots.c.simulation_id == simulation_id)
+                .where(graph_snapshots.c.round_index == round_number)
+            ).mappings().fetchone()
+            if existing:
+                session.execute(
+                    update(graph_snapshots)
+                    .where(graph_snapshots.c.id == existing["id"])
+                    .values(
+                        snapshot_data=dict(snapshot_data),
+                        version=int(existing.get("version") or 1) + 1,
+                    )
+                )
+                snapshot_id = existing["id"]
+            else:
+                snapshot_id = f"gs_{uuid.uuid4().hex[:12]}"
+                session.execute(
+                    insert(graph_snapshots).values(
+                        id=snapshot_id,
+                        simulation_id=simulation_id,
+                        round_index=round_number,
+                        snapshot_data=dict(snapshot_data),
+                    )
+                )
+            session.commit()
+        return self.read_graph_snapshot(simulation_id, round_number)
+
+    def read_graph_snapshot(self, simulation_id: str, round_index: int) -> Dict[str, Any]:
+        from ....repositories.sqlalchemy import graph_snapshots
+
+        with self._session_factory() as session:
+            row = session.execute(
+                select(graph_snapshots)
+                .where(graph_snapshots.c.simulation_id == simulation_id)
+                .where(graph_snapshots.c.round_index == int(round_index))
+            ).mappings().fetchone()
+            if row is None:
+                raise ValueError(f"Graph snapshot not found: {simulation_id} round {round_index}")
+            return self._row_to_snapshot(row)
+
+    def resume_from_checkpoint(self, simulation_id: str) -> Dict[str, Any]:
+        from ....repositories.sqlalchemy import graph_snapshots
+
+        with self._session_factory() as session:
+            row = session.execute(
+                select(graph_snapshots)
+                .where(graph_snapshots.c.simulation_id == simulation_id)
+                .order_by(graph_snapshots.c.round_index.desc())
+                .limit(1)
+            ).mappings().fetchone()
+            if row is None:
+                raise ValueError(f"No graph snapshots for simulation: {simulation_id}")
+            return self._row_to_snapshot(row)
+
+    def _row_to_snapshot(self, row: Mapping[str, Any]) -> Dict[str, Any]:
+        return {
+            "snapshot_id": row["id"],
+            "simulation_id": row["simulation_id"],
+            "round_index": int(row["round_index"]),
+            "snapshot_data": dict(row.get("snapshot_data") or {}),
+            "created_at": str(row.get("created_at") or ""),
+            "updated_at": str(row.get("updated_at") or ""),
+            "version": int(row.get("version") or 1),
+        }
+
+__all__ = ["PostgreSQLStateStore", "SocietyStateStore"]
+

@@ -5,7 +5,7 @@ import {
   clearPendingUpload,
   getPendingUpload,
   setPendingUpload,
-} from '../src/store/pendingUpload.js'
+} from '../src/store/pendingUpload.ts'
 
 afterEach(() => {
   clearPendingUpload()

@@ -166,3 +166,18 @@ def test_application_services_do_not_directly_instantiate_thread_task_executor()
         if "ThreadTaskExecutor()" in source:
             offenders.append(path.name)
     assert offenders == []
+
+
+def test_repository_bundle_wraps_project_and_simulation_repos_when_redis_configured(monkeypatch):
+    from app.repositories.cache import CachedProjectRepository, CachedSimulationRepository
+
+    class RedisConfig(Config):
+        DB_URL = ""
+        REDIS_URL = "redis://localhost:6379/0"
+
+    bundle = create_repository_bundle(RedisConfig)
+
+    assert isinstance(bundle.project_repo, CachedProjectRepository)
+    assert isinstance(bundle.simulation_repo, CachedSimulationRepository)
+    assert bundle.project_repo.cache_ttl_seconds == 600
+    assert bundle.simulation_repo.list_cache_ttl_seconds == 300

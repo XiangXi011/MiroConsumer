@@ -450,7 +450,8 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
+// @ts-nocheck
 import { useI18n } from 'vue-i18n'
 import { getConfidenceBadgeClass, getConfidenceLabelText } from '../../utils/consumerMode'
 import ConsumerExplainabilityPanel from './ConsumerExplainabilityPanel.vue'

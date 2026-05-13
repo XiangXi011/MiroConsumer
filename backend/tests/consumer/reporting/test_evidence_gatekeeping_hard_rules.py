@@ -135,14 +135,14 @@ def test_hard_rule_blocks_insufficient_evidence_for_risk_signal():
 def test_gatekeeping_summary_counts_blocked_and_downgraded():
     """Summary must correctly count allowed, downgraded, and blocked."""
     findings = [
-        ResearchFinding(finding_id="f-allowed", finding_type="category_context", summary="A", evidence_snippets=["x"], snippet_id="c1", retrieval_trace_id="t1", source_id="s1"),
+        ResearchFinding(finding_id="f-allowed", finding_type="category_context", summary="A category context", evidence_snippets=["A category context detail"], snippet_id="c1", retrieval_trace_id="t1", source_id="s1"),
         ResearchFinding(finding_id="f-blocked", finding_type="category_context", summary="B"),
-        ResearchFinding(finding_id="f-downgraded", finding_type="trend_signal", summary="C", evidence_snippets=["y"], snippet_id="c2", source_id="s2"),
+        ResearchFinding(finding_id="f-downgraded", finding_type="trend_signal", summary="C trend signal", evidence_snippets=["C trend signal detail"], snippet_id="c2", source_id="s2"),
     ]
     traces = [RetrievalTrace(trace_id="t1", query="a", lane=ResearchSourceLane.LaneA, chunk_ids=["c1"])]
     chunks = [
-        DocumentChunk(chunk_id="c1", doc_id="d1", source_id="s1", text="x"),
-        DocumentChunk(chunk_id="c2", doc_id="d2", source_id="s2", text="y"),
+        DocumentChunk(chunk_id="c1", doc_id="d1", source_id="s1", text="A category context detail"),
+        DocumentChunk(chunk_id="c2", doc_id="d2", source_id="s2", text="C trend signal detail"),
     ]
     sources = [
         ResearchSource(source_id="s1", lane=ResearchSourceLane.LaneA, source_type=ResearchSourceType.Upload, label="A", trust_tier=1),

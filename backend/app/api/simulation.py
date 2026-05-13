@@ -15,7 +15,7 @@ from ..services.simulation_manager import SimulationManager, SimulationStatus
 from ..services.simulation_runner import SimulationRunner
 from ..services.consumer.society.state_store import SocietyStateStore
 from ..utils.logger import get_logger
-from ..utils.request_validator import safe_get_json
+from ..utils.request_validator import safe_get_json, validate_json
 from ..utils.locale import t
 from ..utils.validators import validate_simulation_params
 from ..utils.disclaimer import SIMULATION_DISCLAIMER
@@ -245,13 +245,13 @@ def create_simulation():
         }
     """
     try:
-        raw_data = request.get_json() or {}
-
-        try:
-            validated = CreateSimulationRequest(**raw_data)
-            data = validated.model_dump()
-        except PydanticValidationError as e:
-            return jsonify({"success": False, "error": "VALIDATION_ERROR", "details": e.errors()}), 400
+        raw_data = safe_get_json()
+        if isinstance(raw_data, tuple):
+            return raw_data
+        validated = validate_json(CreateSimulationRequest, raw_data)
+        if isinstance(validated, tuple):
+            return validated
+        data = validated.model_dump()
 
         errors = validate_simulation_params(data)
         if errors:
@@ -345,13 +345,13 @@ def prepare_simulation():
         }
     """
     try:
-        raw_data = request.get_json() or {}
-
-        try:
-            validated = PrepareSimulationRequest(**raw_data)
-            data = validated.model_dump()
-        except PydanticValidationError as e:
-            return jsonify({"success": False, "error": "VALIDATION_ERROR", "details": e.errors()}), 400
+        raw_data = safe_get_json()
+        if isinstance(raw_data, tuple):
+            return raw_data
+        validated = validate_json(PrepareSimulationRequest, raw_data)
+        if isinstance(validated, tuple):
+            return validated
+        data = validated.model_dump()
 
         simulation_id = data.get('simulation_id')
         if not simulation_id:
@@ -1324,13 +1324,13 @@ def start_simulation():
         }
     """
     try:
-        raw_data = request.get_json() or {}
-
-        try:
-            validated = StartSimulationRequest(**raw_data)
-            data = validated.model_dump()
-        except PydanticValidationError as e:
-            return jsonify({"success": False, "error": "VALIDATION_ERROR", "details": e.errors()}), 400
+        raw_data = safe_get_json()
+        if isinstance(raw_data, tuple):
+            return raw_data
+        validated = validate_json(StartSimulationRequest, raw_data)
+        if isinstance(validated, tuple):
+            return validated
+        data = validated.model_dump()
 
         simulation_id = data.get('simulation_id')
         if not simulation_id:
@@ -1375,13 +1375,13 @@ def stop_simulation():
         }
     """
     try:
-        raw_data = request.get_json() or {}
-
-        try:
-            validated = StopSimulationRequest(**raw_data)
-            data = validated.model_dump()
-        except PydanticValidationError as e:
-            return jsonify({"success": False, "error": "VALIDATION_ERROR", "details": e.errors()}), 400
+        raw_data = safe_get_json()
+        if isinstance(raw_data, tuple):
+            return raw_data
+        validated = validate_json(StopSimulationRequest, raw_data)
+        if isinstance(validated, tuple):
+            return validated
+        data = validated.model_dump()
 
         simulation_id = data.get('simulation_id')
         if not simulation_id:

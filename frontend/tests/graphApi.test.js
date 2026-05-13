@@ -1,7 +1,7 @@
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
 
-import { buildOntologyFormData } from '../src/api/ontologyFormData.js'
+import { buildOntologyFormData } from '../src/api/ontologyFormData.ts'
 
 test('buildOntologyFormData defaults project_type to consumer_test when payload omits projectType', () => {
   const fd = buildOntologyFormData({

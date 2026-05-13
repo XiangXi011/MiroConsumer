@@ -43,3 +43,25 @@ Security-relevant events are emitted to audit JSONL with sensitive fields redact
 - tenant denial
 - super_admin cross-tenant access
 - rate limit rejection
+
+## SLO Targets
+
+Initial P3 performance gates use conservative targets until benchmark history is
+available:
+
+- API P99 response time < 500ms for lightweight create/read paths.
+- Report generation P99 < 30s for cached or mocked benchmark fixtures.
+- Simulation start P99 < 2s before asynchronous worker execution begins.
+- Performance regression gate fails when benchmark mean latency regresses by
+  more than 20 percent against `backend/tests/benchmark/baseline.json`.
+
+Benchmark command:
+
+```bash
+cd backend
+uv run --python 3.12 pytest tests/benchmark --benchmark-only --benchmark-json benchmark-results.json
+uv run --python 3.12 python scripts/check_benchmark_regression.py \
+  --current benchmark-results.json \
+  --baseline tests/benchmark/baseline.json \
+  --max-regression 0.20
+```

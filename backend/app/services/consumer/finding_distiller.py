@@ -70,7 +70,7 @@ def _classify_finding_type(text: str) -> str:
     if any(marker in lowered for marker in trend_markers):
         return "trend_signal"
     if any(marker in lowered for marker in propagation_markers):
-        return "trend_signal"
+        return "propagation_signal"
     return "category_context"
 
 
@@ -109,7 +109,7 @@ def _classify_visibility(text: str) -> GraphVisibility:
         return GraphVisibility.Restricted
     if any(marker in lowered for marker in propagation_markers):
         return GraphVisibility.Propagation_Only
-    return GraphVisibility.Propagation_Only
+    return GraphVisibility.GraphVisible
 
 
 def _is_chunk_accepted(chunk: DocumentChunk) -> bool:

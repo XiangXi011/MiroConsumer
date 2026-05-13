@@ -264,3 +264,14 @@ MiroConsumer 复用了原有的多 Agent 仿真主干能力：
 仿真层建立在 **[OASIS (Open Agent Social Interaction Simulations)](https://github.com/camel-ai/oasis)** 之上。
 
 同时也感谢原始的仿真架构，它提供了图谱、仿真、报告和交互主骨架，使 MiroConsumer 可以在同一底座上快速演进成一个消费者传播测试产品。
+
+## 许可证
+
+本项目采用 AGPL-3.0 许可证。
+
+**AGPL 合规说明：**
+
+- 如果您通过网络提供本软件的服务（SaaS），必须向使用者提供完整源代码。
+- 当前端代码通过网络交互调用本系统能力时，相关修改与部署版本同样需要遵守 AGPL-3.0 的源代码提供义务。
+- 修改后的代码必须同样以 AGPL-3.0 发布。
+- 完整许可证条款见 [LICENSE](LICENSE) 文件。

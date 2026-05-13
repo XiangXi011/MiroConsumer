@@ -75,12 +75,12 @@ def test_compare_run_vs_run_produces_snapshot(tmp_path):
     sim_right = "sim_right"
     _write_consumer_rounds(tmp_path, sim_left)
     _write_consumer_rounds(tmp_path, sim_right)
-    # Phase 5C: provide long evidence text so findings pass validation gatekeeping
+    # Phase 6J: evidence must be semantically aligned, not merely long.
     _write_consumer_config(tmp_path, sim_left, findings=[
-        {"finding_id": "f1", "finding_type": "category_context", "summary": "Sugar concern", "source_label": "brief_background", "evidence_snippets": ["x" * 200]},
+        {"finding_id": "f1", "finding_type": "category_context", "summary": "Sugar concern", "source_label": "brief_background", "evidence_snippets": ["Sugar concern evidence detail"]},
     ])
     _write_consumer_config(tmp_path, sim_right, findings=[
-        {"finding_id": "f2", "finding_type": "category_context", "summary": "Price concern", "source_label": "public_web", "evidence_snippets": ["y" * 200]},
+        {"finding_id": "f2", "finding_type": "category_context", "summary": "Price concern", "source_label": "public_web", "evidence_snippets": ["Price concern evidence detail"]},
     ])
 
     snapshot = compare_run_vs_run(sim_left, sim_right, upload_root=str(tmp_path))
@@ -127,12 +127,12 @@ def test_compare_project_vs_project_produces_snapshot(tmp_path):
     from app.services.consumer.models import ResearchFinding, GraphVisibility
     from app.services.consumer.project_research_persistence import persist_findings
 
-    # Phase 5C: provide long evidence text so findings pass validation gatekeeping
+    # Phase 6J: evidence must be semantically aligned, not merely long.
     persist_findings(left_project, [
-        ResearchFinding(finding_id="f1", finding_type="category_context", summary="Sugar concern", visibility=GraphVisibility.Propagation_Only, source_label="brief_background", evidence_snippets=["x" * 200]),
+        ResearchFinding(finding_id="f1", finding_type="category_context", summary="Sugar concern", visibility=GraphVisibility.Propagation_Only, source_label="brief_background", evidence_snippets=["Sugar concern evidence detail"]),
     ], upload_root=str(tmp_path))
     persist_findings(right_project, [
-        ResearchFinding(finding_id="f2", finding_type="category_context", summary="Market shift", visibility=GraphVisibility.Propagation_Only, source_label="public_web", evidence_snippets=["y" * 200]),
+        ResearchFinding(finding_id="f2", finding_type="category_context", summary="Market shift", visibility=GraphVisibility.Propagation_Only, source_label="public_web", evidence_snippets=["Market shift evidence detail"]),
     ], upload_root=str(tmp_path))
 
     snapshot = compare_project_vs_project(left_project, right_project, upload_root=str(tmp_path))
@@ -326,7 +326,7 @@ def test_side_confidence_downweighted_when_findings_blocked(tmp_path):
             "finding_id": "f1",
             "finding_type": "category_context",
             "summary": "Sugar concern",
-            "evidence_snippets": ["x" * 200],
+            "evidence_snippets": ["Sugar concern evidence detail"],
             "source_label": "brief_background",
             "confidence": 0.9,
         },
@@ -367,13 +367,13 @@ def test_compare_run_vs_run_excludes_blocked_findings_from_divergences(tmp_path)
     sim_right = "sim_gate_right"
     _write_consumer_rounds(tmp_path, sim_left)
     _write_consumer_rounds(tmp_path, sim_right)
-    # Phase 5C: long evidence text for category_context to pass gatekeeping
+    # Phase 6J: evidence must be semantically aligned, not merely long.
     _write_consumer_config(tmp_path, sim_left, findings=[
-        {"finding_id": "f1", "finding_type": "category_context", "summary": "Sugar concern", "source_label": "brief_background", "evidence_snippets": ["x" * 200]},
+        {"finding_id": "f1", "finding_type": "category_context", "summary": "Sugar concern", "source_label": "brief_background", "evidence_snippets": ["Sugar concern evidence detail"]},
         {"finding_id": "f2", "finding_type": "risk_signal", "summary": "No evidence blocked", "source_label": "public_web"},
     ])
     _write_consumer_config(tmp_path, sim_right, findings=[
-        {"finding_id": "f3", "finding_type": "category_context", "summary": "Price concern", "source_label": "public_web", "evidence_snippets": ["y" * 200]},
+        {"finding_id": "f3", "finding_type": "category_context", "summary": "Price concern", "source_label": "public_web", "evidence_snippets": ["Price concern evidence detail"]},
     ])
 
     snapshot = compare_run_vs_run(sim_left, sim_right, upload_root=str(tmp_path))

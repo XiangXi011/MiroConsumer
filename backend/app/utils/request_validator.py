@@ -1,10 +1,32 @@
 """API 请求验证辅助函数"""
 
-from flask import request, jsonify
+from flask import g, request, jsonify
 from pydantic import BaseModel, ValidationError
 from typing import Type, TypeVar, Optional, Union
 
+from app.core.errors import MCErrCode, build_error_payload
+
 T = TypeVar('T', bound=BaseModel)
+
+
+def _standard_validation_payload(
+    *,
+    error_code: str,
+    error_message: str,
+    details: Optional[list] = None,
+    field: str = "",
+    suggestion: str = "Check the request JSON body and retry with the documented schema.",
+) -> dict:
+    code = MCErrCode(error_code)
+    return build_error_payload(
+        code,
+        message=error_message,
+        field=field,
+        request_id=getattr(g, "request_id", None),
+        suggestion=suggestion,
+        legacy_error=error_code,
+        details=details or [],
+    )
 
 
 def safe_get_json(required: bool = True) -> Union[dict, tuple]:
@@ -52,9 +74,12 @@ def validate_json(schema_class: Type[T], data: dict = None) -> Union[T, tuple]:
         for err in e.errors():
             field = ".".join(str(loc) for loc in err["loc"])
             errors.append({"field": field, "message": err["msg"], "type": err["type"]})
+        first_field = errors[0]["field"] if errors else ""
         return jsonify({
-            "success": False,
-            "error": "VALIDATION_ERROR",
-            "message": "Request validation failed",
-            "details": errors
-        }), 400
+            **_standard_validation_payload(
+                error_code="REQUEST_VALIDATION_FAILED",
+                error_message="Request validation failed",
+                details=errors,
+                field=first_field,
+            )
+        }), 422

@@ -2,7 +2,7 @@ import { test } from 'vitest'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
-import { normalizeInterviewHistoryItems } from '../src/utils/consumerInterview.js'
+import { normalizeInterviewHistoryItems } from '../src/utils/consumerInterview.ts'
 
 test('normalizeInterviewHistoryItems formats interview and focus group history', () => {
   const items = normalizeInterviewHistoryItems({

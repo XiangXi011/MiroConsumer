@@ -1,4 +1,4 @@
-﻿name: Build and push Docker image
+name: Build and push Docker image
 
 on:
   push:
@@ -8,6 +8,7 @@ on:
 permissions:
   contents: read
   packages: write
+  security-events: write
 
 jobs:
   build-and-push:
@@ -39,6 +40,44 @@ jobs:
             type=sha
             type=raw,value=latest
 
+      - name: Build backend runtime image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.backend
+          target: runtime
+          load: true
+          push: false
+          tags: |
+            miroconsumer-backend:${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/miroconsumer-backend:${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/miroconsumer-backend:latest
+
+      - name: Build worker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.backend
+          target: worker
+          load: true
+          push: false
+          tags: |
+            miroconsumer-worker:${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/miroconsumer-worker:${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/miroconsumer-worker:latest
+
+      - name: Build frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.frontend
+          load: true
+          push: false
+          tags: |
+            miroconsumer-frontend:${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/miroconsumer-frontend:${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/miroconsumer-frontend:latest
+
       - name: Build local image
         uses: docker/build-push-action@v5
         with:
@@ -51,18 +90,68 @@ jobs:
             ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
+      - name: Generate SBOM
+        shell: bash
+        run: |
+          # trivy fs emits an SPDX JSON SBOM for repository and image build inputs.
+          docker run --rm -v "$PWD:/workspace" -w /workspace aquasec/trivy:0.58.2 \
+            fs --format spdx-json --output sbom.spdx.json .
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-spdx-${{ github.sha }}
+          path: sbom.spdx.json
+          retention-days: 90
+
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@v0.36.0
+        continue-on-error: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/heads/release/') }}
+        with:
+          image-ref: miroconsumer:${{ github.sha }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          exit-code: '1'
+          severity: 'HIGH,CRITICAL'
+          ignore-unfixed: false
+
+      - name: Generate human-readable Trivy report
+        uses: aquasecurity/trivy-action@v0.36.0
+        if: always()
         with:
           image-ref: miroconsumer:${{ github.sha }}
           format: 'table'
-          exit-code: '1'
+          output: 'trivy-results.txt'
           severity: 'HIGH,CRITICAL'
+          ignore-unfixed: false
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+          category: 'trivy-container-scan'
+
+      - name: Upload Trivy scan report as artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trivy-scan-report-${{ github.sha }}
+          path: |
+            trivy-results.sarif
+            trivy-results.txt
+          retention-days: 30
 
       - name: Push image
         shell: bash
         run: |
           set -euo pipefail
+          docker push "ghcr.io/${{ github.repository_owner }}/miroconsumer-backend:${{ github.sha }}"
+          docker push "ghcr.io/${{ github.repository_owner }}/miroconsumer-backend:latest"
+          docker push "ghcr.io/${{ github.repository_owner }}/miroconsumer-worker:${{ github.sha }}"
+          docker push "ghcr.io/${{ github.repository_owner }}/miroconsumer-worker:latest"
+          docker push "ghcr.io/${{ github.repository_owner }}/miroconsumer-frontend:${{ github.sha }}"
+          docker push "ghcr.io/${{ github.repository_owner }}/miroconsumer-frontend:latest"
           while IFS= read -r tag; do
             if [[ -n "$tag" ]]; then
               docker push "$tag"

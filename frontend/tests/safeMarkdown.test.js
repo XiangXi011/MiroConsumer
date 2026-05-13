@@ -1,7 +1,7 @@
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
 
-import { renderSafeMarkdown } from '../src/utils/safeMarkdown.js'
+import { renderSafeMarkdown } from '../src/utils/safeMarkdown.ts'
 
 test('renderSafeMarkdown escapes raw HTML before applying markdown', () => {
   const rendered = renderSafeMarkdown('**safe** <img src=x onerror="alert(1)"> `code<script>`')

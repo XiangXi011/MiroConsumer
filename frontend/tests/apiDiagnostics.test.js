@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {
   createStructuredError,
   createStructuredErrorFromAxiosError,
-} from '../src/api/createStructuredError.js'
+} from '../src/api/createStructuredError.ts'
 
 test('createStructuredError preserves payload as full response', () => {
   const res = { success: false, error: 'test error' }

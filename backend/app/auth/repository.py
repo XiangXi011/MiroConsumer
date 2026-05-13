@@ -1,4 +1,4 @@
-"""Authentication persistence repositories."""
+﻿"""Authentication persistence repositories."""
 
 from abc import ABC, abstractmethod
 from dataclasses import replace
@@ -322,16 +322,85 @@ class SqlAlchemyAuthRepository(AuthRepository):
         )
 
 
+
+class CachedAuthRepository(AuthRepository):
+    """Auth repository decorator that caches user lookups in Redis."""
+
+    USER_TTL_SECONDS = 600
+
+    def __init__(self, wrapped: AuthRepository, cache) -> None:
+        self.wrapped = wrapped
+        self.cache = cache
+
+    @staticmethod
+    def _user_key(user_id: str) -> str:
+        return f"auth:user:{user_id}"
+
+    @staticmethod
+    def _user_to_cache(user: User) -> dict:
+        return dict(user.__dict__)
+
+    @staticmethod
+    def _user_from_cache(payload: dict) -> User:
+        return User(**payload)
+
+    def save_user(self, user: User) -> None:
+        self.wrapped.save_user(user)
+        self.cache.set(self._user_key(user.user_id), self._user_to_cache(user), ttl=self.USER_TTL_SECONDS)
+
+    def get_user(self, user_id: str) -> Optional[User]:
+        cached = self.cache.get(self._user_key(user_id))
+        if isinstance(cached, dict):
+            return self._user_from_cache(cached)
+
+        user = self.wrapped.get_user(user_id)
+        if user is not None:
+            self.cache.set(self._user_key(user_id), self._user_to_cache(user), ttl=self.USER_TTL_SECONDS)
+        return user
+
+    def get_user_by_username(self, username: str) -> Optional[User]:
+        return self.wrapped.get_user_by_username(username)
+
+    def get_user_by_email(self, email: str) -> Optional[User]:
+        return self.wrapped.get_user_by_email(email)
+
+    def save_api_key(self, api_key: APIKey) -> None:
+        self.wrapped.save_api_key(api_key)
+
+    def get_api_key_by_id(self, key_id: str) -> Optional[APIKey]:
+        return self.wrapped.get_api_key_by_id(key_id)
+
+    def get_api_keys_by_user(self, user_id: str) -> List[APIKey]:
+        return self.wrapped.get_api_keys_by_user(user_id)
+
+    def delete_api_key(self, key_id: str) -> bool:
+        return self.wrapped.delete_api_key(key_id)
+
+    def clear_all(self) -> None:
+        self.wrapped.clear_all()
+
+
+def _wrap_auth_cache_if_configured(repository: AuthRepository, config) -> AuthRepository:
+    redis_url = getattr(config, "REDIS_URL", "")
+    if not redis_url:
+        return repository
+    from ..services.application.redis_cache import RedisCache
+    return CachedAuthRepository(repository, RedisCache(redis_url=redis_url))
+
 def create_auth_repository_from_config(config, create_schema: bool = True):
     """Create the configured auth repository and its owned DB engine."""
     from ..repositories.session import create_engine_from_config, create_session_factory
 
     engine = create_engine_from_config(config)
     if engine is None:
-        return MemoryAuthRepository(), None
+        return _wrap_auth_cache_if_configured(MemoryAuthRepository(), config), None
 
     if create_schema:
         auth_metadata.create_all(engine)
 
     session_factory = create_session_factory(engine)
-    return SqlAlchemyAuthRepository(session_factory), engine
+    repository = SqlAlchemyAuthRepository(session_factory)
+    return _wrap_auth_cache_if_configured(repository, config), engine
+
+
+

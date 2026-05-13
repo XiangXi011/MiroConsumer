@@ -60,6 +60,11 @@
       </div>
     </div>
 
+    <RuntimeExceptionalState
+      v-if="runtimeExceptionalState"
+      :state="runtimeExceptionalState"
+    />
+
     <div v-if="isConsumerMode" class="consumer-summary-shell">
       <div class="consumer-round-guide">
         <div class="consumer-round-card">
@@ -324,7 +329,8 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
+// @ts-nocheck
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
@@ -349,6 +355,12 @@ import {
 import BranchInterventionWorkspace from './consumer/BranchInterventionWorkspace.vue'
 import SocietyRunSummary from './consumer/SocietyRunSummary.vue'
 import ChannelFitPanel from './consumer/ChannelFitPanel.vue'
+import RuntimeExceptionalState from './consumer/RuntimeExceptionalState.vue'
+import {
+  getPollingDelay,
+  normalizeTaskState,
+  shouldStopPolling,
+} from '../utils/taskStateMachine'
 
 const { t } = useI18n()
 
@@ -379,6 +391,7 @@ const allActions = ref([]) // 所有动作（增量累积）
 const actionIds = ref(new Set()) // 用于去重的动作ID集合
 const scrollContainer = ref(null)
 const consumerSummary = ref(null)
+const runtimeExceptionalState = ref(null)
 
 // Computed
 // 按时间顺序显示动作（最新的在最后面，即底部）
@@ -498,6 +511,8 @@ const resetAllState = () => {
   prevTwitterRound.value = 0
   prevRedditRound.value = 0
   startError.value = null
+  runtimeExceptionalState.value = null
+  statusPollAttempts.value = 0
   isStarting.value = false
   isStopping.value = false
   stopPolling()  // 停止之前可能存在的轮询
@@ -589,18 +604,33 @@ const handleStopSimulation = async () => {
 // 轮询状态
 let statusTimer = null
 let detailTimer = null
+let statusPollingStartedAt = 0
+const statusPollAttempts = ref(0)
 
 const startStatusPolling = () => {
-  statusTimer = setInterval(fetchRunStatus, 2000)
+  statusPollAttempts.value = 0
+  statusPollingStartedAt = Date.now()
+  scheduleStatusPolling(0)
 }
 
 const startDetailPolling = () => {
   detailTimer = setInterval(fetchRunStatusDetail, 3000)
 }
 
+const scheduleStatusPolling = (attempt) => {
+  if (statusTimer) {
+    clearTimeout(statusTimer)
+    statusTimer = null
+  }
+  const delay = getPollingDelay(attempt)
+  statusTimer = setTimeout(() => {
+    fetchRunStatus()
+  }, delay)
+}
+
 const stopPolling = () => {
   if (statusTimer) {
-    clearInterval(statusTimer)
+    clearTimeout(statusTimer)
     statusTimer = null
   }
   if (detailTimer) {
@@ -621,8 +651,10 @@ const fetchRunStatus = async () => {
     
     if (res.success && res.data) {
       const data = res.data
+      const normalizedState = normalizeTaskState(data)
       
       runStatus.value = data
+      runtimeExceptionalState.value = normalizedState && !normalizedState.terminal ? normalizedState : null
       
       // 分别检测各平台的轮次变化并输出日志
       if (data.twitter_current_round > prevTwitterRound.value) {
@@ -650,10 +682,45 @@ const fetchRunStatus = async () => {
         phase.value = 2
         stopPolling()
         emit('update-status', 'completed')
+        return
       }
+
+      if (normalizedState?.terminal) {
+        addLog(normalizedState.message)
+        phase.value = 2
+        stopPolling()
+        emit('update-status', 'error')
+        return
+      }
+
+      statusPollAttempts.value = 0
+      runtimeExceptionalState.value = normalizedState
+      scheduleStatusPolling(0)
+    } else {
+      throw new Error(res.error || 'run status unavailable')
     }
   } catch (err) {
     console.warn('获取运行状态失败:', err)
+    statusPollAttempts.value += 1
+    const elapsedMs = Date.now() - statusPollingStartedAt
+    const nextDelay = getPollingDelay(statusPollAttempts.value)
+    const stop = shouldStopPolling({
+      status: 'network_error',
+      attempts: statusPollAttempts.value,
+      elapsedMs,
+    })
+    runtimeExceptionalState.value = normalizeTaskState({
+      status: stop ? 'timeout' : 'network_error',
+      retry_attempt: statusPollAttempts.value,
+      next_retry_ms: nextDelay,
+      error_code: 'NETWORK_ERROR',
+    })
+    if (stop) {
+      stopPolling()
+      emit('update-status', 'error')
+      return
+    }
+    scheduleStatusPolling(statusPollAttempts.value)
   }
 }
 
