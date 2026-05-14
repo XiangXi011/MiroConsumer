@@ -4,15 +4,15 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List, Mapping
 
-from .models import GraphVisibility, ResearchFinding
+from .models import GraphVisibility
 from .persona_pack import can_access_deep_graph
 
 
 def resolve_visible_findings(
     persona: Mapping[str, Any],
-    findings: Iterable[ResearchFinding],
+    findings: Iterable[Any],
     round_index: int,
-) -> List[ResearchFinding]:
+) -> List[Any]:
     """Filter research findings based on persona traits and round.
 
     Rules:
@@ -21,12 +21,12 @@ def resolve_visible_findings(
     - Round 1+: Propagation_Only visible to all consumer personas.
     - Restricted only visible to high-search + high-cognition personas.
     """
-    visible: List[ResearchFinding] = []
+    visible: List[Any] = []
     allow_propagation = round_index >= 1
     allow_restricted = allow_propagation and can_access_deep_graph(persona)
 
     for finding in findings:
-        visibility = finding.visibility
+        visibility = _finding_visibility(finding)
         if visibility == GraphVisibility.GraphVisible:
             visible.append(finding)
             continue
@@ -40,6 +40,20 @@ def resolve_visible_findings(
             visible.append(finding)
 
     return visible
+
+
+def _finding_visibility(finding: Any) -> GraphVisibility:
+    visibility_value = None
+    if isinstance(finding, Mapping):
+        visibility_value = finding.get("visibility")
+    else:
+        visibility_value = getattr(finding, "visibility", None)
+    if isinstance(visibility_value, GraphVisibility):
+        return visibility_value
+    try:
+        return GraphVisibility(str(visibility_value or GraphVisibility.GraphVisible.value))
+    except ValueError:
+        return GraphVisibility.GraphVisible
 
 
 def _filter_visible_nodes(

@@ -127,7 +127,16 @@ class RunController:
             store=self.store,
             simulation_id=simulation_id,
         )
-        scheduler = RoundScheduler(executor=executor, population=population, config=config)
+        runtime_topology = build_consumer_network_topology(
+            population,
+            seed=config.random_seed,
+        )
+        scheduler = RoundScheduler(
+            executor=executor,
+            population=population,
+            config=config,
+            network_topology=runtime_topology,
+        )
         progress_buffer = ProgressBuffer(
             store=self.store,
             simulation_id=simulation_id,

@@ -10,11 +10,13 @@ from unittest.mock import MagicMock
 import pytest
 
 from app.services.consumer.society.agent_step_executor import AgentStepExecutor
+from app.services.consumer.models import GraphVisibility, ResearchFinding
 from app.services.consumer.society.population_models import (
     ConsumerSocietyAgent,
     ConsumerSocietyRunConfig,
 )
 from app.services.consumer.society.progress_buffer import ProgressBuffer
+from app.services.consumer.society.dynamic_participation import ParticipationDecision
 from app.services.consumer.society.round_scheduler import RoundScheduler
 from app.services.consumer.society.run_controller import RunController
 from app.services.consumer.society.society_runtime import ConsumerSocietyRuntime
@@ -174,6 +176,20 @@ class FakeBudgetManager:
             return False
         self.used_llm_calls += 1
         return True
+
+
+class AlwaysParticipates:
+    def decide(self, **kwargs):
+        return ParticipationDecision(
+            participated=True,
+            participation_probability=1.0,
+            random_draw=0.0,
+            reason="test",
+            engagement_level=1.0,
+            topic_relevance=1.0,
+            fatigue=0.0,
+            neighbor_activity=0.0,
+        )
 
 
 def _make_agent(agent_id: str, layer: str) -> ConsumerSocietyAgent:
@@ -438,3 +454,149 @@ def test_progress_buffer_preserves_progress_state_between_flushes():
     # Original base keys should still be present
     assert written["simulation_id"] == "sim-test"
     assert written["status"] == "running"
+
+
+def test_round_scheduler_filters_research_findings_per_agent_visibility():
+    class FindingRecorderMapper:
+        def map_agent_event(self, *, agent, round_index, visible_claims, previous_events, brief_context, research_findings):
+            return {
+                "event_id": f"{agent.agent_id}:r{round_index}:FIRST_IMPRESSION",
+                "round_index": round_index,
+                "agent_id": agent.agent_id,
+                "segment": agent.segment,
+                "role": agent.role.value,
+                "layer": agent.layer,
+                "consumer_event_type": "FIRST_IMPRESSION",
+                "claim": "claim",
+                "trust": 0.5,
+                "purchase_intent": 0.5,
+                "quote": "quote",
+                "visible_finding_ids": [finding.finding_id for finding in research_findings],
+            }
+
+    low_search = _make_agent("low-search", "core")
+    low_search.traits = {"search_propensity": "low", "cognition_level": "medium"}
+    high_search = _make_agent("high-search", "core")
+    high_search.traits = {"search_propensity": "high", "cognition_level": "high"}
+    findings = [
+        ResearchFinding(
+            finding_id="initial-1",
+            finding_type="category_context",
+            summary="initial",
+            visibility=GraphVisibility.Initial,
+        ),
+        ResearchFinding(
+            finding_id="propagation-1",
+            finding_type="trend_signal",
+            summary="propagation",
+            visibility=GraphVisibility.Propagation_Only,
+        ),
+        ResearchFinding(
+            finding_id="restricted-1",
+            finding_type="risk_signal",
+            summary="restricted",
+            visibility=GraphVisibility.Restricted,
+        ),
+    ]
+    executor = AgentStepExecutor(FindingRecorderMapper(), FakeReasoningEngine(), MagicMock(), "sim")
+    scheduler = RoundScheduler(
+        executor,
+        [low_search, high_search],
+        ConsumerSocietyRunConfig(mode="standard", core_persona_count=2, max_rounds=2),
+        participation_model=AlwaysParticipates(),
+    )
+
+    events, _ = scheduler.run_round(
+        1,
+        ["claim"],
+        {},
+        findings,
+        [],
+        FakeBudgetManager(),
+        MagicMock(),
+        {"completed_agents": 0, "failed_count": 0, "template_fallback_count": 0, "llm_invoked_count": 0, "rules_count": 0},
+    )
+
+    by_agent = {event["agent_id"]: event for event in events}
+    assert by_agent["low-search"]["visible_finding_ids"] == ["initial-1", "propagation-1"]
+    assert by_agent["high-search"]["visible_finding_ids"] == [
+        "initial-1",
+        "propagation-1",
+        "restricted-1",
+    ]
+
+
+def test_round_scheduler_routes_previous_events_through_network_topology():
+    class PreviousEventRecorderMapper:
+        def map_agent_event(self, *, agent, round_index, visible_claims, previous_events, brief_context, research_findings):
+            return {
+                "event_id": f"{agent.agent_id}:r{round_index}:FIRST_IMPRESSION",
+                "round_index": round_index,
+                "agent_id": agent.agent_id,
+                "segment": agent.segment,
+                "role": agent.role.value,
+                "layer": agent.layer,
+                "consumer_event_type": "FIRST_IMPRESSION",
+                "claim": "claim",
+                "trust": 0.5,
+                "purchase_intent": 0.5,
+                "quote": "quote",
+                "received_previous_event_ids": [event["event_id"] for event in previous_events],
+                "brief_propagation_strength": brief_context["propagation_context"]["propagation_strength"],
+            }
+
+    target = _make_agent("target", "core")
+    topology = {
+        "edges": [
+            {
+                "edge_id": "edge-source-mid",
+                "source_agent_id": "source",
+                "target_agent_id": "mid",
+                "trust_weight": 0.9,
+                "influence_weight": 0.8,
+                "exposure_frequency": 0.7,
+                "misread_probability": 0.1,
+            },
+            {
+                "edge_id": "edge-mid-target",
+                "source_agent_id": "mid",
+                "target_agent_id": "target",
+                "trust_weight": 0.8,
+                "influence_weight": 0.7,
+                "exposure_frequency": 0.6,
+                "misread_probability": 0.2,
+            },
+        ]
+    }
+    previous_events = [
+        {"event_id": "evt-source", "agent_id": "source", "round_index": 0, "segment": "segment"},
+        {"event_id": "evt-unrouted", "agent_id": "unrouted", "round_index": 0, "segment": "segment"},
+        {"event_id": "evt-self", "agent_id": "target", "round_index": 0, "segment": "segment"},
+    ]
+    executor = AgentStepExecutor(PreviousEventRecorderMapper(), FakeReasoningEngine(), MagicMock(), "sim")
+    scheduler = RoundScheduler(
+        executor,
+        [target],
+        ConsumerSocietyRunConfig(mode="standard", core_persona_count=1, max_rounds=2),
+        participation_model=AlwaysParticipates(),
+        network_topology=topology,
+    )
+
+    events, _ = scheduler.run_round(
+        1,
+        ["claim"],
+        {},
+        [],
+        previous_events,
+        FakeBudgetManager(),
+        MagicMock(),
+        {"completed_agents": 0, "failed_count": 0, "template_fallback_count": 0, "llm_invoked_count": 0, "rules_count": 0},
+    )
+
+    event = events[0]
+    assert event["received_previous_event_ids"] == ["evt-source", "evt-self"]
+    assert event["source_input_refs"] == ["evt-source"]
+    assert event["propagation_context"]["router"] == "network_topology_bfs"
+    assert event["propagation_context"]["routed_event_ids"] == ["evt-source"]
+    assert event["propagation_strength"] > 0
+    assert event["brief_propagation_strength"] == event["propagation_strength"]

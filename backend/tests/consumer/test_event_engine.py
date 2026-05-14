@@ -52,6 +52,16 @@ def test_classify_clarification_recovery():
     assert event_type == "clarification_recovery"
 
 
+def test_classify_unknown_transition_defaults_to_challenge_not_positive_relay():
+    event_type = classify_propagation_event(
+        before_attitude="neutral",
+        after_attitude="neutral",
+        trigger="category_context",
+        speech_act="statement",
+    )
+    assert event_type == "skeptical_challenge"
+
+
 def test_derive_trigger_from_findings_prefers_risk():
     findings = [
         {"finding_type": "category_context", "finding_id": "c1"},

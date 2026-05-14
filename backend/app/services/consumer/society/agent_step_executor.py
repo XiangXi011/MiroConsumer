@@ -111,18 +111,37 @@ class AgentStepExecutor:
         brief_context: Mapping[str, Any],
         research_findings: List[Any],
         previous_events: List[Dict[str, Any]],
+        *,
+        agent_brief_contexts: Mapping[str, Mapping[str, Any]] | None = None,
+        agent_research_findings: Mapping[str, List[Any]] | None = None,
+        agent_previous_events: Mapping[str, List[Dict[str, Any]]] | None = None,
     ) -> tuple[List[Dict[str, Any]], List[ReasoningTrace]]:
         """Execute shadow agents as a batch (no LLM) with one aggregate trace."""
         events: List[Dict[str, Any]] = []
         agents_list = list(agents)
         for agent in agents_list:
+            scoped_brief_context = (
+                agent_brief_contexts.get(agent.agent_id, brief_context)
+                if agent_brief_contexts
+                else brief_context
+            )
+            scoped_research_findings = (
+                agent_research_findings.get(agent.agent_id, research_findings)
+                if agent_research_findings
+                else research_findings
+            )
+            scoped_previous_events = (
+                agent_previous_events.get(agent.agent_id, previous_events)
+                if agent_previous_events
+                else previous_events
+            )
             event = self.event_mapper.map_agent_event(
                 agent=agent,
                 round_index=round_index,
                 visible_claims=claims,
-                previous_events=previous_events,
-                brief_context=brief_context,
-                research_findings=research_findings,
+                previous_events=scoped_previous_events,
+                brief_context=scoped_brief_context,
+                research_findings=scoped_research_findings,
             )
             event["reasoning_layer"] = agent.layer
             event["reasoning_method"] = "rule_state_machine"
@@ -239,15 +258,35 @@ class AgentStepExecutor:
         elif backend == "template_fallback":
             fallback_reason = "unknown"
 
-        perception_reasoning = AgentStepExecutor._join_reasoning_parts(
+        generated_by = AgentStepExecutor._expression_source(event, backend)
+        propagation_context = event.get("propagation_context") if isinstance(event.get("propagation_context"), Mapping) else {}
+        visible_finding_ids = AgentStepExecutor._join_values(
+            event.get("visible_finding_ids") or event.get("trigger_finding_ids")
+        )
+        reason_codes = AgentStepExecutor._join_values(event.get("reason_codes"))
+        candidate_action_scores = AgentStepExecutor._format_candidate_scores(
+            event.get("candidate_action_scores")
+            or event.get("candidate_scores")
+            or event.get("action_scores")
+        )
+
+        fallback_perception = AgentStepExecutor._join_reasoning_parts(
             [
                 f"claim={claim}" if claim else "",
                 f"agent_id={agent.agent_id}",
                 f"segment={agent.segment}",
                 f"source_input_refs={source_input_refs}" if source_input_refs else "",
+                f"visible_finding_ids={visible_finding_ids}" if visible_finding_ids else "",
+                (
+                    f"propagation_strength={propagation_context.get('propagation_strength')}"
+                    if propagation_context.get("propagation_strength") is not None
+                    else ""
+                ),
             ]
         )
-        decision_reasoning = AgentStepExecutor._join_reasoning_parts(
+        perception_reasoning = str(event.get("perception_reasoning") or "").strip() or fallback_perception
+
+        fallback_decision = AgentStepExecutor._join_reasoning_parts(
             [
                 f"event_type={event_type}" if event_type else "",
                 f"reasoning_method={reasoning_method}" if reasoning_method else "",
@@ -257,9 +296,48 @@ class AgentStepExecutor:
                     if event.get("purchase_intent") is not None
                     else ""
                 ),
+                f"candidate_action_scores={candidate_action_scores}" if candidate_action_scores else "",
+                f"reason_codes={reason_codes}" if reason_codes else "",
             ]
         )
-        expression_reasoning = f"quote={quote}" if quote else ""
+        decision_reasoning = str(event.get("decision_reasoning") or "").strip() or fallback_decision
+        decision_reasoning = AgentStepExecutor._append_reasoning_parts(
+            decision_reasoning,
+            [
+                f"candidate_action_scores={candidate_action_scores}" if candidate_action_scores else "",
+                f"reason_codes={reason_codes}" if reason_codes else "",
+            ],
+        )
+
+        fallback_expression = AgentStepExecutor._join_reasoning_parts(
+            [
+                f"generated_by={generated_by}" if generated_by else "",
+                AgentStepExecutor._template_generation_part(event),
+                f"quote={quote}" if quote else "",
+            ]
+        )
+        expression_reasoning = str(event.get("expression_reasoning") or "").strip() or fallback_expression
+        expression_reasoning = AgentStepExecutor._append_reasoning_parts(
+            expression_reasoning,
+            [
+                f"generated_by={generated_by}" if generated_by else "",
+                AgentStepExecutor._template_generation_part(event),
+            ],
+        )
+        reasoning_triplets = AgentStepExecutor._normalize_reasoning_triplets(
+            event.get("reasoning_triplets")
+        )
+        if not reasoning_triplets:
+            reasoning_triplets = AgentStepExecutor._build_reasoning_triplets(
+                perception_reasoning=perception_reasoning,
+                decision_reasoning=decision_reasoning,
+                expression_reasoning=expression_reasoning,
+                source_input_refs=source_input_refs,
+                visible_finding_ids=visible_finding_ids,
+                event_type=event_type,
+                propagation_context=propagation_context,
+                primary_conclusion=str(quote or ""),
+            )
 
         return ReasoningTrace(
             reasoning_backend=backend,
@@ -268,17 +346,11 @@ class AgentStepExecutor:
             fallback_reason=fallback_reason,
             model=str(event.get("model_version", "") or ""),
             latency_ms=float(event.get("latency_ms", 0.0) or 0.0),
-            reasoning_summary=str(quote) if quote else "",
+            reasoning_summary=str(event.get("reasoning_summary") or quote or ""),
             perception_reasoning=perception_reasoning,
             decision_reasoning=decision_reasoning,
             expression_reasoning=expression_reasoning,
-            reasoning_triplets=[
-                {
-                    "input": perception_reasoning,
-                    "evidence": decision_reasoning,
-                    "conclusion": str(quote) if quote else expression_reasoning,
-                }
-            ],
+            reasoning_triplets=reasoning_triplets,
             related_finding_id=finding_id,
             related_event_id=event_id,
             agent_id=agent.agent_id,
@@ -312,6 +384,114 @@ class AgentStepExecutor:
     @staticmethod
     def _join_reasoning_parts(parts: Iterable[str]) -> str:
         return "; ".join(part for part in parts if part)
+
+    @staticmethod
+    def _append_reasoning_parts(base: str, parts: Iterable[str]) -> str:
+        existing = str(base or "")
+        additions = [
+            part for part in parts
+            if part and part not in existing
+        ]
+        if not additions:
+            return existing
+        return AgentStepExecutor._join_reasoning_parts([existing, *additions])
+
+    @staticmethod
+    def _expression_source(event: Mapping[str, Any], backend: str) -> str:
+        metadata = event.get("quote_metadata")
+        if isinstance(metadata, Mapping) and metadata.get("source"):
+            return str(metadata.get("source") or "").strip()
+        return str(event.get("generated_by") or backend or "").strip()
+
+    @staticmethod
+    def _template_generation_part(event: Mapping[str, Any]) -> str:
+        metadata = event.get("quote_metadata")
+        if isinstance(metadata, Mapping) and "template_generated" in metadata:
+            return f"template_generated={bool(metadata.get('template_generated'))}"
+        if event.get("reasoning_backend") == "template_fallback":
+            return "template_generated=True"
+        return ""
+
+    @staticmethod
+    def _format_candidate_scores(value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, Mapping):
+            items = sorted(value.items(), key=lambda item: str(item[0]))
+            return ",".join(f"{key}:{score}" for key, score in items)
+        if isinstance(value, Iterable) and not isinstance(value, (str, bytes)):
+            parts: List[str] = []
+            for item in value:
+                if isinstance(item, Mapping):
+                    action = item.get("action") or item.get("event_type") or item.get("name")
+                    score = item.get("score")
+                    if action is not None and score is not None:
+                        parts.append(f"{action}:{score}")
+                    elif action is not None:
+                        parts.append(str(action))
+                else:
+                    parts.append(str(item))
+            return ",".join(part for part in parts if part)
+        return str(value).strip()
+
+    @staticmethod
+    def _normalize_reasoning_triplets(value: Any) -> List[Dict[str, str]]:
+        if not isinstance(value, list):
+            return []
+        triplets: List[Dict[str, str]] = []
+        for item in value:
+            if not isinstance(item, Mapping):
+                continue
+            triplet = {
+                "input": str(item.get("input", "") or ""),
+                "evidence": str(item.get("evidence", "") or ""),
+                "conclusion": str(item.get("conclusion", "") or ""),
+            }
+            if any(part.strip() for part in triplet.values()):
+                triplets.append(triplet)
+        return triplets
+
+    @staticmethod
+    def _build_reasoning_triplets(
+        *,
+        perception_reasoning: str,
+        decision_reasoning: str,
+        expression_reasoning: str,
+        source_input_refs: str,
+        visible_finding_ids: str,
+        event_type: str,
+        propagation_context: Mapping[str, Any],
+        primary_conclusion: str = "",
+    ) -> List[Dict[str, str]]:
+        triplets = [
+            {
+                "input": perception_reasoning,
+                "evidence": decision_reasoning,
+                "conclusion": str(primary_conclusion or "").strip() or expression_reasoning,
+            }
+        ]
+        if source_input_refs or propagation_context.get("routed_event_ids"):
+            triplets.append(
+                {
+                    "input": f"source_input_refs={source_input_refs}",
+                    "evidence": (
+                        f"propagation_strength={propagation_context.get('propagation_strength', 0.0)}"
+                    ),
+                    "conclusion": f"event_type={event_type}",
+                }
+            )
+        if visible_finding_ids:
+            triplets.append(
+                {
+                    "input": f"visible_finding_ids={visible_finding_ids}",
+                    "evidence": decision_reasoning,
+                    "conclusion": f"event_type={event_type}",
+                }
+            )
+        return [
+            triplet for triplet in triplets
+            if any(str(triplet.get(key, "")).strip() for key in ("input", "evidence", "conclusion"))
+        ]
 
 
 __all__ = ["AgentStepExecutor"]

@@ -354,3 +354,52 @@ class TestSocietyRuntimeTraceMapping:
         assert payload["reasoning_triplets"][0]["input"].startswith("claim=low sugar")
         assert payload["reasoning_triplets"][0]["evidence"].startswith("event_type=ASK_PROOF")
         assert payload["reasoning_triplets"][0]["conclusion"] == "I need proof before I trust this."
+
+    def test_agent_step_trace_preserves_structured_reasoning_and_generation_source(self):
+        agent = ConsumerSocietyAgent(
+            agent_id="agent-77",
+            parent_persona_id="persona-77",
+            layer="core",
+            segment="urban commuters",
+            role=ConsumerRole.Skeptic,
+        )
+        event = {
+            "event_id": "event-77",
+            "consumer_event_type": "ASK_PROOF",
+            "claim": "durable coating",
+            "quote": "Show me the abrasion data first.",
+            "reasoning_backend": "llm",
+            "llm_invoked": True,
+            "reasoning_method": "llm_deep_reasoning",
+            "perception_reasoning": "Perception: claim=durable coating; evidence_digest=abrasion concern",
+            "decision_reasoning": "Decision: selected=ASK_PROOF",
+            "expression_reasoning": "Expression: quote asks for abrasion data",
+            "reasoning_triplets": [
+                {
+                    "input": "claim=durable coating",
+                    "evidence": "abrasion concern",
+                    "conclusion": "ASK_PROOF",
+                },
+                {
+                    "input": "segment=urban commuters",
+                    "evidence": "high skepticism",
+                    "conclusion": "request proof before purchase",
+                },
+            ],
+            "candidate_action_scores": [
+                {"action": "ASK_PROOF", "score": 0.82},
+                {"action": "FIRST_IMPRESSION", "score": 0.31},
+            ],
+            "reason_codes": ["VISIBLE_RISK_SIGNAL", "LOW_TRUST"],
+            "quote_metadata": {"source": "llm", "template_generated": False},
+        }
+
+        trace = AgentStepExecutor._trace_from_event(agent, event, round_index=2)
+
+        assert trace.perception_reasoning.startswith("Perception:")
+        assert "candidate_action_scores" in trace.decision_reasoning
+        assert "reason_codes=VISIBLE_RISK_SIGNAL,LOW_TRUST" in trace.decision_reasoning
+        assert "generated_by=llm" in trace.expression_reasoning
+        assert "template_generated=False" in trace.expression_reasoning
+        assert len(trace.reasoning_triplets) == 2
+        assert trace.reasoning_triplets[1]["input"] == "segment=urban commuters"

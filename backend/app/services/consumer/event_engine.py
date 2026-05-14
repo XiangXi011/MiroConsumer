@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Literal
+from typing import Any, Dict, List, Literal, Optional
 
 from .models import PropagationEvent
 
@@ -49,7 +49,7 @@ def classify_propagation_event(
     if after == "positive":
         return "positive_relay"
 
-    return "positive_relay"
+    return "skeptical_challenge"
 
 
 def build_propagation_event(
