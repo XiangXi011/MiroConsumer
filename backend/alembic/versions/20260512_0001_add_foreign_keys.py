@@ -1,7 +1,7 @@
 """add_foreign_keys_core_tables
 
 Revision ID: 20260512_0001_add_foreign_keys
-Revises: 20260508_0003_add_performance_indexes
+Revises: 20260508_0003_perf_indexes
 Create Date: 2026-05-12
 Revision rationale: enforce durable parent-child integrity across project, simulation, report, queue, and asset tables.
 """
@@ -13,7 +13,7 @@ from typing import Sequence, Union
 from alembic import op
 
 revision: str = "20260512_0001_add_foreign_keys"
-down_revision: Union[str, None] = "20260508_0003_add_performance_indexes"
+down_revision: Union[str, None] = "20260508_0003_perf_indexes"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

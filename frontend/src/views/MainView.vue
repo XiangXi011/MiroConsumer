@@ -281,6 +281,25 @@ const startBuildGraph = async () => {
     const res = await buildGraph({ project_id: currentProjectId.value })
     if (res.success) {
       addLog(`Graph build task started. Task ID: ${res.data.task_id}`)
+      if (res.data.graph_id) {
+        addLog(`Graph build completed. Graph ID: ${res.data.graph_id}`)
+        buildProgress.value = { progress: 100, message: res.data.message || 'Graph build complete.' }
+        currentPhase.value = 2
+
+        const projRes = await getProject(currentProjectId.value)
+        if (projRes.success) {
+          projectData.value = projRes.data
+        } else {
+          projectData.value = {
+            ...(projectData.value || {}),
+            project_id: currentProjectId.value,
+            graph_id: res.data.graph_id,
+            status: 'graph_completed'
+          }
+        }
+        await loadGraph(res.data.graph_id)
+        return
+      }
       startGraphPolling()
       startPollingTask(res.data.task_id)
     } else {

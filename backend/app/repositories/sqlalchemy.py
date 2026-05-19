@@ -407,10 +407,14 @@ class SQLAlchemyProjectRepository(ProjectRepository):
         data.pop("status", None)
         with self._session() as session:
             existing = session.execute(
-                select(projects.c.id, projects.c.version).where(projects.c.id == project.project_id)
+                select(projects.c.id, projects.c.version, projects.c.data).where(projects.c.id == project.project_id)
             ).fetchone()
             if existing:
-                expected = _expected_version(project, existing.version)
+                existing_data = dict(existing._mapping["data"] or {})
+                for key, value in existing_data.items():
+                    if key.startswith("_") and key not in data:
+                        data[key] = value
+                expected = _expected_version(project, existing._mapping["version"])
                 result = session.execute(
                     update(projects)
                     .where(projects.c.id == project.project_id)
@@ -537,24 +541,31 @@ class SQLAlchemyConsumerStateRepository(ConsumerStateRepository):
     def _session(self):
         return self._session_factory()
 
+    def _filesystem_accessor(self):
+        from ..services.consumer.simulation_state_accessor import ConsumerSimulationStateAccessor
+
+        return ConsumerSimulationStateAccessor
+
     def load_consumer_config(self, simulation_id: str) -> Dict[str, Any]:
         with self._session() as session:
             row = session.execute(
                 select(simulations.c.data).where(simulations.c.id == simulation_id)
             ).fetchone()
-            if row is None or row[0] is None:
-                return {}
-            data = row[0] if isinstance(row[0], dict) else {}
-            return data.get("_consumer_config", {})
+            if row is not None and row[0] is not None:
+                data = row[0] if isinstance(row[0], dict) else {}
+                config = data.get("_consumer_config", {})
+                if config:
+                    return config
+        return self._filesystem_accessor().load_consumer_config(simulation_id)
 
     def load_consumer_rounds(self, simulation_id: str) -> List[Dict[str, Any]]:
-        return []
+        return self._filesystem_accessor().load_consumer_rounds(simulation_id)
 
     def load_brief(self, simulation_id: str) -> Optional[Any]:
-        return None
+        return self._filesystem_accessor().load_brief(simulation_id)
 
     def load_research_findings(self, simulation_id: str) -> List[Dict[str, Any]]:
-        return []
+        return self._filesystem_accessor().load_research_findings(simulation_id)
 
 
 class SQLAlchemyConsumerProjectResearchProvider(ConsumerProjectResearchProvider):

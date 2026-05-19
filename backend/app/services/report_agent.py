@@ -13,6 +13,7 @@ import os
 import json
 import time
 import re
+from collections import Counter
 from typing import Dict, Any, List, Optional, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -2174,17 +2175,18 @@ class ReportAgent:
         )
         builder = ConsumerReportContextBuilder()
         snapshots = builder.load_events(rounds_path)
+        context: Dict[str, Any]
         if not snapshots:
             from .consumer.society.report_adapter import SocietyReportAdapter
 
             society_context = SocietyReportAdapter().build_report_context(self.simulation_id)
             if society_context.get("society_agents_count", 0) > 0:
-                society_context["replay_alignment"] = self._load_latest_replay_alignment()
-                return society_context
-            raise ValueError(f"消费者传播快照不存在: {self.simulation_id}")
-
-        # Phase 1 baseline context
-        context = builder.build(snapshots)
+                context = self._build_consumer_context_from_society_context(society_context)
+            else:
+                raise ValueError(f"消费者传播快照不存在: {self.simulation_id}")
+        else:
+            # Phase 1 baseline context
+            context = builder.build(snapshots)
 
         # Extract propagation events for Phase 2 enrichment
         all_events = []
@@ -2307,8 +2309,8 @@ class ReportAgent:
             brief.target_audience if brief is not None and getattr(brief, "target_audience", None) else brief_summary.get("target_audience", [])
         )
 
-        # Merge Phase 2 fields when events exist
-        if all_events:
+        # Merge Phase 2 fields when we have propagation events or research findings.
+        if all_events or research_findings:
             from ..services.consumer.scoring import build_consumer_summary
             from ..services.consumer.report_context import build_consumer_report_context
 
@@ -2358,14 +2360,24 @@ class ReportAgent:
                     snapshot=report_snapshot,
                 )
 
-            context["event_counts"] = phase2_summary.event_counts
-            context["top_risk_findings"] = phase2_summary.top_risk_findings
-            context["causal_chains"] = phase2_context["causal_chains"]
-            context["event_led_reversals"] = phase2_context["event_led_reversals"]
+            if all_events:
+                context["event_counts"] = phase2_summary.event_counts
+                context["top_risk_findings"] = phase2_summary.top_risk_findings
+                context["causal_chains"] = phase2_context["causal_chains"]
+                context["event_led_reversals"] = phase2_context["event_led_reversals"]
+
             context["retrieval_provenance"] = phase2_context.get("retrieval_provenance")
             context["source_catalog"] = phase2_context.get("source_catalog")
             context["enriched_findings"] = phase2_context.get("enriched_findings")
             context["enriched_traces"] = phase2_context.get("enriched_traces")
+            context["finding_evidence_atoms"] = phase2_context.get(
+                "finding_evidence_atoms",
+                context.get("finding_evidence_atoms", []),
+            )
+            context["evidence_atom_count"] = phase2_context.get(
+                "evidence_atom_count",
+                context.get("evidence_atom_count", 0),
+            )
             context["evidence_gatekeeping_summary"] = (
                 phase2_summary.evidence_gatekeeping_summary
                 if supplemental_merged
@@ -2386,12 +2398,8 @@ class ReportAgent:
             context["resisted_price_points"] = phase2_summary.resisted_price_points or context.get("resisted_price_points", [])
             context["top_price_objections"] = phase2_summary.top_price_objections or context.get("top_price_objections", [])
             context["price_context"] = phase2_summary.price_context or context.get("price_context", "")
-        elif loaded_from_project and persisted_snapshot is not None:
-            # Enrich findings/traces with snapshot even when there are no propagation events
-            from ..services.consumer.report_context import enrich_report_context_with_snapshot
-            enrich_report_context_with_snapshot(
-                context, research_findings, retrieval_traces, persisted_snapshot
-            )
+
+        context.update(self._build_research_synthesis(context))
 
         # Phase 4A: include latest replay alignment for this simulation if available
         context["replay_alignment"] = self._load_latest_replay_alignment()
@@ -2403,6 +2411,327 @@ class ReportAgent:
             context,
             society_adapter.build_report_context(self.simulation_id),
         )
+
+    def _build_consumer_context_from_society_context(
+        self, society_context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        context = dict(society_context)
+        event_counts = {
+            str(key): int(value or 0)
+            for key, value in dict(context.get("society_event_summary") or {}).items()
+        }
+        total_events = sum(event_counts.values())
+
+        positive_events = {
+            "ADVOCACY",
+            "FIRST_IMPRESSION",
+            "PURCHASE_SIGNAL",
+            "TRUST_RECOVERY",
+        }
+        negative_events = {
+            "ASK_PROOF",
+            "MISREAD_CLAIM",
+            "PRICE_RESISTANCE",
+            "TRUST_OBJECTION",
+        }
+
+        positive_count = sum(event_counts.get(name, 0) for name in positive_events)
+        negative_count = sum(event_counts.get(name, 0) for name in negative_events)
+        neutral_count = max(total_events - positive_count - negative_count, 0)
+
+        if total_events > 0:
+            post_acceptance = {
+                "positive": positive_count / total_events,
+                "neutral": neutral_count / total_events,
+                "negative": negative_count / total_events,
+            }
+        else:
+            post_acceptance = {"positive": 0.0, "neutral": 1.0, "negative": 0.0}
+
+        initial_acceptance = {"positive": 0.0, "neutral": 1.0, "negative": 0.0}
+        summary = {
+            "initial_acceptance": initial_acceptance,
+            "post_propagation_acceptance": post_acceptance,
+            "attitude_shift_rate": abs(post_acceptance["positive"] - initial_acceptance["positive"]),
+        }
+
+        metrics = dict(context.get("society_metrics") or {})
+        risk_points = self._string_list(context.get("society_top_risk_points"))
+        if not risk_points:
+            if metrics.get("misread_rate", 0) > 0:
+                risk_points.append("功效边界和光学修色容易触发误读")
+            if metrics.get("price_resistance_index", 0) > 0:
+                risk_points.append("价格需要与同类产品形成清晰价值解释")
+            if metrics.get("evidence_demand_rate", 0) > 0:
+                risk_points.append("需要补充检测证明、备案信息和真实用户反馈")
+
+        resonance_points = self._string_list(context.get("society_top_resonance_points"))
+        if not resonance_points and positive_count:
+            resonance_points = ["核心宣称有第一眼记忆点，但需要真实场景支撑"]
+
+        misread_points = self._string_list(context.get("society_top_misreads"))
+        if not misread_points and event_counts.get("MISREAD_CLAIM", 0):
+            misread_points = ["核心宣称容易被误读为全场景承诺或短期强承诺"]
+
+        representative_voc_quotes = self._voc_quote_groups(
+            context.get("representative_voc_quotes")
+        )
+        if not any(representative_voc_quotes.values()):
+            representative_voc_quotes = self._voc_quote_groups(
+                context.get("society_representative_voc_quotes")
+            )
+
+        context.update(
+            {
+                "summary": summary,
+                "initial_acceptance": initial_acceptance,
+                "post_propagation_acceptance": post_acceptance,
+                "attitude_shift_rate": summary["attitude_shift_rate"],
+                "events_count": total_events,
+                "event_counts": event_counts,
+                "consumer_event_counts": event_counts,
+                "top_resonance_points": resonance_points,
+                "top_risk_points": risk_points,
+                "top_misreads": misread_points,
+                "representative_voc_quotes": representative_voc_quotes,
+                "evidence_bundle": {},
+                "top_risk_findings": context.get("top_risk_findings", []),
+                "causal_chains": context.get("causal_chains", []),
+                "event_led_reversals": context.get("event_led_reversals", []),
+                "top_packaging_hooks": context.get("top_packaging_hooks", []),
+                "top_trust_objections": context.get("top_trust_objections", []),
+                "top_confusion_triggers": context.get("top_confusion_triggers", []),
+                "winning_variant": context.get("winning_variant", ""),
+                "top_variant_deltas": context.get("top_variant_deltas", []),
+                "top_persona_divergences": context.get("top_persona_divergences", []),
+                "acceptable_price_points": context.get("acceptable_price_points", []),
+                "resisted_price_points": context.get("resisted_price_points", []),
+                "top_price_objections": context.get("top_price_objections", []),
+                "price_context": context.get("price_context", ""),
+            }
+        )
+        context.update(self._build_research_synthesis(context))
+        return context
+
+    @staticmethod
+    def _string_list(value: Any) -> List[str]:
+        if not isinstance(value, list):
+            return []
+        return [str(item).strip() for item in value if str(item).strip()]
+
+    @staticmethod
+    def _voc_quote_groups(value: Any) -> Dict[str, List[Dict[str, Any]]]:
+        groups = {"resonance": [], "risk": [], "misread": []}
+        if not isinstance(value, dict):
+            return groups
+        for key in groups:
+            raw_items = value.get(key, [])
+            if not isinstance(raw_items, list):
+                continue
+            groups[key] = [
+                dict(item)
+                for item in raw_items
+                if isinstance(item, dict) and str(item.get("quote", "")).strip()
+            ]
+        return groups
+
+    def _build_research_synthesis(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        findings = self._research_finding_records(context)
+        if not findings:
+            return {
+                "research_findings_count": int(context.get("research_findings_count", 0) or 0),
+                "research_finding_type_counts": dict(context.get("research_finding_type_counts", {}) or {}),
+                "research_insight_pillars": list(context.get("research_insight_pillars", []) or []),
+                "research_insight_summary": str(
+                    context.get("research_insight_summary") or "暂无研究发现综合。"
+                ),
+            }
+
+        type_counts: Counter[str] = Counter()
+        grouped: Dict[str, List[Dict[str, Any]]] = {}
+        for finding in findings:
+            finding_type = str(finding.get("finding_type") or "unknown").strip() or "unknown"
+            type_counts[finding_type] += 1
+            grouped.setdefault(finding_type, []).append(finding)
+
+        preferred_order = [
+            "category_context",
+            "competitor_signal",
+            "risk_signal",
+            "trend_signal",
+            "propagation_signal",
+        ]
+        ordered_types = [ftype for ftype in preferred_order if ftype in grouped]
+        ordered_types.extend(sorted(ftype for ftype in grouped if ftype not in preferred_order))
+
+        pillars = [
+            self._build_research_pillar(finding_type, grouped[finding_type])
+            for finding_type in ordered_types
+        ]
+        summary_chunks = [
+            f"{pillar['finding_type_label']}：{pillar['summary']}"
+            for pillar in pillars[:4]
+            if pillar.get("summary")
+        ]
+        if summary_chunks:
+            summary_text = f"基于 {len(findings)} 条研究发现，" + "；".join(summary_chunks)
+        else:
+            summary_text = f"基于 {len(findings)} 条研究发现，已形成多条可执行洞察。"
+
+        quote_parts: List[str] = []
+        resonance_point = self._first_point(self._string_list(context.get("top_resonance_points")), "")
+        risk_point = self._first_point(self._string_list(context.get("top_risk_points")), "")
+        misread_point = self._first_point(self._string_list(context.get("top_misreads")), "")
+        if resonance_point:
+            quote_parts.append(f"正向原声指向“{resonance_point}”")
+        if risk_point:
+            quote_parts.append(f"风险原声集中在“{risk_point}”")
+        if misread_point:
+            quote_parts.append(f"误读点落在“{misread_point}”")
+        if quote_parts:
+            summary_text += "；" + "，".join(quote_parts)
+        summary_text += "。"
+
+        result: Dict[str, Any] = {
+            "research_findings_count": len(findings),
+            "research_finding_type_counts": dict(type_counts),
+            "research_insight_pillars": pillars,
+            "research_insight_summary": summary_text,
+        }
+        if not context.get("top_risk_findings"):
+            result["top_risk_findings"] = self._research_risk_findings(findings)
+        return result
+
+    def _research_finding_records(self, context: Dict[str, Any]) -> List[Dict[str, Any]]:
+        candidates = context.get("enriched_findings") or context.get("research_findings") or []
+        if not isinstance(candidates, list):
+            return []
+        records: List[Dict[str, Any]] = []
+        for item in candidates:
+            record = self._normalize_finding_record(item)
+            if record is not None:
+                records.append(record)
+        return records
+
+    def _normalize_finding_record(self, item: Any) -> Optional[Dict[str, Any]]:
+        if isinstance(item, dict):
+            record = dict(item)
+        else:
+            record = {
+                "finding_id": getattr(item, "finding_id", ""),
+                "finding_type": getattr(item, "finding_type", ""),
+                "summary": getattr(item, "summary", ""),
+                "evidence_snippets": list(getattr(item, "evidence_snippets", []) or []),
+                "source_label": getattr(item, "source_label", ""),
+                "source_title": getattr(item, "source_title", ""),
+                "source_id": getattr(item, "source_id", ""),
+                "confidence": getattr(item, "confidence", 0),
+                "confidence_label": getattr(item, "confidence_label", ""),
+                "gatekeeping_status": getattr(item, "gatekeeping_status", ""),
+                "evidence_preview": getattr(item, "evidence_preview", ""),
+                "visibility": getattr(item, "visibility", ""),
+            }
+
+        record["finding_id"] = str(record.get("finding_id", "") or "").strip()
+        record["finding_type"] = str(record.get("finding_type", "") or "unknown").strip() or "unknown"
+        summary = str(record.get("summary") or record.get("claim") or record.get("finding_id") or "").strip()
+        if not summary:
+            return None
+        record["summary"] = summary
+        record["source_label"] = str(record.get("source_label") or "").strip()
+        record["source_title"] = str(record.get("source_title") or record.get("source_label") or "").strip()
+        record["source_id"] = str(record.get("source_id") or "").strip()
+        record["confidence_label"] = str(record.get("confidence_label") or "").strip()
+        record["gatekeeping_status"] = str(record.get("gatekeeping_status") or "").strip().lower()
+        record["evidence_preview"] = self._finding_evidence_preview(record)
+        return record
+
+    @staticmethod
+    def _finding_evidence_preview(finding: Dict[str, Any]) -> str:
+        preview = str(finding.get("evidence_preview") or "").strip()
+        if preview:
+            return preview[:240]
+        snippets = finding.get("evidence_snippets")
+        if isinstance(snippets, list):
+            for snippet in snippets:
+                text = str(snippet or "").strip()
+                if text:
+                    return text[:240]
+        for key in ("summary", "claim"):
+            text = str(finding.get(key) or "").strip()
+            if text:
+                return text[:240]
+        return ""
+
+    @staticmethod
+    def _finding_digest_sort_key(finding: Dict[str, Any]) -> tuple[int, float, int, str]:
+        status_rank = {
+            "allowed": 0,
+            "downgraded": 1,
+            "blocked": 2,
+        }.get(str(finding.get("gatekeeping_status") or "").strip().lower(), 3)
+        confidence_value = finding.get("confidence", 0)
+        try:
+            confidence_score = float(confidence_value)
+        except (TypeError, ValueError):
+            confidence_score = {
+                "high": 0.9,
+                "medium": 0.6,
+                "low": 0.3,
+            }.get(str(finding.get("confidence_label") or "").strip().lower(), 0.0)
+        evidence_rank = 0 if str(finding.get("evidence_preview") or "").strip() else 1
+        summary = str(finding.get("summary") or "").strip().casefold()
+        return (status_rank, -confidence_score, evidence_rank, summary)
+
+    @staticmethod
+    def _finding_type_label(finding_type: str) -> str:
+        labels = {
+            "category_context": "品类背景",
+            "competitor_signal": "竞品信号",
+            "risk_signal": "风险信号",
+            "trend_signal": "趋势信号",
+            "propagation_signal": "传播信号",
+        }
+        cleaned = str(finding_type or "").strip()
+        return labels.get(cleaned, cleaned or "未分类")
+
+    def _build_research_pillar(self, finding_type: str, candidates: List[Dict[str, Any]]) -> Dict[str, Any]:
+        best = min(candidates, key=self._finding_digest_sort_key)
+        return {
+            "finding_type": finding_type,
+            "finding_type_label": self._finding_type_label(finding_type),
+            "finding_id": str(best.get("finding_id", "") or ""),
+            "summary": str(best.get("summary", "") or ""),
+            "evidence_preview": str(best.get("evidence_preview", "") or ""),
+            "source_title": str(best.get("source_title", "") or ""),
+            "source_label": str(best.get("source_label", "") or ""),
+            "confidence": best.get("confidence", 0),
+            "confidence_label": str(best.get("confidence_label", "") or ""),
+            "gatekeeping_status": str(best.get("gatekeeping_status", "") or ""),
+        }
+
+    def _research_risk_findings(self, findings: List[Dict[str, Any]], limit: int = 3) -> List[Dict[str, Any]]:
+        risk_candidates = [
+            finding for finding in findings
+            if str(finding.get("finding_type") or "").strip() == "risk_signal"
+        ]
+        if not risk_candidates:
+            risk_candidates = list(findings)
+        selected = sorted(risk_candidates, key=self._finding_digest_sort_key)[:limit]
+        result: List[Dict[str, Any]] = []
+        for finding in selected:
+            result.append(
+                {
+                    "finding_id": str(finding.get("finding_id", "") or ""),
+                    "finding_type": str(finding.get("finding_type", "") or ""),
+                    "summary": str(finding.get("summary", "") or ""),
+                    "source_id": str(finding.get("source_id", "") or ""),
+                    "source_title": str(finding.get("source_title", "") or ""),
+                    "evidence_preview": str(finding.get("evidence_preview", "") or ""),
+                    "confidence": finding.get("confidence", 0),
+                }
+            )
+        return result
 
     def _load_latest_replay_alignment(self) -> Dict[str, Any]:
         """Load the latest replay result for this simulation, if any."""
@@ -2443,14 +2772,20 @@ class ReportAgent:
     def _build_consumer_outline(self, context: Dict[str, Any]) -> ReportOutline:
         summary = context["summary"]
         task_type = str(context.get("task_type", "")).strip().lower()
+        research_findings_value = context.get("research_findings", [])
+        research_findings_count = int(
+            context.get("research_findings_count")
+            or (len(research_findings_value) if isinstance(research_findings_value, list) else 0)
+        )
         outline_summary = (
-            "本报告基于消费者群体传播快照生成，"
+            f"本报告基于 {research_findings_count} 条研究发现与消费者原声综合生成，"
             f"初始正向接受度 {summary['initial_acceptance']['positive']:.0%}，"
             f"传播后正向接受度 {summary['post_propagation_acceptance']['positive']:.0%}，"
             f"态度转向率 {summary['attitude_shift_rate']:.0%}。"
         )
         sections = [
             ReportSection(title="测试概览", content=""),
+            ReportSection(title="研究发现综合", content=""),
             ReportSection(title="初始反应", content=""),
             ReportSection(title="传播演化", content=""),
             ReportSection(title="风险与误读", content=""),
@@ -2475,10 +2810,17 @@ class ReportAgent:
     def _render_consumer_section(self, section_title: str, context: Dict[str, Any]) -> str:
         summary = context["summary"]
         task_type = str(context.get("task_type", "")).strip().lower()
+        research_findings_value = context.get("research_findings", [])
+        research_findings_count = int(
+            context.get("research_findings_count")
+            or (len(research_findings_value) if isinstance(research_findings_value, list) else 0)
+        )
 
         if section_title == "测试概览":
             lines = [
                 f"- 事件样本数：{context['events_count']}",
+                f"- 研究发现总数：{research_findings_count}",
+                f"- 证据原子数：{context.get('evidence_atom_count', 0)}",
                 f"- 初始接受度：{self._format_acceptance(summary['initial_acceptance'])}",
                 f"- 传播后接受度：{self._format_acceptance(summary['post_propagation_acceptance'])}",
                 f"- 态度转向率：{summary['attitude_shift_rate']:.0%}",
@@ -2489,6 +2831,35 @@ class ReportAgent:
                 lines.append(f"- 占优 variant：{context['winning_variant']}")
             if task_type == "price_test" and context.get("price_context"):
                 lines.append(f"- 价格背景：{context['price_context']}")
+            return "\n".join(lines)
+
+        if section_title == "研究发现综合":
+            type_counts = context.get("research_finding_type_counts") or {}
+            pillars = context.get("research_insight_pillars") or []
+            quote_groups = context.get("representative_voc_quotes") or {}
+            lines = [
+                f"- 研究发现总数：{research_findings_count}",
+                f"- 主题分布：{self._format_finding_type_counts(type_counts)}",
+                f"- 综合洞察：{context.get('research_insight_summary') or '暂无'}",
+            ]
+            if pillars:
+                lines.append("- 关键研究主线：")
+                for pillar in pillars[:4]:
+                    lines.append(f"  - [{pillar.get('finding_type_label', pillar.get('finding_type', ''))}] {pillar.get('summary', '')}")
+                    evidence_preview = str(pillar.get("evidence_preview", "") or "").strip()
+                    if evidence_preview:
+                        lines.append(f"    - 证据：{evidence_preview}")
+            quote_bridge: List[str] = []
+            if quote_groups.get("resonance"):
+                quote_bridge.append(f'正向："{quote_groups["resonance"][0].get("quote", "")}"')
+            if quote_groups.get("risk"):
+                quote_bridge.append(f'风险："{quote_groups["risk"][0].get("quote", "")}"')
+            if quote_groups.get("misread"):
+                quote_bridge.append(f'误读："{quote_groups["misread"][0].get("quote", "")}"')
+            if quote_bridge:
+                lines.append("- 原声印证：")
+                for item in quote_bridge:
+                    lines.append(f"  - {item}")
             return "\n".join(lines)
 
         if section_title == "初始反应":
@@ -2602,6 +2973,10 @@ class ReportAgent:
                 f"- 提前澄清风险：针对“{risk_point}”准备更直接的解释与证据。",
                 f"- 修正文案误读：对“{misread_point}”补充更具体、更少歧义的表述。",
             ]
+            pillars = context.get("research_insight_pillars") or []
+            if pillars:
+                anchor = self._first_point([str(p.get("summary", "")).strip() for p in pillars if str(p.get("summary", "")).strip()], "研究发现")
+                lines.append(f"- 综合传播锚点：优先围绕“{anchor}”统一原声、证据和文案。")
             if task_type == "packaging_test":
                 trust = self._first_point(context.get("top_trust_objections", []), "信任疑虑")
                 confusion = self._first_point(context.get("top_confusion_triggers", []), "混淆点")
@@ -2645,12 +3020,37 @@ class ReportAgent:
             return "暂无显著点位"
         return "；".join(points)
 
+    def _format_finding_type_counts(self, counts: Any) -> str:
+        if not isinstance(counts, dict) or not counts:
+            return "暂无"
+
+        preferred_order = [
+            "category_context",
+            "competitor_signal",
+            "risk_signal",
+            "trend_signal",
+            "propagation_signal",
+        ]
+        lines: List[str] = []
+        seen: set[str] = set()
+        for finding_type in preferred_order:
+            if finding_type in counts:
+                seen.add(finding_type)
+                lines.append(
+                    f"{self._finding_type_label(finding_type)} {int(counts.get(finding_type, 0) or 0)}"
+                )
+        for finding_type, value in counts.items():
+            if finding_type in seen:
+                continue
+            lines.append(f"{self._finding_type_label(str(finding_type))} {int(value or 0)}")
+        return "，".join(lines) if lines else "暂无"
+
     def _first_point(self, points: List[str], fallback: str) -> str:
         return points[0] if points else fallback
 
     def _format_quotes(self, quotes: List[Dict[str, Any]]) -> str:
         if not quotes:
-            return "- No representative quotes"
+            return "- 暂无代表性原声"
 
         def is_template_generated(item: Dict[str, Any]) -> bool:
             metadata = item.get("quote_metadata") or {}
@@ -2669,7 +3069,7 @@ class ReportAgent:
             engagement = item.get("engagement", 0)
             source_label = " [\u6a21\u62df\u751f\u6210\uff0c\u975eLLM\u63a8\u7406]" if is_template_generated(item) else ""
             lines.append(f'- "{quote}"{source_label} (engagement {engagement})')
-        return "\n".join(lines) if len(lines) > 1 else "- No representative quotes"
+        return "\n".join(lines) if len(lines) > 1 else "- 暂无代表性原声"
     def chat(
         self, 
         message: str,
@@ -3174,10 +3574,19 @@ class ReportManager:
                 sections.append({
                     "filename": filename,
                     "section_index": section_index,
+                    "title": cls._extract_section_title(content),
                     "content": content
                 })
 
         return sections
+
+    @staticmethod
+    def _extract_section_title(content: str) -> str:
+        for line in content.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                return stripped.lstrip("#").strip()
+        return ""
     
     @classmethod
     def assemble_full_report(cls, report_id: str, outline: ReportOutline) -> str:

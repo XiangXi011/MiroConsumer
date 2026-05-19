@@ -246,6 +246,8 @@ def run_prepare_simulation_task(
             parallel_profile_count=parallel_profile_count,
         )
 
+        simulation_repo.save_simulation(result_state)
+
         task_manager.complete_task(
             task_id,
             result=result_state.to_simple_dict(),
@@ -272,6 +274,68 @@ class SimulationAppService:
     _executor: TaskExecutor = create_task_executor()
     _lock_manager = create_lock_manager()
     _budget_manager = LLMBudgetManager()
+    _filesystem_simulation_repo_factory: Optional[Callable[[], SimulationRepository]] = None
+
+    @classmethod
+    def _uses_filesystem_repository(cls) -> bool:
+        return getattr(cls._repository_bundle, "backend", "filesystem") == "filesystem"
+
+    @classmethod
+    def _get_filesystem_simulation_repo(cls) -> SimulationRepository:
+        if cls._filesystem_simulation_repo_factory is not None:
+            return cls._filesystem_simulation_repo_factory()
+
+        from ...repositories.filesystem import FilesystemSimulationRepository
+
+        return FilesystemSimulationRepository()
+
+    @classmethod
+    def _sync_filesystem_shadow(cls, state: Any) -> None:
+        if cls._uses_filesystem_repository():
+            return
+        cls._get_filesystem_simulation_repo().save_simulation(state)
+
+    @classmethod
+    def _prepare_status_from_simulation_state(
+        cls,
+        task_id: Optional[str],
+        simulation_id: Optional[str],
+    ) -> Optional[dict]:
+        if not simulation_id:
+            return None
+
+        state = cls._simulation_repo.get_simulation(simulation_id)
+        if not state:
+            return None
+
+        raw_status = getattr(state, "status", "")
+        status = raw_status.value if hasattr(raw_status, "value") else str(raw_status)
+        if status == SimulationStatus.PREPARING.value:
+            payload = {
+                "simulation_id": simulation_id,
+                "status": "preparing",
+                "progress": 0,
+                "message": t("api.prepareStarted"),
+                "already_prepared": False,
+            }
+            if task_id:
+                payload["task_id"] = task_id
+            return payload
+
+        if status == SimulationStatus.FAILED.value:
+            payload = {
+                "simulation_id": simulation_id,
+                "status": "failed",
+                "progress": 0,
+                "message": t("progress.taskFailed"),
+                "already_prepared": False,
+                "error": getattr(state, "error", None),
+            }
+            if task_id:
+                payload["task_id"] = task_id
+            return payload
+
+        return None
 
     @classmethod
     def create_simulation(cls, data: dict) -> dict:
@@ -301,6 +365,7 @@ class SimulationAppService:
             enable_reddit=data.get("enable_reddit", True),
             tenant_id=data.get("tenant_id", ""),
         )
+        cls._sync_filesystem_shadow(state)
         return state.to_dict()
 
     @classmethod
@@ -325,6 +390,8 @@ class SimulationAppService:
 
         if not state:
             raise ValueError(t("api.simulationNotFound", id=simulation_id))
+
+        cls._sync_filesystem_shadow(state)
 
         force_regenerate = data.get("force_regenerate", False)
 
@@ -392,6 +459,7 @@ class SimulationAppService:
 
         state.status = SimulationStatus.PREPARING
         cls._simulation_repo.save_simulation(state)
+        cls._sync_filesystem_shadow(state)
 
         current_locale = get_locale()
 
@@ -588,6 +656,9 @@ class SimulationAppService:
         channel_seed = int(data.get("channel_seed") if data.get("channel_seed") is not None else seed)
         audit_sample_size = int(data.get("society_audit_sample_size") or cls._default_audit_sample_size(mode))
         core, expanded, shadow = cls._split_society_agents(mode, max_agents)
+        llm_budget_limit = data.get("llm_budget_limit")
+        if llm_budget_limit in (None, "") or int(llm_budget_limit) <= 0:
+            llm_budget_limit = cls._default_llm_budget(mode, max_agents, core, expanded)
         run_config = ConsumerSocietyRunConfig(
             mode=mode,
             core_persona_count=core,
@@ -595,7 +666,7 @@ class SimulationAppService:
             shadow_agent_count=shadow,
             max_rounds=int(data.get("max_rounds") or 1),
             random_seed=seed,
-            llm_budget_limit=int(data.get("llm_budget_limit") or cls._default_llm_budget(mode, max_agents)),
+            llm_budget_limit=int(llm_budget_limit),
             audit_sample_size=audit_sample_size,
             enabled_channels=enabled_channels,
             channel_seed=channel_seed,
@@ -646,13 +717,11 @@ class SimulationAppService:
         return 0
 
     @staticmethod
-    def _default_llm_budget(mode: str, max_agents: int) -> int:
+    def _default_llm_budget(mode: str, max_agents: int, core: int = 0, expanded: int = 0) -> int:
         if mode == "large_society":
             return max(1, int(max_agents * 0.08))
-        if mode == "standard_plus":
-            return 16
-        if mode == "standard":
-            return 12
+        if mode in {"standard", "standard_plus"}:
+            return max(1, int(core) + int(expanded))
         return max_agents
 
     @staticmethod
@@ -700,6 +769,9 @@ class SimulationAppService:
                 return status_data
 
         if not task_id:
+            fallback_status = cls._prepare_status_from_simulation_state(task_id, simulation_id)
+            if fallback_status:
+                return fallback_status
             if simulation_id:
                 return {
                     "simulation_id": simulation_id,
@@ -729,6 +801,9 @@ class SimulationAppService:
                     if prepare_info.get("prepare_manifest"):
                         status_data["prepare_manifest"] = prepare_info["prepare_manifest"]
                     return status_data
+                fallback_status = cls._prepare_status_from_simulation_state(task_id, simulation_id)
+                if fallback_status:
+                    return fallback_status
             raise ValueError(t("api.taskNotFound", id=task_id))
 
         task_dict = task.to_dict()

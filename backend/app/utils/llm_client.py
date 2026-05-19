@@ -396,6 +396,8 @@ class LLMClient:
             "primary_succeeded": False,
             "fallback_attempted": False,
             "fallback_succeeded": False,
+            "fallback_attempts": 0,
+            "fallback_errors": [],
             "parse_path": None,
             "cleanups_applied": [],
             "raw_preview": "",
@@ -421,45 +423,57 @@ class LLMClient:
                 raise
 
         diagnostics["fallback_attempted"] = True
-        json_instruction = (
-            "\n\nIMPORTANT: You must respond with valid JSON only, "
-            "no markdown formatting, no extra text."
-        )
-        fallback_messages: List[Dict[str, str]] = []
-        system_found = False
-        for message in messages:
-            message_copy = dict(message)
-            if message_copy.get("role") == "system" and not system_found:
-                message_copy["content"] = message_copy.get("content", "") + json_instruction
-                system_found = True
-            fallback_messages.append(message_copy)
-        if not system_found:
-            fallback_messages.insert(
-                0,
-                {
-                    "role": "system",
-                    "content": (
-                        "You must respond with valid JSON only, "
-                        "no markdown formatting, no extra text."
-                    ),
-                },
+        last_error: Optional[Exception] = None
+        fallback_max_tokens = max(max_tokens, 8192)
+        for attempt in range(1, 4):
+            diagnostics["fallback_attempts"] = attempt
+            json_instruction = (
+                "\n\nIMPORTANT: You must respond with one complete, valid JSON object only, "
+                "no markdown formatting, no extra text."
             )
+            if attempt > 1:
+                json_instruction += (
+                    f"\nRetry attempt {attempt}: the previous response was invalid or truncated. "
+                    "Return the full JSON object from the opening { to the closing }."
+                )
 
-        try:
-            content = self.chat(
-                messages=fallback_messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                timeout=timeout,
-            )
-            diagnostics["raw_preview"] = content[:500]
-            data = self.extract_json(content)
-            diagnostics["fallback_succeeded"] = True
-            diagnostics["parse_path"] = "fallback"
-            return data, diagnostics
-        except Exception:
-            diagnostics["fallback_succeeded"] = False
-            raise
+            fallback_messages: List[Dict[str, str]] = []
+            system_found = False
+            for message in messages:
+                message_copy = dict(message)
+                if message_copy.get("role") == "system" and not system_found:
+                    message_copy["content"] = message_copy.get("content", "") + json_instruction
+                    system_found = True
+                fallback_messages.append(message_copy)
+            if not system_found:
+                fallback_messages.insert(
+                    0,
+                    {
+                        "role": "system",
+                        "content": json_instruction.strip(),
+                    },
+                )
+
+            try:
+                content = self.chat(
+                    messages=fallback_messages,
+                    temperature=temperature,
+                    max_tokens=fallback_max_tokens,
+                    timeout=timeout,
+                )
+                diagnostics["raw_preview"] = content[:500]
+                data = self.extract_json(content)
+                diagnostics["fallback_succeeded"] = True
+                diagnostics["parse_path"] = "fallback"
+                return data, diagnostics
+            except Exception as exc:
+                last_error = exc
+                diagnostics["fallback_succeeded"] = False
+                diagnostics["fallback_errors"].append(str(exc)[:200])
+
+        if last_error is not None:
+            raise last_error
+        raise ValueError("Invalid JSON returned by LLM")
 
 
 

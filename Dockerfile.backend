@@ -36,6 +36,7 @@ COPY --from=builder --chown=miroconsumer:miroconsumer /app/backend/app ./app
 COPY --from=builder --chown=miroconsumer:miroconsumer /app/backend/alembic ./alembic
 COPY --from=builder --chown=miroconsumer:miroconsumer /app/backend/scripts ./scripts
 COPY --from=builder --chown=miroconsumer:miroconsumer /app/backend/pyproject.toml /app/backend/uv.lock ./
+COPY --chown=miroconsumer:miroconsumer locales /app/locales
 
 USER miroconsumer
 

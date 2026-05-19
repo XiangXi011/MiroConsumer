@@ -570,8 +570,16 @@ def build_graph():
             ProjectManager.save_project(project)
 
             try:
-                GraphAppService.build_consumer_graph_sync(project, text, task_manager, task_id)
-            except Exception:
+                graph_data = GraphAppService.build_consumer_graph_sync(project, text, task_manager, task_id)
+                project.graph_id = graph_data["graph_id"]
+                project.status = ProjectStatus.GRAPH_COMPLETED
+                project.error = None
+                ProjectManager.save_consumer_graph_payload(project.project_id, graph_data)
+                ProjectManager.save_project(project)
+            except Exception as exc:
+                project.status = ProjectStatus.FAILED
+                project.error = str(exc)
+                ProjectManager.save_project(project)
                 raise
 
             return jsonify({
@@ -579,6 +587,10 @@ def build_graph():
                 "data": {
                     "project_id": project_id,
                     "task_id": task_id,
+                    "graph_id": graph_data["graph_id"],
+                    "node_count": graph_data.get("node_count", 0),
+                    "edge_count": graph_data.get("edge_count", 0),
+                    "completed": True,
                     "message": t('api.graphBuildStarted', taskId=task_id)
                 }
             })

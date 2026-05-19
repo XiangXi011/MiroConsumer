@@ -507,3 +507,57 @@ class TestArtifactBuilderSimulationRunnerInputs:
         trace_lines = (sim_dir / "reasoning_traces.jsonl").read_text(encoding="utf-8").splitlines()
         assert len(trace_lines) == 1
         assert json.loads(trace_lines[0])["reasoning_summary"] == "existing"
+
+    def test_runner_post_run_helper_uses_completed_state_even_when_disk_is_stale(
+        self,
+        monkeypatch,
+        tmp_path,
+    ):
+        from app.services.simulation_runner import RunnerStatus, SimulationRunState, SimulationRunner
+
+        monkeypatch.setattr(SimulationRunner, "RUN_STATE_DIR", str(tmp_path))
+        SimulationRunner._run_states.clear()
+        simulation_id = "sim-stale-disk"
+        sim_dir = tmp_path / simulation_id / "society"
+        sim_dir.mkdir(parents=True, exist_ok=True)
+        trace = ReasoningTrace(
+            reasoning_backend="llm",
+            llm_invoked=True,
+            source="society_runtime",
+            fallback_reason="",
+        )
+        (sim_dir / "reasoning_traces.jsonl").write_text(
+            json.dumps(trace.to_dict(), ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+
+        stale_state = SimulationRunState(
+            simulation_id=simulation_id,
+            runner_status=RunnerStatus.RUNNING,
+            current_round=0,
+            total_rounds=1,
+        )
+        SimulationRunner._save_run_state(stale_state)
+
+        completed_state = SimulationRunState(
+            simulation_id=simulation_id,
+            runner_status=RunnerStatus.COMPLETED,
+            current_round=1,
+            total_rounds=1,
+            society_rounds_completed=1,
+        )
+        SimulationRunner._build_phase6j_artifact_after_consumer_run(
+            simulation_id,
+            research_findings=[],
+            state=completed_state,
+        )
+
+        checks = json.loads((tmp_path / simulation_id / "golden_flow_checks.json").read_text(encoding="utf-8"))
+        runtime_check = next(item for item in checks if item["check"] == "runtime_completed_status")
+        artifact = json.loads(
+            (tmp_path / simulation_id / "phase6j_calibration_artifact.json").read_text(encoding="utf-8")
+        )
+
+        assert runtime_check["status"] == "passed"
+        assert runtime_check["details"]["runner_status"] == "completed"
+        assert artifact["golden_flow_result"] == "PASS"

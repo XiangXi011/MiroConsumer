@@ -107,6 +107,30 @@ def test_distill_findings_skips_empty_chunks():
     assert findings[0].snippet_id == "chk_real"
 
 
+def test_distill_findings_skips_punctuation_only_chunks():
+    chunks = [
+        DocumentChunk(
+            chunk_id="chk_punct",
+            doc_id="doc_1",
+            source_id="src_1",
+            text="。",
+            index=0,
+        ),
+        DocumentChunk(
+            chunk_id="chk_real",
+            doc_id="doc_1",
+            source_id="src_1",
+            text="核心卖点是冷光修白和以紫修黄。",
+            index=1,
+        ),
+    ]
+
+    findings = distill_findings_from_chunks(chunks)
+
+    assert len(findings) == 1
+    assert findings[0].snippet_id == "chk_real"
+
+
 def test_distill_findings_sets_visibility():
     chunks = [
         DocumentChunk(

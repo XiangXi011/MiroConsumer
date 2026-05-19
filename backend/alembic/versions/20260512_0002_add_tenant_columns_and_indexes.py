@@ -1,6 +1,6 @@
 """add tenant columns and high-frequency tenant indexes
 
-Revision ID: 20260512_0002_add_tenant_columns_and_indexes
+Revision ID: 20260512_0002_tenant_indexes
 Revises: 20260512_0001_add_foreign_keys
 Create Date: 2026-05-12
 Revision rationale: add tenant columns and high-frequency tenant indexes used by the P2/P3 isolation gates.
@@ -13,7 +13,7 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "20260512_0002_add_tenant_columns_and_indexes"
+revision: str = "20260512_0002_tenant_indexes"
 down_revision: Union[str, None] = "20260512_0001_add_foreign_keys"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None

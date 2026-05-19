@@ -11,9 +11,11 @@ from sqlalchemy.orm import sessionmaker, Session
 from app.repositories.sqlalchemy import (
     metadata,
     SQLAlchemyProjectRepository,
+    SQLAlchemyConsumerStateRepository,
     SQLAlchemySimulationRepository,
     SQLAlchemyReportRepository,
 )
+from app.config import Config
 from app.contracts.errors import ConcurrencyConflictError
 from app.services.report_agent import Report, ReportStatus
 
@@ -85,6 +87,39 @@ class TestSimulationJsonColumns:
             assert hasattr(sim, "simulation_id")
             assert hasattr(sim, "project_id")
             assert hasattr(sim, "status")
+
+
+class TestConsumerStateArtifacts:
+    def test_sqlalchemy_consumer_state_reads_filesystem_runtime_artifacts(
+        self,
+        session_factory,
+        tmp_path,
+        monkeypatch,
+    ):
+        upload_root = tmp_path / "uploads"
+        monkeypatch.setattr(Config, "UPLOAD_FOLDER", str(upload_root))
+        sim_dir = upload_root / "simulations" / "sim_consumer_artifacts"
+        sim_dir.mkdir(parents=True)
+        (sim_dir / "consumer_rounds.jsonl").write_text(
+            '{"round_num": 0, "agent_id": "a1", "quote": "works"}\n',
+            encoding="utf-8",
+        )
+        (sim_dir / "consumer_config.json").write_text(
+            (
+                '{"consumer_brief": {"task_type": "concept_test", '
+                '"product_concept_assets": ["paste"], '
+                '"target_audience": ["families"], '
+                '"research_goal": "test"}, '
+                '"research_findings": [{"finding_id": "f1"}]}'
+            ),
+            encoding="utf-8",
+        )
+
+        repo = SQLAlchemyConsumerStateRepository(session_factory=session_factory)
+
+        assert repo.load_consumer_rounds("sim_consumer_artifacts")[0]["quote"] == "works"
+        assert repo.load_brief("sim_consumer_artifacts").research_goal == "test"
+        assert repo.load_research_findings("sim_consumer_artifacts") == [{"finding_id": "f1"}]
 
 
 class TestOptimisticVersioning:

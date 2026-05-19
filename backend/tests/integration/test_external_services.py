@@ -95,6 +95,22 @@ def test_llm_fallback_chain_recovers_from_invalid_primary_json():
     assert meta["parse_path"] == "fallback"
 
 
+def test_llm_json_fallback_retries_after_invalid_fallback_response():
+    client = ScriptedLLMClient([
+        "not-json",
+        '{"summary": ',
+        '{"summary": "retry", "score": 0.7}',
+    ])
+
+    data, meta = client.chat_json_with_meta([{"role": "user", "content": "Return JSON"}])
+
+    assert data["summary"] == "retry"
+    assert meta["fallback_attempted"] is True
+    assert meta["fallback_succeeded"] is True
+    assert meta["fallback_attempts"] == 2
+    assert len(client.calls) == 3
+
+
 def test_llm_fallback_disabled_surfaces_primary_failure():
     client = ScriptedLLMClient(["not-json"])
 

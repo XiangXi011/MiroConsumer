@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from hashlib import blake2b
 from typing import Any, Dict, Iterable, Mapping
 
 from ..event_ontology import ConsumerEventType
@@ -48,13 +49,13 @@ class ConsumerSocietyEventMapper:
         if event_type == ConsumerEventType.AMPLIFY_CLAIM and agent.share_propensity > 0.75:
             event_type = ConsumerEventType.SHARE_TO_CHANNEL
 
-        claim = next(iter(visible_claims), "") if visible_claims else ""
-        if not claim:
-            claims = brief_context.get("claims") if isinstance(brief_context, Mapping) else []
-            if isinstance(claims, list) and claims:
-                claim = str(claims[0])
-        if not claim:
-            claim = "核心卖点"
+        claim = self._select_claim(
+            agent=agent,
+            round_index=round_index,
+            event_type=event_type,
+            visible_claims=visible_claims,
+            brief_context=brief_context,
+        )
 
         trust = max(0.0, min(1.0, float(agent.state.get("trust", agent.trust_baseline))))
         purchase_intent = max(0.0, min(1.0, float(agent.state.get("purchase_intent", 0.5))))
@@ -172,6 +173,48 @@ class ConsumerSocietyEventMapper:
             ConsumerEventType.BLOCK_PROPAGATION: f"{name}: {claim}在我这里会停住，因为疑问还没被回答。",
         }
         return templates.get(event_type, f"{name}: 我注意到了{claim}，还需要更多信息判断。")
+
+    @classmethod
+    def _select_claim(
+        cls,
+        *,
+        agent: ConsumerSocietyAgent,
+        round_index: int,
+        event_type: ConsumerEventType,
+        visible_claims: Iterable[str],
+        brief_context: Mapping[str, Any],
+    ) -> str:
+        claims = cls._candidate_claims(visible_claims, brief_context)
+        if not claims:
+            return "核心卖点"
+        seed = f"{agent.agent_id}|{agent.parent_persona_id}|{round_index}|{event_type.value}"
+        digest = blake2b(seed.encode("utf-8"), digest_size=4).digest()
+        index = int.from_bytes(digest, "big") % len(claims)
+        return claims[index]
+
+    @staticmethod
+    def _candidate_claims(
+        visible_claims: Iterable[str],
+        brief_context: Mapping[str, Any],
+    ) -> list[str]:
+        candidates: list[str] = []
+
+        def append_unique(raw: Any) -> None:
+            text = str(raw or "").strip()
+            if text and text not in candidates:
+                candidates.append(text)
+
+        for claim in visible_claims or []:
+            append_unique(claim)
+
+        if not candidates and isinstance(brief_context, Mapping):
+            raw_claims = brief_context.get("claims")
+            if isinstance(raw_claims, list):
+                for claim in raw_claims:
+                    append_unique(claim)
+            elif raw_claims is not None:
+                append_unique(raw_claims)
+        return candidates
 
 
 __all__ = ["ConsumerSocietyEventMapper", "ROLE_TO_EVENT"]

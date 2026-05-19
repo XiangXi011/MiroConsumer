@@ -61,3 +61,31 @@ def test_event_mapper_covers_price_sensitive_and_misreader_roles():
 
     assert price_event["consumer_event_type"] == ConsumerEventType.PRICE_RESISTANCE.value
     assert misread_event["consumer_event_type"] == ConsumerEventType.MISREAD_CLAIM.value
+
+
+def test_event_mapper_distributes_visible_claims_across_agents():
+    mapper = ConsumerSocietyEventMapper()
+    claims = [
+        "7天白4度",
+        "一次去黄提亮226%",
+        "冷光修白，以紫修黄",
+        "双专利美白科技",
+    ]
+
+    events = [
+        mapper.map_agent_event(
+            agent=_agent(agent_id=f"agent-{index}", role=ConsumerRole.Skeptic),
+            round_index=0,
+            visible_claims=claims,
+            previous_events=[],
+            brief_context={"claims": claims},
+            research_findings=[],
+        )
+        for index in range(12)
+    ]
+
+    selected_claims = {event["claim"] for event in events}
+
+    assert len(selected_claims) > 1
+    assert selected_claims.issubset(set(claims))
+    assert selected_claims != {"7天白4度"}

@@ -103,6 +103,46 @@ def test_society_runtime_production_mode_schema_ranges(tmp_path, monkeypatch):
             assert 0.0 <= value <= 1.0
 
 
+def test_society_runtime_distributes_claims_across_events(tmp_path, monkeypatch):
+    monkeypatch.setenv("SOCIETY_DETERMINISTIC_MODE", "mock")
+    runtime = ConsumerSocietyRuntime(base_dir=tmp_path)
+    claims = ["7天白4度", "一次去黄提亮226%", "冷光修白，以紫修黄", "双专利美白科技"]
+
+    runtime.run(
+        simulation_id="sim-claim-diversity",
+        run_id="run-claim-diversity",
+        config=ConsumerSocietyRunConfig(
+            mode="standard",
+            core_persona_count=8,
+            expanded_persona_count=8,
+            shadow_agent_count=8,
+            max_rounds=1,
+            random_seed=11,
+            llm_budget_limit=8,
+            audit_sample_size=2,
+        ),
+        persona_pack=load_default_persona_pack(),
+        brief_context={"claims": claims},
+        research_findings=[],
+    )
+
+    society_dir = tmp_path / "sim-claim-diversity" / "society"
+    rounds = [
+        json.loads(line)
+        for line in (society_dir / "society_rounds.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    event_claims = {
+        event.get("claim")
+        for snapshot in rounds
+        for event in snapshot.get("events", [])
+        if event.get("claim")
+    }
+
+    assert len(event_claims) > 1
+    assert event_claims.issubset(set(claims))
+
+
 def test_society_runtime_calls_layered_reasoning_for_core_and_expanded_only(tmp_path):
     config = ConsumerSocietyRunConfig(
         mode="standard",

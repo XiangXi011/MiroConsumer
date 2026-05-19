@@ -174,6 +174,11 @@ def _quality_warning_banner(diagnostics: Mapping[str, Any]) -> Dict[str, Any]:
 
 def _report_data_with_diagnostics(report) -> Dict[str, Any]:
     data = report.to_dict()
+    if not data.get("sections"):
+        try:
+            data["sections"] = ReportManager.get_generated_sections(report.report_id)
+        except Exception:
+            data["sections"] = []
     diagnostics = _build_llm_diagnostics(report)
     banner = _quality_warning_banner(diagnostics)
     boundary = _report_applicability_boundary(report)

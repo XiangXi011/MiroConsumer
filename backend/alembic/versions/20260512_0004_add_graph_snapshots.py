@@ -1,7 +1,7 @@
 ﻿"""Add persisted graph snapshots.
 
-Revision ID: 20260512_0004_add_graph_snapshots
-Revises: 20260512_0003_drop_auth_users_redundant_index
+Revision ID: 20260512_0004_graph_snaps
+Revises: 20260512_0003_drop_auth_idx
 Create Date: 2026-05-13
 Revision rationale: persist branch graph snapshots so simulations can resume from the latest checkpoint.
 """
@@ -13,8 +13,8 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "20260512_0004_add_graph_snapshots"
-down_revision: Union[str, None] = "20260512_0003_drop_auth_users_redundant_index"
+revision: str = "20260512_0004_graph_snaps"
+down_revision: Union[str, None] = "20260512_0003_drop_auth_idx"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

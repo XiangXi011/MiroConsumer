@@ -6,7 +6,9 @@ from typing import Any, Dict, List, Optional
 import pytest
 
 from app.contracts.errors import ConcurrencyConflictError
+from app.models.task import TaskManager
 from app.models.project import Project, ProjectStatus
+import app.services.application.simulation_app_service as simulation_app_service_module
 from app.repositories import (
     ProjectRepository,
     SimulationRepository,
@@ -406,6 +408,21 @@ class CaptureExecutor:
 
 
 class TestSimulationAppServiceUsesRepositories:
+    def _enable_sqlalchemy_shadow(self, file_repo):
+        original_bundle = SimulationAppService._repository_bundle
+        had_factory = hasattr(SimulationAppService, "_filesystem_simulation_repo_factory")
+        original_factory = getattr(SimulationAppService, "_filesystem_simulation_repo_factory", None)
+        SimulationAppService._repository_bundle = type("Bundle", (), {"backend": "sqlalchemy"})()
+        SimulationAppService._filesystem_simulation_repo_factory = lambda: file_repo
+        return original_bundle, had_factory, original_factory
+
+    def _restore_sqlalchemy_shadow(self, original_bundle, had_factory, original_factory):
+        SimulationAppService._repository_bundle = original_bundle
+        if had_factory:
+            SimulationAppService._filesystem_simulation_repo_factory = original_factory
+        else:
+            delattr(SimulationAppService, "_filesystem_simulation_repo_factory")
+
     def test_create_simulation_calls_project_repo(self):
         project_repo = StubProjectRepository()
         sim_repo = StubSimulationRepository()
@@ -437,6 +454,39 @@ class TestSimulationAppServiceUsesRepositories:
         finally:
             SimulationAppService._project_repo = original_project
             SimulationAppService._simulation_repo = original_sim
+
+    def test_create_simulation_mirrors_sqlalchemy_state_to_filesystem_shadow(self):
+        project_repo = StubProjectRepository()
+        sim_repo = StubSimulationRepository()
+        file_repo = StubSimulationRepository()
+        project_repo.projects["proj_sql_shadow"] = Project(
+            project_id="proj_sql_shadow",
+            name="SQL Shadow Test",
+            status=ProjectStatus.CREATED,
+            created_at="2026-01-01T00:00:00",
+            updated_at="2026-01-01T00:00:00",
+            project_type="consumer_test",
+            graph_id="g1",
+        )
+
+        original_project = SimulationAppService._project_repo
+        original_sim = SimulationAppService._simulation_repo
+        shadow_state = self._enable_sqlalchemy_shadow(file_repo)
+        try:
+            SimulationAppService._project_repo = project_repo
+            SimulationAppService._simulation_repo = sim_repo
+
+            result = SimulationAppService.create_simulation({"project_id": "proj_sql_shadow"})
+
+            mirrored = file_repo.get_simulation(result["simulation_id"])
+            assert mirrored is not None
+            assert mirrored.project_id == "proj_sql_shadow"
+            assert mirrored.graph_id == "g1"
+            assert mirrored.consumer_mode is True
+        finally:
+            SimulationAppService._project_repo = original_project
+            SimulationAppService._simulation_repo = original_sim
+            self._restore_sqlalchemy_shadow(*shadow_state)
 
     def test_create_simulation_raises_when_project_not_found(self):
         project_repo = StubProjectRepository()
@@ -773,6 +823,21 @@ class TestGraphAppServiceUsesRepositories:
 
 
 class TestSimulationAppServicePrepareUsesExecutor:
+    def _enable_sqlalchemy_shadow(self, file_repo):
+        original_bundle = SimulationAppService._repository_bundle
+        had_factory = hasattr(SimulationAppService, "_filesystem_simulation_repo_factory")
+        original_factory = getattr(SimulationAppService, "_filesystem_simulation_repo_factory", None)
+        SimulationAppService._repository_bundle = type("Bundle", (), {"backend": "sqlalchemy"})()
+        SimulationAppService._filesystem_simulation_repo_factory = lambda: file_repo
+        return original_bundle, had_factory, original_factory
+
+    def _restore_sqlalchemy_shadow(self, original_bundle, had_factory, original_factory):
+        SimulationAppService._repository_bundle = original_bundle
+        if had_factory:
+            SimulationAppService._filesystem_simulation_repo_factory = original_factory
+        else:
+            delattr(SimulationAppService, "_filesystem_simulation_repo_factory")
+
     def test_prepare_simulation_submits_via_executor(self, monkeypatch):
         from app.services.application import SimulationAppService
         from app.services.application.task_executor import TaskExecutor
@@ -843,6 +908,116 @@ class TestSimulationAppServicePrepareUsesExecutor:
             SimulationAppService._project_repo = original_project
             SimulationAppService._simulation_repo = original_sim
             SimulationAppService._executor = original_exec
+
+    def test_prepare_simulation_mirrors_preparing_state_to_filesystem_shadow(self):
+        executor = CaptureExecutor()
+        project_repo = StubProjectRepository()
+        sim_repo = StubSimulationRepository()
+        file_repo = StubSimulationRepository()
+        project_repo.projects["proj_shadow_prep"] = Project(
+            project_id="proj_shadow_prep",
+            name="Prep Shadow Test",
+            status=ProjectStatus.CREATED,
+            created_at="2026-01-01T00:00:00",
+            updated_at="2026-01-01T00:00:00",
+            project_type="consumer_test",
+            graph_id="g1",
+            simulation_requirement="test req",
+        )
+        sim_repo.simulations["sim_shadow_prep"] = SimulationState(
+            simulation_id="sim_shadow_prep",
+            project_id="proj_shadow_prep",
+            graph_id="g1",
+            project_type="consumer_test",
+            consumer_mode=True,
+        )
+
+        original_project = SimulationAppService._project_repo
+        original_sim = SimulationAppService._simulation_repo
+        original_exec = SimulationAppService._executor
+        shadow_state = self._enable_sqlalchemy_shadow(file_repo)
+        try:
+            SimulationAppService._project_repo = project_repo
+            SimulationAppService._simulation_repo = sim_repo
+            SimulationAppService._executor = executor
+
+            SimulationAppService.prepare_simulation(
+                "sim_shadow_prep",
+                {"force_regenerate": True, "entity_types": None},
+            )
+
+            mirrored = file_repo.get_simulation("sim_shadow_prep")
+            assert mirrored is not None
+            assert mirrored.status == SimulationStatus.PREPARING
+            assert mirrored.entities_count == len(mirrored.entity_types) or mirrored.entity_types == ["AudienceSegment"]
+        finally:
+            SimulationAppService._project_repo = original_project
+            SimulationAppService._simulation_repo = original_sim
+            SimulationAppService._executor = original_exec
+            self._restore_sqlalchemy_shadow(*shadow_state)
+
+    def test_prepare_status_returns_preparing_when_task_state_is_process_local(self):
+        sim_repo = StubSimulationRepository()
+        sim_repo.simulations["sim_process_local_task"] = SimulationState(
+            simulation_id="sim_process_local_task",
+            project_id="proj_process_local_task",
+            graph_id="g1",
+            status=SimulationStatus.PREPARING,
+        )
+
+        original_sim = SimulationAppService._simulation_repo
+        try:
+            SimulationAppService._simulation_repo = sim_repo
+
+            result = SimulationAppService.get_prepare_status(
+                "task_not_in_this_process",
+                "sim_process_local_task",
+            )
+
+            assert result["simulation_id"] == "sim_process_local_task"
+            assert result["task_id"] == "task_not_in_this_process"
+            assert result["status"] == "preparing"
+            assert result["already_prepared"] is False
+        finally:
+            SimulationAppService._simulation_repo = original_sim
+
+    def test_prepare_task_saves_completed_state_to_application_repository(self, monkeypatch):
+        sim_repo = StubSimulationRepository()
+        ready_state = SimulationState(
+            simulation_id="sim_task_save",
+            project_id="proj_task_save",
+            graph_id="g1",
+            status=SimulationStatus.READY,
+            config_generated=True,
+        )
+
+        class FakeBundle:
+            simulation_repo = sim_repo
+
+        class FakeDomainManager:
+            def prepare_simulation(self, **kwargs):
+                return ready_state
+
+        import app.services.simulation_manager as simulation_manager_module
+
+        monkeypatch.setattr(simulation_app_service_module, "create_repository_bundle", lambda: FakeBundle())
+        monkeypatch.setattr(simulation_manager_module, "SimulationManager", FakeDomainManager)
+        task_id = TaskManager().create_task("simulation_prepare")
+
+        simulation_app_service_module.run_prepare_simulation_task(
+            simulation_id="sim_task_save",
+            task_id=task_id,
+            simulation_requirement="test requirement",
+            document_text="test document",
+            entity_types_list=[],
+            use_llm_for_profiles=True,
+            parallel_profile_count=1,
+            locale="zh-CN",
+        )
+
+        saved = sim_repo.get_simulation("sim_task_save")
+        assert saved is ready_state
+        assert saved.status == SimulationStatus.READY
 
 
 class TestReportAppServiceGenerateUsesExecutor:

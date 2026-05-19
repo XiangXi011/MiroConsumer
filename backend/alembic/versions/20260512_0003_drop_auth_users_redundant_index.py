@@ -1,7 +1,7 @@
 """Drop redundant auth_users user_id index.
 
-Revision ID: 20260512_0003_drop_auth_users_redundant_index
-Revises: 20260512_0002_add_tenant_columns_and_indexes
+Revision ID: 20260512_0003_drop_auth_idx
+Revises: 20260512_0002_tenant_indexes
 Create Date: 2026-05-12
 Revision rationale: remove the auth_users.user_id secondary index because the primary key already covers it.
 """
@@ -13,8 +13,8 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "20260512_0003_drop_auth_users_redundant_index"
-down_revision: Union[str, None] = "20260512_0002_add_tenant_columns_and_indexes"
+revision: str = "20260512_0003_drop_auth_idx"
+down_revision: Union[str, None] = "20260512_0002_tenant_indexes"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

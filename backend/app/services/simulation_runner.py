@@ -254,14 +254,14 @@ class SimulationRunner:
     @classmethod
     def get_run_state(cls, simulation_id: str) -> Optional[SimulationRunState]:
         """获取运行状态"""
-        if simulation_id in cls._run_states:
-            return cls._run_states[simulation_id]
         
         # 尝试从文件加载
         state = cls._load_run_state(simulation_id)
         if state:
             cls._run_states[simulation_id] = state
-        return state
+            return state
+
+        return cls._run_states.get(simulation_id)
     
     @classmethod
     def _load_run_state(cls, simulation_id: str) -> Optional[SimulationRunState]:
@@ -655,6 +655,7 @@ class SimulationRunner:
                 cls._build_phase6j_artifact_after_consumer_run(
                     simulation_id,
                     research_findings=research_findings,
+                    state=state,
                 )
                 cls._save_run_state(state)
                 return
@@ -773,6 +774,7 @@ class SimulationRunner:
             cls._build_phase6j_artifact_after_consumer_run(
                 simulation_id,
                 research_findings=research_findings,
+                state=state,
             )
             cls._save_run_state(state)
         except Exception as e:
@@ -814,6 +816,7 @@ class SimulationRunner:
         cls,
         simulation_id: str,
         research_findings: Optional[List[ResearchFinding]] = None,
+        state: Optional[SimulationRunState] = None,
     ) -> None:
         """Build a Phase 6J artifact after consumer simulation completion.
 
@@ -826,6 +829,7 @@ class SimulationRunner:
             cls._write_phase6j_calibration_inputs(
                 simulation_id,
                 research_findings=research_findings or [],
+                state=state,
             )
             build_phase6j_calibration_artifact(simulation_dir)
         except Exception as exc:
@@ -839,6 +843,7 @@ class SimulationRunner:
         cls,
         simulation_id: str,
         research_findings: Optional[List[ResearchFinding]] = None,
+        state: Optional[SimulationRunState] = None,
     ) -> None:
         """Write stable Phase 6J calibration inputs after consumer completion."""
         from .consumer.evidence_validator import (
@@ -851,7 +856,7 @@ class SimulationRunner:
         simulation_dir = os.path.join(cls.RUN_STATE_DIR, simulation_id)
         society_dir = os.path.join(simulation_dir, "society")
         os.makedirs(society_dir, exist_ok=True)
-        state = cls.get_run_state(simulation_id)
+        state = state or cls.get_run_state(simulation_id)
         findings = list(research_findings or [])
 
         reasoning_path = os.path.join(society_dir, "reasoning_traces.jsonl")

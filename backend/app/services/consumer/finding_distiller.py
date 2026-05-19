@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from typing import Callable, List, Optional
 
 from .lane_b_provider import GovernedDocumentChunk
@@ -119,6 +120,12 @@ def _is_chunk_accepted(chunk: DocumentChunk) -> bool:
     return True
 
 
+def _has_minimum_semantic_content(text: str) -> bool:
+    tokens = re.findall(r"[A-Za-z0-9]+|[\u4e00-\u9fff]", text)
+    semantic_chars = sum(len(token) for token in tokens)
+    return semantic_chars >= 2
+
+
 def _chunk_confidence(chunk: DocumentChunk, base: float = 0.6) -> float:
     """Return adjusted confidence for a chunk, lowering it if downgraded."""
     if isinstance(chunk, GovernedDocumentChunk) and chunk.downgraded:
@@ -154,7 +161,7 @@ def distill_findings_from_chunks(
             continue
 
         text = chunk.text.strip()
-        if not text:
+        if not text or not _has_minimum_semantic_content(text):
             continue
         # Deduplicate by text content
         key = text.casefold()

@@ -237,6 +237,23 @@ def test_format_quotes_prioritizes_llm_quotes_and_marks_template_sources():
     assert "Legacy quote without metadata" in lines[3]
     assert "[模拟生成，非LLM推理]" in lines[3]
 
+
+def test_format_quotes_uses_chinese_empty_state():
+    agent = ReportAgent(
+        graph_id="g1",
+        simulation_id="sim_1",
+        simulation_requirement="test req",
+        llm_client=MagicMock(),
+        zep_tools=MagicMock(),
+        project_type="consumer_test",
+    )
+
+    rendered = agent._format_quotes([])
+
+    assert rendered == "- 暂无代表性原声"
+    assert "No representative quotes" not in rendered
+
+
 def test_consumer_report_section_uses_llm_when_feature_flag_enabled(monkeypatch):
     from app.services.report_agent import ReportOutline, ReportSection
 

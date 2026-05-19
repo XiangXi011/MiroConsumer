@@ -117,7 +117,36 @@ def test_start_simulation_standard_defaults_to_32_agents():
     assert config["expanded_persona_count"] == 16
     assert config["shadow_agent_count"] == 8
     assert config["audit_sample_size"] == 4
-    assert config["llm_budget_limit"] == 12
+    assert config["llm_budget_limit"] == 24
+
+
+def test_start_simulation_standard_zero_budget_uses_uncapped_non_shadow_default():
+    app = create_app()
+    app.config["TESTING"] = True
+    with app.test_client() as client:
+        with patch("app.services.application.simulation_app_service.SimulationAppService._simulation_repo") as repo, patch(
+            "app.services.application.simulation_app_service.SimulationRunner.start_simulation"
+        ) as start:
+            state = type("State", (), {
+                "status": SimulationStatus.READY,
+                "project_id": "p1",
+                "graph_id": "g1",
+                "project_type": "consumer_test",
+            })()
+            repo.get_simulation.return_value = state
+            start.return_value.to_dict.return_value = {"simulation_id": "sim-zero", "runner_status": "running"}
+            resp = client.post(
+                "/api/simulation/start",
+                json={
+                    "simulation_id": "sim-zero",
+                    "society_mode": "standard",
+                    "llm_budget_limit": 0,
+                },
+            )
+
+    assert resp.status_code == 200
+    config = start.call_args.kwargs["society_config"]
+    assert config["llm_budget_limit"] == 24
 
 
 def test_start_simulation_standard_plus_defaults_to_100_agents():
@@ -147,7 +176,7 @@ def test_start_simulation_standard_plus_defaults_to_100_agents():
     assert config["expanded_persona_count"] == 72
     assert config["shadow_agent_count"] == 20
     assert config["audit_sample_size"] == 8
-    assert config["llm_budget_limit"] == 16
+    assert config["llm_budget_limit"] == 80
 
 
 def test_start_simulation_rejects_standard_over_32_without_advanced_mode():
