@@ -1,4 +1,16 @@
-"""Propagation event taxonomy and helpers for Phase 2 consumer simulation."""
+"""Propagation event taxonomy and helpers for Phase 2 consumer simulation.
+
+Event classification is grounded in:
+1. Rumor psychology (DiFonzo & Bordia, 2007): anxiety-driven rumor spreading
+   maps to positive_relay and misread_amplification
+2. Social judgment theory (Sherif & Hovland, 1961): attitude latitude of
+   acceptance/rejection maps to skeptical_challenge and clarification_recovery
+3. ELM central-peripheral route (Petty & Cacioppo, 1986): high-involvement
+   agents produce skeptical_challenge; low-involvement agents produce
+   positive_relay or misread_amplification
+4. Innovation diffusion (Rogers, 2003): adopters' uncertainty reduction
+   maps to clarification_recovery after initial misread_amplification
+"""
 
 from __future__ import annotations
 
@@ -7,9 +19,24 @@ from typing import Any, Dict, List, Literal, Optional
 from .models import PropagationEvent
 
 
+def _normalize_attitude(attitude: str | float) -> str:
+    """Normalize attitude to discrete label.
+
+    Supports both discrete string labels and continuous values (-1.0 to +1.0).
+    """
+    if isinstance(attitude, (int, float)):
+        val = float(attitude)
+        if val >= 0.3:
+            return "positive"
+        if val <= -0.3:
+            return "negative"
+        return "neutral"
+    return str(attitude).strip().lower()
+
+
 def classify_propagation_event(
-    before_attitude: str,
-    after_attitude: str,
+    before_attitude: str | float,
+    after_attitude: str | float,
     trigger: str = "",
     speech_act: str = "",
 ) -> Literal[
@@ -21,17 +48,30 @@ def classify_propagation_event(
 ]:
     """Classify a propagation event from attitude transition and context.
 
+    Classification draws on:
+    - Rumor psychology for anxiety-driven transitions (positive→negative)
+    - Social judgment theory for acceptance/rejection latitude shifts
+    - Innovation diffusion for post-adoption uncertainty reduction
+
     Args:
         before_attitude: Attitude label from the previous round.
+            Supports discrete labels ("positive"/"neutral"/"negative") or
+            continuous values in [-1.0, +1.0] (added for Phase 2 attitude
+            continuum support).
         after_attitude: Attitude label in the current round.
+            Supports discrete labels ("positive"/"neutral"/"negative") or
+            continuous values in [-1.0, +1.0].
         trigger: Dominant trigger type (e.g. risk_signal, competitor_signal).
         speech_act: Speech act label derived from the bucket.
 
     Returns:
         One of the five propagation event types.
     """
-    before = str(before_attitude).strip().lower()
-    after = str(after_attitude).strip().lower()
+    # Normalize continuous attitudes (-1.0 to +1.0) to discrete labels
+    before_val = _normalize_attitude(before_attitude)
+    after_val = _normalize_attitude(after_attitude)
+    before = before_val
+    after = after_val
 
     if before == "positive" and after == "negative":
         if speech_act == "reinterpretation":

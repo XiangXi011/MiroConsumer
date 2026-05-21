@@ -89,17 +89,45 @@ def performance_snapshot() -> dict[str, float]:
 
 @metrics_bp.route("/metrics")
 def prometheus_metrics():
-    """Prometheus format metrics."""
+    """Prometheus-compatible metrics endpoint.
+
+    Returns application metrics in Prometheus text format with proper
+    HELP and TYPE annotations for observability integration.
+    """
     snapshot = performance_snapshot()
-    lines = []
-    for key, value in _metrics.items():
-        if isinstance(value, dict):
-            for sub_key, sub_value in value.items():
-                lines.append(f'miroconsumer_{key}{{status="{sub_key}"}} {sub_value}')
-        else:
-            lines.append(f"miroconsumer_{key} {value}")
-    lines.append(f"miroconsumer_response_p95_ms {snapshot['p95_response_ms']}")
-    lines.append(f"miroconsumer_cache_hit_rate {snapshot['cache_hit_rate']}")
-    lines.append(f"miroconsumer_llm_avg_latency_ms {snapshot['llm_avg_latency_ms']}")
-    lines.append(f"miroconsumer_uptime_seconds {time.time() - _metrics['start_time']}")
-    return Response("\n".join(lines) + "\n", mimetype="text/plain")
+    uptime = time.time() - _metrics["start_time"]
+    lines = [
+        "# HELP miroconsumer_uptime_seconds Application uptime in seconds",
+        "# TYPE miroconsumer_uptime_seconds gauge",
+        f"miroconsumer_uptime_seconds {uptime}",
+        "# HELP miroconsumer_simulation_runs_total Total simulations run",
+        "# TYPE miroconsumer_simulation_runs_total counter",
+        f"miroconsumer_simulation_runs_total {_metrics['simulation_runs_total']}",
+        "# HELP miroconsumer_requests_total Total HTTP requests",
+        "# TYPE miroconsumer_requests_total counter",
+        f"miroconsumer_requests_total {_metrics['requests_total']}",
+        "# HELP miroconsumer_llm_calls_total Total LLM API calls",
+        "# TYPE miroconsumer_llm_calls_total counter",
+        f"miroconsumer_llm_calls_total {_metrics['llm_calls_total']}",
+        "# HELP miroconsumer_llm_tokens_total Total LLM tokens consumed",
+        "# TYPE miroconsumer_llm_tokens_total counter",
+        f"miroconsumer_llm_tokens_total {_metrics['llm_tokens_total']}",
+        "# HELP miroconsumer_active_runs Current active simulation runs",
+        "# TYPE miroconsumer_active_runs gauge",
+        f"miroconsumer_active_runs {_metrics['active_runs']}",
+        "# HELP miroconsumer_response_p95_ms P95 response time in ms",
+        "# TYPE miroconsumer_response_p95_ms gauge",
+        f"miroconsumer_response_p95_ms {snapshot['p95_response_ms']}",
+        "# HELP miroconsumer_cache_hit_rate Cache hit rate (0-1)",
+        "# TYPE miroconsumer_cache_hit_rate gauge",
+        f"miroconsumer_cache_hit_rate {snapshot['cache_hit_rate']}",
+        "# HELP miroconsumer_llm_avg_latency_ms Average LLM latency in ms",
+        "# TYPE miroconsumer_llm_avg_latency_ms gauge",
+        f"miroconsumer_llm_avg_latency_ms {snapshot['llm_avg_latency_ms']}",
+    ]
+    # Requests by status as labeled metrics
+    for sub_key, sub_value in _metrics["requests_by_status"].items():
+        lines.append(
+            f'miroconsumer_requests_by_status{{status="{sub_key}"}} {sub_value}'
+        )
+    return Response("\n".join(lines) + "\n", mimetype="text/plain; version=0.0.4")

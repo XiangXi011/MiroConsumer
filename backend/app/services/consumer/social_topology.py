@@ -85,6 +85,13 @@ def _derive_role(persona: Mapping[str, Any]) -> str:
     cognition = str(persona.get("cognition_level", "medium")).strip().lower()
     search = str(persona.get("search_propensity", "medium")).strip().lower()
     drivers = {d.lower().strip() for d in persona.get("attention_drivers", [])}
+    # P1-6: Extract additional persona dimensions for richer role mapping
+    involvement = str(persona.get("category_involvement", "medium")).strip().lower()
+    brand_rel = str(persona.get("brand_relationship", "neutral")).strip().lower()
+
+    # P1-6: Low category involvement + low influence = lurker
+    if involvement == "low" and influence < 0.5:
+        return "lurker"
 
     if influence < 0.6 or (search == "low" and cognition == "low"):
         return "lurker"
@@ -223,8 +230,60 @@ def select_topology_aware_targets(
     return unique_targets
 
 
+def reevaluate_roles_after_round(
+    topology: SocialTopology,
+    round_snapshots: List[Mapping[str, Any]],
+    round_index: int,
+) -> SocialTopology:
+    """Re-evaluate social roles after each propagation round.
+
+    Roles can shift based on observed engagement patterns:
+    - Agents with consistently high engagement and cross-community events
+      may become bridges
+    - Agents with declining engagement may become lurkers
+    - Agents challenging consensus may become skeptics
+
+    Args:
+        topology: Current social topology (mutated in place)
+        round_snapshots: Snapshots from the just-completed round
+        round_index: Current round number (0-indexed)
+
+    Returns:
+        The updated topology with re-evaluated roles.
+    """
+    # P1-5: Skip re-evaluation for round 0 — no prior engagement history
+    if round_index < 1:
+        return topology
+
+    # Compute engagement scores per agent from this round
+    engagement_by_agent: Dict[str, int] = {}
+    for snapshot in round_snapshots:
+        aid = str(snapshot.get("agent_id", ""))
+        events = snapshot.get("propagation_events", [])
+        if isinstance(events, list):
+            engagement_by_agent[aid] = engagement_by_agent.get(aid, 0) + len(events)
+
+    # Re-evaluate roles based on cumulative behavior
+    for persona_id in topology.persona_role:
+        current_role = topology.persona_role[persona_id]
+        engagement = engagement_by_agent.get(persona_id, 0)
+
+        # High engagement agents that were lurkers may become regular
+        if current_role == "lurker" and engagement >= 2:
+            topology.persona_role[persona_id] = "regular"
+            topology.lurkers.discard(persona_id)
+
+        # Consistently low engagement regular agents may become lurkers
+        elif current_role == "regular" and engagement == 0 and round_index >= 2:
+            topology.persona_role[persona_id] = "lurker"
+            topology.lurkers.add(persona_id)
+
+    return topology
+
+
 __all__ = [
     "SocialTopology",
     "build_social_topology",
     "select_topology_aware_targets",
+    "reevaluate_roles_after_round",
 ]

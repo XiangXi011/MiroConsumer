@@ -48,6 +48,21 @@ class ReasoningTrace:
     agent_id: str = ""
     round_index: int = -1
 
+    # P0-1: Extended metadata for explainability
+    prompt_version: str = ""
+    theoretical_framework: str = ""
+
+    def is_complete(self) -> bool:
+        """Check if the trace has all required reasoning fields populated."""
+        has_triplet = bool(self.reasoning_triplets) and all(
+            any(str(t.get(k, "")).strip() for k in ("input", "evidence", "conclusion"))
+            for t in self.reasoning_triplets
+        )
+        has_perception = bool(self.perception_reasoning.strip())
+        has_decision = bool(self.decision_reasoning.strip())
+        has_expression = bool(self.expression_reasoning.strip())
+        return has_triplet and (has_perception or has_decision or has_expression)
+
     def to_dict(self) -> Dict[str, Any]:
         d = {
             "reasoning_backend": self.reasoning_backend,
@@ -83,6 +98,10 @@ class ReasoningTrace:
             d["agent_id"] = self.agent_id
         if self.round_index >= 0:
             d["round_index"] = self.round_index
+        if self.prompt_version:
+            d["prompt_version"] = self.prompt_version
+        if self.theoretical_framework:
+            d["theoretical_framework"] = self.theoretical_framework
         return d
 
     @classmethod
@@ -108,6 +127,8 @@ class ReasoningTrace:
             related_event_id=str(d.get("related_event_id", "")),
             agent_id=str(d.get("agent_id", "")),
             round_index=int(d.get("round_index", -1)),
+            prompt_version=str(d.get("prompt_version", "")),
+            theoretical_framework=str(d.get("theoretical_framework", "")),
         )
 
     @staticmethod

@@ -338,6 +338,65 @@ class ConsumerReportContextBuilder:
         return str(event.get("quote", "")).strip()
 
 
+def _compute_robustness_score(turning_points: list, total_events: int) -> float:
+    """Compute a robustness score indicating how sensitive results were to specific events.
+
+    Higher score = more robust (less sensitive to individual events).
+    """
+    if total_events == 0:
+        return 0.0
+    ratio = len(turning_points) / total_events
+    # More turning points relative to total events = less robust
+    return round(max(0.0, min(1.0, 1.0 - ratio)), 4)
+
+
+def _build_counterfactual_analysis(
+    findings: list,
+    events: list,
+    before_after_states: list,
+) -> dict:
+    """Build a counterfactual analysis section for the report.
+
+    Identifies what might have happened differently if key events
+    had not occurred, providing stronger causal insight than
+    pure correlation analysis.
+    """
+    analysis = {
+        "counterfactual_scenarios": [],
+        "key_turning_points": [],
+        "robustness_score": 0.0,
+    }
+
+    if not events or not findings:
+        return analysis
+
+    # Identify potential turning points (events that preceded attitude shifts)
+    turning_points = []
+    for i, event in enumerate(events):
+        if event.get("before_attitude") != event.get("after_attitude"):
+            turning_points.append({
+                "event_index": i,
+                "event_type": event.get("event_type", "unknown"),
+                "attitude_change": f"{event.get('before_attitude', '?')} -> {event.get('after_attitude', '?')}",
+                "agent_id": event.get("actor_id", "unknown"),
+                "counterfactual": f"If this {event.get('event_type', 'event')} had not occurred, "
+                                  f"the agent might have maintained {event.get('before_attitude', 'prior')} attitude",
+            })
+
+    analysis["key_turning_points"] = turning_points[:5]  # Top 5 turning points
+    analysis["robustness_score"] = _compute_robustness_score(turning_points, len(events))
+
+    if turning_points:
+        analysis["counterfactual_scenarios"].append({
+            "scenario": "Without key turning points",
+            "description": f"If the top {len(turning_points)} turning points had not occurred, "
+                          f"the overall attitude distribution might have shifted less dramatically.",
+            "confidence": "low",  # Counterfactuals are inherently uncertain
+        })
+
+    return analysis
+
+
 def _build_provenance_summary(
     findings: List[Any],
     traces: List[Any],
@@ -657,6 +716,17 @@ def build_consumer_report_context(
     summary_dict = summary.to_dict() if hasattr(summary, "to_dict") else dict(summary)
     task_type = str(summary_dict.get("task_type", "concept_test") or "concept_test")
 
+    # 10.1: Build counterfactual analysis for causal insight enhancement
+    normalized_event_dicts = [
+        {
+            "event_type": e.event_type,
+            "before_attitude": getattr(e, "before_attitude", ""),
+            "after_attitude": getattr(e, "after_attitude", ""),
+            "actor_id": e.actor_id,
+        }
+        for e in typed_events
+    ]
+
     context: Dict[str, Any] = {
         "task_type": task_type,
         "phase2_summary": summary_dict,
@@ -669,6 +739,11 @@ def build_consumer_report_context(
         "finding_evidence_atoms": finding_evidence_atoms,
         "evidence_atom_count": sum(len(item["evidence_atoms"]) for item in finding_evidence_atoms),
         "cascade_metrics": summary_dict.get("cascade_metrics", {}),
+        "counterfactual_analysis": _build_counterfactual_analysis(
+            findings=typed_findings,
+            events=normalized_event_dicts,
+            before_after_states=[],
+        ),
         "top_packaging_hooks": summary_dict.get("top_packaging_hooks", []),
         "top_trust_objections": summary_dict.get("top_trust_objections", []),
         "top_confusion_triggers": summary_dict.get("top_confusion_triggers", []),

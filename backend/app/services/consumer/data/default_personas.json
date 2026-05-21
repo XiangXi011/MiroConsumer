@@ -29,7 +29,10 @@
         "region": "tier-1 and tier-2 urban China",
         "income_level": "middle to upper-middle household income"
       }
-    }
+    },
+    "category_involvement": "high",
+    "brand_relationship": "positive",
+    "education_level": "high"
   },
   {
     "persona_id": "M02",
@@ -60,7 +63,10 @@
         "region": "urban digital commerce markets",
         "income_level": "middle income"
       }
-    }
+    },
+    "category_involvement": "high",
+    "brand_relationship": "neutral",
+    "education_level": "medium"
   },
   {
     "persona_id": "M03",
@@ -91,7 +97,10 @@
         "region": "tier-2 to tier-4 family households",
         "income_level": "lower-middle to middle income"
       }
-    }
+    },
+    "category_involvement": "low",
+    "brand_relationship": "loyal",
+    "education_level": "medium"
   },
   {
     "persona_id": "M04",
@@ -122,7 +131,10 @@
         "region": "high-density urban commuter markets",
         "income_level": "middle income"
       }
-    }
+    },
+    "category_involvement": "medium",
+    "brand_relationship": "neutral",
+    "education_level": "medium"
   },
   {
     "persona_id": "M05",
@@ -154,7 +166,10 @@
         "region": "urban health-aware consumer markets",
         "income_level": "middle to upper-middle income"
       }
-    }
+    },
+    "category_involvement": "high",
+    "brand_relationship": "neutral",
+    "education_level": "high"
   },
   {
     "persona_id": "M06",
@@ -185,7 +200,10 @@
         "region": "mobile-first social commerce markets",
         "income_level": "lower-middle to middle income"
       }
-    }
+    },
+    "category_involvement": "medium",
+    "brand_relationship": "negative",
+    "education_level": "low"
   },
   {
     "persona_id": "M07",
@@ -217,7 +235,10 @@
         "region": "urban professional segments",
         "income_level": "upper-middle income"
       }
-    }
+    },
+    "category_involvement": "high",
+    "brand_relationship": "positive",
+    "education_level": "high"
   },
   {
     "persona_id": "M08",
@@ -248,7 +269,10 @@
         "region": "price-sensitive mass-market households",
         "income_level": "lower-middle income"
       }
-    }
+    },
+    "category_involvement": "low",
+    "brand_relationship": "negative",
+    "education_level": "medium"
   },
   {
     "persona_id": "M09",
@@ -281,7 +305,10 @@
         "region": "community retail and lower digital penetration markets",
         "income_level": "fixed to middle income"
       }
-    }
+    },
+    "category_involvement": "low",
+    "brand_relationship": "loyal",
+    "education_level": "low"
   },
   {
     "persona_id": "M10",
@@ -314,7 +341,10 @@
         "region": "campus and urban youth markets",
         "income_level": "student or entry-level income"
       }
-    }
+    },
+    "category_involvement": "medium",
+    "brand_relationship": "negative",
+    "education_level": "medium"
   },
   {
     "persona_id": "M11",
@@ -347,7 +377,10 @@
         "region": "tier-3 to tier-5 cities",
         "income_level": "lower-middle to middle income"
       }
-    }
+    },
+    "category_involvement": "medium",
+    "brand_relationship": "neutral",
+    "education_level": "medium"
   },
   {
     "persona_id": "M12",
@@ -380,7 +413,10 @@
         "region": "tier-1 and affluent tier-2 districts",
         "income_level": "upper-middle to high income"
       }
-    }
+    },
+    "category_involvement": "high",
+    "brand_relationship": "loyal",
+    "education_level": "high"
   },
   {
     "persona_id": "M13",
@@ -413,7 +449,10 @@
         "region": "lower-tier city and county youth markets",
         "income_level": "lower-middle income"
       }
-    }
+    },
+    "category_involvement": "high",
+    "brand_relationship": "positive",
+    "education_level": "medium"
   },
   {
     "persona_id": "M14",
@@ -446,7 +485,10 @@
         "region": "urban health-conscious markets",
         "income_level": "middle to upper-middle income"
       }
-    }
+    },
+    "category_involvement": "high",
+    "brand_relationship": "positive",
+    "education_level": "high"
   },
   {
     "persona_id": "M15",
@@ -479,7 +521,10 @@
         "region": "national livestream commerce audience",
         "income_level": "lower-middle to middle income"
       }
-    }
+    },
+    "category_involvement": "medium",
+    "brand_relationship": "loyal",
+    "education_level": "low"
   },
   {
     "persona_id": "M16",
@@ -512,6 +557,9 @@
         "region": "family households in urban and suburban markets",
         "income_level": "middle to upper-middle income"
       }
-    }
+    },
+    "category_involvement": "high",
+    "brand_relationship": "positive",
+    "education_level": "high"
   }
 ]

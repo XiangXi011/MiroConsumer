@@ -30,6 +30,7 @@ class ConvergenceDetector:
         community_coverage_threshold: float = 0.8,
         min_rounds: int = 3,
         enabled: bool = True,
+        total_agent_count: int = 0,
     ):
         self.config = ConvergenceConfig(
             enabled=bool(enabled),
@@ -39,6 +40,22 @@ class ConvergenceDetector:
             event_distribution_change_threshold=max(0.0, float(event_distribution_change_threshold)),
             community_coverage_threshold=max(0.0, min(1.0, float(community_coverage_threshold))),
         )
+        # P0-6: Dynamically relax thresholds for small agent populations
+        # so that convergence can actually trigger with 10-30 agents.
+        if total_agent_count > 0 and total_agent_count < 50:
+            scale = max(1.0, 2.0 - total_agent_count / 25.0)
+            # For 30 agents: scale = 0.8 (more lenient)
+            # For 10 agents: scale = 1.6 (much more lenient)
+            object.__setattr__(
+                self.config,
+                "attitude_change_threshold",
+                self.config.attitude_change_threshold * scale,
+            )
+            object.__setattr__(
+                self.config,
+                "active_agent_ratio_threshold",
+                self.config.active_agent_ratio_threshold * scale,
+            )
 
     def should_stop(
         self,

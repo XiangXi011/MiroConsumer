@@ -342,6 +342,33 @@ class ConsumerPhase2Summary:
         return result
 
 
+def _semantic_match_stub(query: str, text: str, threshold: float = 0.5) -> bool:
+    """Stub for semantic embedding-based matching.
+
+    TODO: Replace with actual embedding model (e.g., sentence-transformers)
+    for production-grade semantic similarity.
+
+    Current implementation falls back to:
+    1. Direct substring match (backward compatible)
+    2. Token overlap heuristic
+    """
+    # Handle empty query to avoid vacuous substring match
+    if not query or not query.strip():
+        return False
+
+    # Direct match (backward compatible)
+    if query.lower() in text.lower():
+        return True
+
+    # Token overlap heuristic
+    query_tokens = set(query.lower().split())
+    text_tokens = set(text.lower().split())
+    if not query_tokens:
+        return False
+    overlap = len(query_tokens & text_tokens) / len(query_tokens)
+    return overlap >= threshold
+
+
 def _extract_task_aware_fields(
     events: List[Any],
     task_type: Optional[str] = None,
@@ -393,14 +420,15 @@ def _extract_task_aware_fields(
         packaging_markers = ("pack", "package", "box", "bottle", "label", "design", "look", "appearance", "shelf")
         trust_markers = ("trust", "credibility", "believe", "doubt", "suspicious", "sketchy", "authentic")
         confusion_markers = ("confus", "unclear", "misunderstand", "ambiguous", "vague", "misread")
+        # 10.2: Use semantic matching stub instead of keyword matching
         result["top_packaging_hooks"] = [
-            q for q in resonance_quotes if any(m in q.casefold() for m in packaging_markers)
+            q for q in resonance_quotes if any(_semantic_match_stub(m, q) for m in packaging_markers)
         ][:3]
         result["top_trust_objections"] = [
-            q for q in risk_quotes if any(m in q.casefold() for m in trust_markers)
+            q for q in risk_quotes if any(_semantic_match_stub(m, q) for m in trust_markers)
         ][:3]
         result["top_confusion_triggers"] = [
-            q for q in misread_quotes if any(m in q.casefold() for m in confusion_markers)
+            q for q in misread_quotes if any(_semantic_match_stub(m, q) for m in confusion_markers)
         ][:3]
         if not result["top_packaging_hooks"] and brief is not None:
             result["top_packaging_hooks"] = list(getattr(brief, "packaging_assets", [])[:3])
@@ -430,8 +458,9 @@ def _extract_task_aware_fields(
 
     elif lowered_task == "price_test":
         price_markers = ("price", "cost", "expensive", "cheap", "value", "worth", "pay", "budget", "afford")
+        # 10.2: Use semantic matching stub instead of keyword matching
         result["top_price_objections"] = [
-            q for q in risk_quotes if any(m in q.casefold() for m in price_markers)
+            q for q in risk_quotes if any(_semantic_match_stub(m, q) for m in price_markers)
         ][:3]
         if brief is not None:
             price_points = list(getattr(brief, "price_points", []) or [])

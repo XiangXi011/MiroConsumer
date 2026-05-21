@@ -341,7 +341,7 @@ class RunController:
                 atomic_write_json(drift_path, drift_report.to_dict())
         except Exception:
             import logging
-                logging.getLogger(__name__).warning("Drift detection failed for simulation %s", simulation_id, exc_info=True)
+            logging.getLogger(__name__).warning("Drift detection failed for simulation %s", simulation_id, exc_info=True)
 
         return SocietyReportAdapter(base_dir=self.store.base_dir).build_report_context(simulation_id)
 

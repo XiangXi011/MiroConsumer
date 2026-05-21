@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import base64
 import html
 import logging
 import re
+import unicodedata
 from dataclasses import dataclass
 from typing import Iterable, List, Optional
 
@@ -62,15 +64,46 @@ class PromptGuard:
             pattern_sources.extend(custom_patterns)
         self.patterns = [re.compile(pattern) for pattern in pattern_sources]
 
+    def _normalize_input(self, text: str) -> str:
+        """Normalize text to defeat encoding/Unicode obfuscation attacks.
+
+        Applies base64 decoding, Unicode NFKC normalization, and
+        common confusable character removal before pattern matching.
+        """
+        # Try base64 decode first — attackers may encode payloads to evade regex.
+        try:
+            decoded = base64.b64decode(text, validate=True).decode("utf-8")
+            return decoded
+        except Exception:
+            pass
+
+        # Unicode NFKC normalization — collapses compat characters (e.g. fullwidth).
+        normalized = unicodedata.normalize("NFKC", text)
+
+        # Remove zero-width and control characters used to break tokenization.
+        normalized = "".join(
+            ch
+            for ch in normalized
+            if unicodedata.category(ch) not in ("Cc", "Cf", "Cs", "Co", "Cn")
+        )
+
+        return normalized
+
     def sanitize(self, user_input: str) -> SanitizationResult:
         if not user_input:
             return SanitizationResult(True, "", [], 0.0, "allow")
 
+        # Normalize input to detect obfuscated injection attempts (base64/Unicode).
+        # Detection runs on normalized text, but replacement uses original input.
+        normalized_input = self._normalize_input(user_input)
+
         detected: List[str] = []
         sanitized = str(user_input)
+        # Search against normalized text to catch encoding/Unicode evasion.
         for pattern in self.patterns:
-            if pattern.search(sanitized):
+            if pattern.search(normalized_input):
                 detected.append(pattern.pattern)
+                # Apply removal on original input to preserve legitimate content shape.
                 sanitized = pattern.sub("[removed]", sanitized)
 
         risk_score = min(1.0, len(detected) * 0.35)

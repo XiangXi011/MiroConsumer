@@ -217,6 +217,16 @@ class ConsumerSimulationOrchestrator:
             "test_type_profile": profile_to_dict(profile),
             "perception_signals": perception_signals,
             "decision_signals": decision_signals,
+            "reasoning_trace": self._build_reasoning_trace(
+                agent_id=agent_id,
+                round_num=round_num,
+                agent_traits=agent_traits,
+                perception_signals=perception_signals,
+                decision_signals=decision_signals,
+                attitude_label=attitude_label,
+                bucket=bucket,
+                quote=quote,
+            ),
         }
 
     def persist_round_snapshot(self, snapshot: Mapping[str, Any]) -> None:
@@ -326,6 +336,71 @@ class ConsumerSimulationOrchestrator:
             "type": str(node_type),
             "text": node_text,
             "visibility": visibility,
+        }
+
+    def _build_reasoning_trace(
+        self,
+        agent_id: str,
+        round_num: int,
+        agent_traits: Mapping[str, Any],
+        perception_signals: Dict[str, Any],
+        decision_signals: Dict[str, Any],
+        attitude_label: str,
+        bucket: str,
+        quote: str,
+    ) -> Dict[str, Any]:
+        """Build a structured reasoning trace from round signals.
+
+        Maps the perception-decision-expression pipeline to structured
+        reasoning triplets for explainability and audit.
+        """
+        # Build perception reasoning from visible signals
+        perception_parts = []
+        if perception_signals.get("relevant_nodes"):
+            perception_parts.append(f"Identified {len(perception_signals['relevant_nodes'])} relevant context nodes")
+        if perception_signals.get("brief_match_score"):
+            perception_parts.append(f"Brief relevance: {perception_signals['brief_match_score']}")
+
+        # Build decision reasoning from decision signals
+        decision_parts = []
+        if decision_signals.get("prior_attitude"):
+            decision_parts.append(f"Prior attitude: {decision_signals['prior_attitude']}")
+        if decision_signals.get("attitude_shift"):
+            decision_parts.append(f"Attitude shift: {decision_signals['attitude_shift']}")
+
+        # Build expression reasoning
+        expression_parts = []
+        if bucket:
+            expression_parts.append(f"Response bucket: {bucket}")
+        if quote:
+            expression_parts.append(f"Expression: {quote[:200]}")
+
+        reasoning_summary = f"Round {round_num}: {attitude_label}"
+        if perception_parts:
+            reasoning_summary += f" | Perception: {'; '.join(perception_parts)}"
+        if decision_parts:
+            reasoning_summary += f" | Decision: {'; '.join(decision_parts)}"
+
+        triplet = {
+            "input": f"Agent {agent_id} round {round_num} stimuli",
+            "evidence": "; ".join(perception_parts) if perception_parts else "context evaluation",
+            "conclusion": f"Attitude: {attitude_label}, Bucket: {bucket}",
+        }
+
+        return {
+            "reasoning_backend": "rules",
+            "llm_invoked": False,
+            "source": "society_runtime",
+            "fallback_reason": "",
+            "model": "",
+            "latency_ms": 0.0,
+            "reasoning_summary": reasoning_summary,
+            "perception_reasoning": "; ".join(perception_parts) if perception_parts else "",
+            "decision_reasoning": "; ".join(decision_parts) if decision_parts else "",
+            "expression_reasoning": "; ".join(expression_parts) if expression_parts else "",
+            "reasoning_triplets": [triplet] if any(triplet.values()) else [],
+            "agent_id": agent_id,
+            "round_index": round_num,
         }
 
     def _generate_response(

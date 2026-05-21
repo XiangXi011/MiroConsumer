@@ -83,6 +83,24 @@
             {{ $t('step2.generateAgentPersonaDesc') }}
           </p>
 
+          <!-- [UX-IMPROVE] P2-1: Prepare 失败错误面板 —— 当 prepare 失败时显示错误原因和降级操作 -->
+          <div v-if="prepareStatus === 'failed' || prepareStatus === 'error'" class="error-panel">
+            <div class="error-icon">⚠️</div>
+            <div class="error-content">
+              <h4 class="error-title">{{ $t('step2.prepareFailedTitle') || 'Prepare Failed' }}</h4>
+              <p class="error-message">{{ prepareErrorMessage || $t('step2.prepareFailedDesc') || 'Agent persona generation encountered an error.' }}</p>
+              <div class="error-actions">
+                <button class="btn btn-primary" @click="retryPrepare" :disabled="isRetrying">
+                  <span v-if="isRetrying">{{ $t('step2.retrying') || 'Retrying...' }}</span>
+                  <span v-else>{{ $t('step2.retry') || 'Retry Prepare' }}</span>
+                </button>
+                <button class="btn btn-secondary" @click="degradeToManual">
+                  {{ $t('step2.degradeToManual') || 'Use Manual Mode' }}
+                </button>
+              </div>
+            </div>
+          </div>
+
           <!-- Profiles Stats -->
           <div v-if="profiles.length > 0" class="stats-grid">
             <div class="stat-card">
@@ -730,7 +748,8 @@ const props = defineProps({
   systemLogs: Array
 })
 
-const emit = defineEmits(['go-back', 'next-step', 'add-log', 'update-status'])
+// [UX-IMPROVE] P2-1: 新增 'mode-change' 事件用于降级操作
+const emit = defineEmits(['go-back', 'next-step', 'add-log', 'update-status', 'mode-change'])
 
 // State
 const phase = ref(0) // 0: 初始化, 1: 生成人设, 2: 生成配置, 3: 完成
@@ -745,6 +764,11 @@ const simulationConfig = ref(null)
 const consumerConfigMeta = ref({})
 const selectedProfile = ref(null)
 const showProfilesDetail = ref(true)
+
+// [UX-IMPROVE] P2-1: Prepare 失败状态管理 —— 新增响应式变量用于错误面板和降级操作
+const prepareStatus = ref('pending') // 'pending' | 'running' | 'completed' | 'failed'
+const prepareErrorMessage = ref('')
+const isRetrying = ref(false)
 
 // 日志去重：记录上一次输出的关键信息
 let lastLoggedMessage = ''
@@ -929,6 +953,37 @@ const selectProfile = (profile) => {
   selectedProfile.value = profile
 }
 
+// [UX-IMPROVE] P2-1: Prepare 失败后的重试方法 —— 允许用户一键重试 prepare
+async function retryPrepare() {
+  isRetrying.value = true
+  prepareStatus.value = 'running'
+  prepareErrorMessage.value = ''
+  addLog(t('log.retryPrepare'))
+  try {
+    // 重置相关状态
+    profiles.value = []
+    expectedTotal.value = null
+    simulationConfig.value = null
+    consumerConfigMeta.value = {}
+
+    // 调用现有的 prepare API（复用 startPrepareSimulation 逻辑）
+    await startPrepareSimulation()
+  } catch (error) {
+    prepareStatus.value = 'failed'
+    prepareErrorMessage.value = error.message || t('step2.prepareFailedDesc')
+    addLog(t('log.prepareFailedAfterRetry', { error: error.message }))
+  } finally {
+    isRetrying.value = false
+  }
+}
+
+// [UX-IMPROVE] P2-1: 降级到 manual_only 模式 —— 当 prepare 反复失败时提供降级选项
+function degradeToManual() {
+  // 通过事件通知父组件切换到 manual 模式
+  emit('mode-change', 'manual_only')
+  addLog(t('log.degradedToManualMode'))
+}
+
 // 自动开始准备模拟
 const startPrepareSimulation = async () => {
   if (!props.simulationId) {
@@ -981,6 +1036,9 @@ const startPrepareSimulation = async () => {
       emit('update-status', 'error')
     }
   } catch (err) {
+    // [UX-IMPROVE] P2-1: 捕获 prepare 异常并设置失败状态，显示错误面板
+    prepareStatus.value = 'failed'
+    prepareErrorMessage.value = err.message || t('step2.prepareFailedDesc')
     addLog(t('log.prepareException', { error: err.message }))
     emit('update-status', 'error')
   }
@@ -1061,6 +1119,9 @@ const pollPrepareStatus = async () => {
         stopProfilesPolling()
         await loadPreparedData()
       } else if (data.status === 'failed') {
+        // [UX-IMPROVE] P2-1: 设置 prepare 失败状态，触发错误面板显示
+        prepareStatus.value = 'failed'
+        prepareErrorMessage.value = data.error || t('step2.prepareFailedDesc')
         addLog(t('log.prepareFailedWithError', { error: data.error || t('common.unknownError') }))
         stopPolling()
         stopProfilesPolling()
@@ -2907,5 +2968,77 @@ onUnmounted(() => {
 .pack-tag.custom {
   background: #FEF3C7;
   color: #D97706;
+}
+
+/* [UX-IMPROVE] P2-1: Prepare 错误面板样式 —— 提供清晰的错误提示和操作按钮 */
+.error-panel {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  background: #fff5f5;
+  border: 1px solid #feb2b2;
+  border-radius: 8px;
+  margin: 12px 0;
+}
+
+.error-icon {
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.error-content {
+  flex: 1;
+}
+
+.error-title {
+  margin: 0 0 8px 0;
+  color: #c53030;
+  font-size: 16px;
+}
+
+.error-message {
+  margin: 0 0 12px 0;
+  color: #742a2a;
+  font-size: 14px;
+}
+
+.error-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn {
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: opacity 0.2s;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: #3182ce;
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #2c5282;
+}
+
+.btn-secondary {
+  background: #e2e8f0;
+  color: #4a5568;
+}
+
+.btn-secondary:hover {
+  background: #cbd5e0;
 }
 </style>

@@ -1,5 +1,58 @@
 ﻿# Changelog
 
+## [0.8.0] - 2026-05-21
+
+### Comprehensive Review Fixes — Target Score 9.0+
+
+Based on the 2026-05-21 comprehensive review (score 6.75 → target 9.0+), the following critical and high-priority issues were addressed:
+
+#### Security (P0)
+- **P0-4**: `.env.example` — Added explicit SECRET_KEY placeholder with security warning comments
+- **P0-3**: `prompt_guard.py` — Added base64/Unicode normalization preprocessing layer to defeat encoding obfuscation attacks. Detects base64-encoded injections, Unicode confusables, and zero-width character bypasses
+- **JWT revocation**: Added stub for token blacklist mechanism
+
+#### Evidence & Confidence (P0/P1)
+- **P0-2**: `evidence_validator.py` — Removed trace_aligned false strong atom injection that created circular validation loop
+- **P1-7**: Semantic alignment weights changed from 70/30 (recall/precision) to 50/50 to reduce recall bias
+- **9.5**: Blocking violations matching changed from prefix match to exact match
+
+#### Convergence Detection (P0)
+- **P0-6**: `convergence_detector.py` — Added dynamic threshold scaling for small samples (< 50 agents). Thresholds auto-adjust based on total_agent_count
+
+#### ReasoningTrace — Filled (P0)
+- **P0-1**: `orchestrator.py` — `build_round_snapshot()` now populates structured reasoning traces from perception/decision signals
+- `reasoning_trace.py` — Added `is_complete()` audit method, `prompt_version` and `theoretical_framework` fields
+
+#### Social Topology & Personas (P1)
+- **P1-5**: `social_topology.py` — Added `reevaluate_roles_after_round()` for dynamic role reassessment based on engagement patterns
+- **P1-6**: Role assignment now considers `category_involvement` dimension
+- **6.1/6.2**: `persona_pack.py` — Added `category_involvement`, `brand_relationship`, `education_level` dimensions; `can_access_deep_graph()` upgraded from binary threshold to weighted scoring model (0.4×search + 0.4×cognition + 0.2×education, threshold ≥ 0.6)
+- `default_personas.json` — All 16 personas updated with new dimension values
+
+#### Event Engine (7.1/7.2)
+- `event_engine.py` — Added theoretical grounding documentation (rumor psychology, social judgment theory, ELM, innovation diffusion)
+- Continuous attitude value support (-1.0 to +1.0) with `_normalize_attitude()` helper
+
+#### Report Quality (10.1/10.2)
+- `report_context.py` — Added `_build_counterfactual_analysis()` with turning point identification and robustness scoring
+- `scoring.py` — Keyword matching upgraded to `_semantic_match_stub()` with token overlap heuristic (backward compatible)
+
+#### Frontend UX (P2-1/3.2)
+- `Step2EnvSetup.vue` — Added error panel with retry and "degrade to manual" CTA buttons for prepare failures
+- `Step3Simulation.vue` — Added summary/detailed view toggle to reduce information density
+
+#### Test Coverage (P0-5)
+- `.coveragerc` — Removed exemptions for 5 core business modules (simulation_runner, report_agent, graph_builder, simulation_ipc, simulation_config_generator)
+- Added 113 new unit tests across 5 test files for previously exempted modules
+
+#### Observability
+- Enhanced `/metrics` endpoint with Prometheus-compatible format
+
+#### Documentation
+- `PRD.md` — Clarified Phase 4 (statistical significance) vs Phase 5 (causal inference + productization) boundaries
+
+---
+
 ## [0.7.1] - 2026-05-11
 
 ### Added

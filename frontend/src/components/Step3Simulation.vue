@@ -147,6 +147,81 @@
 
     <!-- Main Content: Dual Timeline -->
     <div class="main-content-area" ref="scrollContainer">
+      <!-- [UX-IMPROVE] 3.2: 视图模式切换按钮 —— 让用户在摘要和详细视图间切换 -->
+      <div class="view-mode-toggle">
+        <button
+          :class="['toggle-btn', { active: viewMode === 'summary' }]"
+          @click="viewMode = 'summary'"
+        >
+          {{ $t('simulation.summaryView') || 'Summary' }}
+        </button>
+        <button
+          :class="['toggle-btn', { active: viewMode === 'detailed' }]"
+          @click="viewMode = 'detailed'"
+        >
+          {{ $t('simulation.detailedView') || 'Detailed' }}
+        </button>
+      </div>
+
+      <!-- [UX-IMPROVE] 3.2: Summary 视图 —— 只显示核心指标（当前轮次、活跃 agents 数、收敛状态） -->
+      <div v-if="viewMode === 'summary'" class="summary-view">
+        <div class="summary-metrics-grid">
+          <div class="summary-metric-card">
+            <span class="summary-metric-label">{{ $t('simulation.currentRound') || 'Current Round' }}</span>
+            <span class="summary-metric-value mono">{{ summaryMetrics.currentRound }} / {{ summaryMetrics.totalRounds }}</span>
+          </div>
+          <div class="summary-metric-card">
+            <span class="summary-metric-label">{{ $t('simulation.totalActions') || 'Total Actions' }}</span>
+            <span class="summary-metric-value mono">{{ summaryMetrics.totalActions }}</span>
+          </div>
+          <div class="summary-metric-card">
+            <span class="summary-metric-label">{{ $t('simulation.activeAgents') || 'Active Agents' }}</span>
+            <span class="summary-metric-value mono">{{ summaryMetrics.activeAgents }}</span>
+          </div>
+          <div class="summary-metric-card">
+            <span class="summary-metric-label">{{ $t('simulation.convergence') || 'Status' }}</span>
+            <span class="summary-metric-value status-badge" :class="'status-' + summaryMetrics.convergenceStatus">
+              {{ summaryMetrics.convergenceStatus === 'completed' ? ($t('simulation.statusCompleted') || 'Completed')
+                : summaryMetrics.convergenceStatus === 'running' ? ($t('simulation.statusRunning') || 'Running')
+                : summaryMetrics.convergenceStatus === 'exception' ? ($t('simulation.statusException') || 'Exception')
+                : ($t('simulation.statusPending') || 'Pending') }}
+            </span>
+          </div>
+        </div>
+        <!-- Summary 视图的 Platform Breakdown -->
+        <div class="summary-platform-breakdown">
+          <div class="summary-platform-card twitter">
+            <span class="summary-platform-label">Plaza</span>
+            <span class="summary-platform-round mono">R{{ summaryMetrics.twitterRound }}</span>
+            <span class="summary-platform-actions mono">{{ summaryMetrics.twitterActions }} actions</span>
+          </div>
+          <div class="summary-platform-card reddit">
+            <span class="summary-platform-label">Community</span>
+            <span class="summary-platform-round mono">R{{ summaryMetrics.redditRound }}</span>
+            <span class="summary-platform-actions mono">{{ summaryMetrics.redditActions }} actions</span>
+          </div>
+        </div>
+        <!-- 在 Summary 模式下也显示时间轴最新事件（最近 5 条） -->
+        <div v-if="chronologicalActions.length > 0" class="summary-recent-events">
+          <span class="summary-section-label">{{ $t('simulation.recentEvents') || 'Recent Events' }}</span>
+          <div class="summary-event-list">
+            <div
+              v-for="action in chronologicalActions.slice(-5).reverse()"
+              :key="'summary-' + (action._uniqueId || action.id)"
+              class="summary-event-item"
+              :class="action.platform"
+            >
+              <span class="summary-event-platform">{{ action.platform }}</span>
+              <span class="summary-event-type">{{ getActionTypeLabel(action.action_type) }}</span>
+              <span class="summary-event-agent">{{ action.agent_name || 'Agent ' + action.agent_id }}</span>
+              <span class="summary-event-round mono">R{{ action.round_num }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- [UX-IMPROVE] 3.2: Detailed 视图 —— 只在 detailed 模式下显示完整时间轴 -->
+      <template v-if="viewMode === 'detailed'">
       <!-- Timeline Header -->
       <div class="timeline-header" v-if="allActions.length > 0">
         <div class="timeline-stats">
@@ -311,6 +386,8 @@
           <span>Waiting for agent actions...</span>
         </div>
       </div>
+      </template>
+      <!-- [UX-IMPROVE] 3.2: Detailed 视图结束 -->
     </div>
 
     <!-- Bottom Info / Logs -->
@@ -392,6 +469,9 @@ const actionIds = ref(new Set()) // 用于去重的动作ID集合
 const scrollContainer = ref(null)
 const consumerSummary = ref(null)
 const runtimeExceptionalState = ref(null)
+
+// [UX-IMPROVE] 3.2: 视图模式切换 —— summary/detailed 视图状态
+const viewMode = ref('detailed') // 'summary' | 'detailed'
 
 // Computed
 // 按时间顺序显示动作（最新的在最后面，即底部）
@@ -478,6 +558,39 @@ const consumerCausalQuotes = computed(() => {
 const consumerCascadeMetrics = computed(() => {
   if (!isConsumerMode.value || !consumerSummary.value) return []
   return formatCascadeMetrics(consumerSummary.value.cascade_metrics, t)
+})
+
+// [UX-IMPROVE] 3.2: Summary 视图核心指标 —— 只在 summary 模式下显示关键数据
+const summaryMetrics = computed(() => {
+  const twitterRound = runStatus.value.twitter_current_round || 0
+  const redditRound = runStatus.value.reddit_current_round || 0
+  const totalRounds = runStatus.value.total_rounds || maxRounds.value || '-'
+  const twitterActions = runStatus.value.twitter_actions_count || 0
+  const redditActions = runStatus.value.reddit_actions_count || 0
+  const totalActions = twitterActions + redditActions
+
+  // 判断收敛状态
+  let convergenceStatus = 'running'
+  const isCompleted = runStatus.value.runner_status === 'completed' || runStatus.value.runner_status === 'stopped'
+  if (isCompleted) {
+    convergenceStatus = 'completed'
+  } else if (runtimeExceptionalState.value) {
+    convergenceStatus = 'exception'
+  } else if (phase.value === 0) {
+    convergenceStatus = 'pending'
+  }
+
+  return {
+    currentRound: Math.max(twitterRound, redditRound),
+    totalRounds,
+    twitterRound,
+    redditRound,
+    totalActions,
+    twitterActions,
+    redditActions,
+    activeAgents: new Set(allActions.value.map(a => a.agent_id)).size,
+    convergenceStatus,
+  }
 })
 
 // Methods
@@ -1555,5 +1668,196 @@ onUnmounted(() => {
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
   margin-right: 6px;
+}
+
+/* [UX-IMPROVE] 3.2: 视图模式切换按钮样式 */
+.view-mode-toggle {
+  display: flex;
+  gap: 0;
+  margin: 12px 24px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  align-self: flex-start;
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  background: #fff;
+}
+
+.toggle-btn {
+  padding: 6px 16px;
+  border: none;
+  background: #f7fafc;
+  color: #718096;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.toggle-btn.active {
+  background: #3182ce;
+  color: white;
+}
+
+.toggle-btn:hover:not(.active) {
+  background: #edf2f7;
+}
+
+/* [UX-IMPROVE] 3.2: Summary 视图样式 */
+.summary-view {
+  padding: 0 24px 24px;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.summary-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.summary-metric-card {
+  background: #f7fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.summary-metric-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #718096;
+}
+
+.summary-metric-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: #1a202c;
+}
+
+.summary-metric-value.status-badge {
+  font-size: 14px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  display: inline-block;
+  width: fit-content;
+}
+
+.status-completed { background: #c6f6d5; color: #22543d; }
+.status-running { background: #bee3f8; color: #2a4365; }
+.status-exception { background: #fed7d7; color: #742a2a; }
+.status-pending { background: #e2e8f0; color: #4a5568; }
+
+.summary-platform-breakdown {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.summary-platform-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.summary-platform-card.twitter {
+  border-left: 4px solid #000;
+}
+
+.summary-platform-card.reddit {
+  border-left: 4px solid #000;
+}
+
+.summary-platform-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #4a5568;
+}
+
+.summary-platform-round {
+  font-size: 20px;
+  font-weight: 700;
+  color: #1a202c;
+}
+
+.summary-platform-actions {
+  font-size: 12px;
+  color: #718096;
+}
+
+.summary-recent-events {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.summary-section-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #718096;
+  margin-bottom: 12px;
+}
+
+.summary-event-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.summary-event-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: #f7fafc;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.summary-event-platform {
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 10px;
+  color: #a0aec0;
+  min-width: 50px;
+}
+
+.summary-event-type {
+  background: #edf2f7;
+  color: #4a5568;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.summary-event-agent {
+  flex: 1;
+  color: #2d3748;
+  font-weight: 500;
+}
+
+.summary-event-round {
+  font-size: 11px;
+  color: #a0aec0;
 }
 </style>

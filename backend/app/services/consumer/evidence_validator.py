@@ -146,8 +146,10 @@ def _semantic_alignment_score(claim: str, evidence: str) -> float:
     matched_bigrams = sum(1 for bigram in claim_bigrams if bigram in evidence_text)
     bigram_bonus = min(0.25, matched_bigrams * 0.12)
     substring_bonus = 0.1 if claim.lower() in evidence.lower() or evidence.lower() in claim.lower() else 0.0
+    # P1-7: Changed weights from 0.70*recall + 0.30*precision to 0.50/0.50.
+    # Reduces recall bias and raises precision weight to avoid over-matching.
     return round(
-        max(0.0, min(1.0, 0.70 * recall + 0.30 * precision + bigram_bonus + substring_bonus)),
+        max(0.0, min(1.0, 0.50 * recall + 0.50 * precision + bigram_bonus + substring_bonus)),
         4,
     )
 
@@ -298,22 +300,13 @@ def validate_finding(
     elif has_trace and trace_id not in trace_by_id and traces is not None:
         missing_support_reasons.append("referenced_trace_not_found")
 
-    if trace_aligned and len(evidence_snippets) >= 2 and (
-        not aligned_atoms
-        or max(float(atom.get("alignment_score", 0.0) or 0.0) for atom in aligned_atoms) < 0.55
-    ):
-        evidence_atoms.append(
-            {
-                "atom_id": f"{snippet_id or finding_id}:trace_alignment",
-                "text": "trace-aligned evidence bundle",
-                "source_id": snippet_id or finding_id,
-                "source_type": "retrieval_trace",
-                "alignment_score": 0.75,
-                "semantic_density": 0.8,
-                "support_level": "strong",
-            }
-        )
-        aligned_atoms = _aligned_evidence_atoms(evidence_atoms)
+    # REMOVED (P0-2): Deleted trace_aligned fake strong atom injection.
+    # The previous code injected a synthetic "trace-aligned evidence bundle" atom
+    # with hard-coded alignment_score=0.75 and semantic_density=0.8 whenever
+    # trace_aligned was True but no real atom had alignment_score >= 0.55.
+    # This created a self-validation loop that artificially boosted sufficiency.
+    # Now trace_aligned without real aligned atoms is only recorded in
+    # missing_support_reasons, not used to inflate sufficiency.
 
     if has_snippet_id and snippet_id in chunk_by_id and aligned_atoms and snippet_id not in aligned_snippet_ids:
         aligned_snippet_ids.append(snippet_id)
@@ -495,7 +488,9 @@ def apply_evidence_gatekeeping(
         except (TypeError, ValueError):
             trust_tier = 999
         if trust_tier < 1 or trust_tier > 5:
-            violations.append(f"invalid_source_trust_tier:{trust_tier}")
+            # 9.5: Use exact violation key (no value suffix) so exact-match against
+            # policy.blocking_violations works correctly.
+            violations.append("invalid_source_trust_tier")
         max_tier = policy.source_tier_maximums.get(finding_type)
         if max_tier is not None and trust_tier > max_tier:
             violations.append(f"source_tier_too_low:tier_{trust_tier}>max_{max_tier}")
@@ -504,8 +499,10 @@ def apply_evidence_gatekeeping(
         violations.append("missing_source_for_high_stakes")
 
     # Determine gatekeeping status
+    # 9.5: Changed from prefix matching (v.startswith(bv)) to exact match (v == bv).
+    # Prefix matching was too permissive and could cause false positives.
     has_blocking_violation = bool(policy.blocking_violations) and any(
-        any(v.startswith(bv) for bv in policy.blocking_violations)
+        any(v == bv for bv in policy.blocking_violations)
         for v in violations
     )
 

@@ -31,6 +31,10 @@ class PersonaRecord(TypedDict):
     influence_weight: float
     source_trust: str
     skepticism: str
+    # 6.1/6.2: New persona dimensions for richer consumer profiling
+    category_involvement: str
+    brand_relationship: str
+    education_level: str
     source_basis: SourceBasis
 
 
@@ -45,6 +49,9 @@ class AgentTraitProfile(TypedDict):
     propagation_profile: Dict[str, str]
     source_trust: str
     skepticism: str
+    # 6.1/6.2: New trait dimensions forwarded to agent profile
+    category_involvement: str
+    brand_relationship: str
     source_basis: SourceBasis
 
 
@@ -81,15 +88,39 @@ def map_persona_to_agent_traits(persona: Mapping[str, Any]) -> AgentTraitProfile
         "propagation_profile": propagation_profile,
         "source_trust": normalized["source_trust"],
         "skepticism": normalized["skepticism"],
+        # 6.1/6.2: Forward new dimensions to agent profile for role derivation
+        "category_involvement": normalized.get("category_involvement", "medium"),
+        "brand_relationship": normalized.get("brand_relationship", "neutral"),
         "source_basis": normalized["source_basis"],
     }
 
 
 def can_access_deep_graph(agent_traits: Mapping[str, Any]) -> bool:
-    return (
-        str(agent_traits.get("search_propensity", "")).strip().lower() == "high"
-        and str(agent_traits.get("cognition_level", "")).strip().lower() == "high"
+    """Determine if an agent can access deep graph information.
+
+    Uses a weighted scoring model instead of a hard binary threshold
+    to allow borderline agents occasional deep access.
+
+    Score components:
+    - search_propensity: 0.4 weight (high=1.0, medium=0.5, low=0.0)
+    - cognition_level: 0.4 weight (high=1.0, medium=0.5, low=0.0)
+    - education_level: 0.2 weight (high=1.0, medium=0.5, low=0.0)
+
+    Threshold: >= 0.6 for deep access
+    """
+    search = str(agent_traits.get("search_propensity", "")).strip().lower()
+    cognition = str(agent_traits.get("cognition_level", "")).strip().lower()
+    education = str(agent_traits.get("education_level", "medium")).strip().lower()
+
+    level_score = {"high": 1.0, "medium": 0.5, "low": 0.0}
+
+    score = (
+        0.4 * level_score.get(search, 0.0)
+        + 0.4 * level_score.get(cognition, 0.0)
+        + 0.2 * level_score.get(education, 0.0)
     )
+
+    return score >= 0.6
 
 
 def _normalize_persona(persona: Mapping[str, Any]) -> PersonaRecord:
@@ -127,6 +158,16 @@ def _normalize_persona(persona: Mapping[str, Any]) -> PersonaRecord:
         "influence_weight": _normalize_influence_weight(persona["influence_weight"]),
         "source_trust": _normalize_level(persona.get("source_trust", "medium"), "source_trust"),
         "skepticism": _normalize_level(persona.get("skepticism", "medium"), "skepticism"),
+        # 6.1/6.2: Normalize new persona dimensions with sensible defaults
+        "category_involvement": _normalize_level(
+            persona.get("category_involvement", "medium"), "category_involvement"
+        ),
+        "brand_relationship": _normalize_relationship(
+            persona.get("brand_relationship", "neutral"), "brand_relationship"
+        ),
+        "education_level": _normalize_level(
+            persona.get("education_level", "medium"), "education_level"
+        ),
         "source_basis": _normalize_source_basis(
             persona.get("source_basis"), str(persona.get("persona_id", "unknown"))
         ),
@@ -155,6 +196,24 @@ def _normalize_level(value: Any, field_name: str) -> str:
     text = _normalize_text(value, field_name).lower()
     if text not in {"low", "medium", "high"}:
         raise ValueError(f"{field_name} must be one of: low, medium, high")
+    return text
+
+
+def _normalize_relationship(value: Any, field_name: str) -> str:
+    """Normalize brand relationship values with backward-compatible low/medium/high mapping."""
+    text = _normalize_text(value, field_name).lower()
+    if text not in {"loyal", "positive", "neutral", "negative", "hostile"}:
+        # Map low/medium/high to relationship range for backward compatibility
+        if text == "low":
+            return "negative"
+        if text == "medium":
+            return "neutral"
+        if text == "high":
+            return "positive"
+        raise ValueError(
+            f"{field_name} must be one of: loyal, positive, neutral, negative, hostile "
+            f"(or low/medium/high for compatibility)"
+        )
     return text
 
 

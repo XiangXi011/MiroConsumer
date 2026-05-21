@@ -1,39 +1,19 @@
 [run]
 omit =
-    app/services/simulation_runner.py
-    app/services/report_agent.py
-    app/services/simulation_config_generator.py
-    app/services/simulation_ipc.py
-    app/services/graph_builder.py
-    app/services/ontology_generator.py
-    app/services/oasis_profile_generator.py
-    app/services/zep_*.py
-    backend/app/services/simulation_runner.py
-    backend/app/services/report_agent.py
-    backend/app/services/simulation_config_generator.py
-    backend/app/services/simulation_ipc.py
-    backend/app/services/graph_builder.py
-    backend/app/services/ontology_generator.py
-    backend/app/services/oasis_profile_generator.py
+    # External integrations requiring live API keys
     backend/app/services/zep_*.py
+    # LLM-dependent modules that cannot be deterministically tested in CI
+    backend/app/services/ontology_generator.py
+    # Legacy OASIS profile generator (deprecated, superseded by consumer module)
+    backend/app/services/oasis_profile_generator.py
 
 [report]
 omit =
-    app/services/simulation_runner.py
-    app/services/report_agent.py
-    app/services/simulation_config_generator.py
-    app/services/simulation_ipc.py
-    app/services/graph_builder.py
-    app/services/ontology_generator.py
-    app/services/oasis_profile_generator.py
-    app/services/zep_*.py
-    backend/app/services/simulation_runner.py
-    backend/app/services/report_agent.py
-    backend/app/services/simulation_config_generator.py
-    backend/app/services/simulation_ipc.py
-    backend/app/services/graph_builder.py
-    backend/app/services/ontology_generator.py
-    backend/app/services/oasis_profile_generator.py
+    # External integrations requiring live API keys
     backend/app/services/zep_*.py
+    # LLM-dependent modules that cannot be deterministically tested in CI
+    backend/app/services/ontology_generator.py
+    # Legacy OASIS profile generator (deprecated, superseded by consumer module)
+    backend/app/services/oasis_profile_generator.py
 fail_under = 80
 show_missing = true

@@ -471,13 +471,22 @@ Phase 5 最终验证结果（2026-04-23）：
 
 ## 9. 后续阶段与终局愿景
 
-### Phase 4（已完成）
+### Phase 4（已完成）— 统计显著性、可信度与测试扩展
 
-- `Phase 4A`：完成可信度升级，包括 source quality、evidence validation、confidence scoring 与 benchmark replay
-- `Phase 4B`：完成测试覆盖面扩展，新增 `packaging_test`、`ab_test`、`price_test`
-- `Phase 4C`：完成效率与工程化升级，强化 prepare/runtime 路径、缓存、回退和稳定性
+> **Phase 4 核心聚焦**：建立"证据有多可靠、结论有多强"的统计显著性基础。
 
-### Phase 5（已完成，2026-04-23）
+- `Phase 4A`：完成**可信度升级**，包括 source quality、evidence validation、confidence scoring 与 benchmark replay
+  - 聚焦点：每个发现的可信度量化和证据充分性评估
+- `Phase 4B`：完成**测试覆盖面扩展**，新增 `packaging_test`、`ab_test`、`price_test`
+  - 聚焦点：更多测试类型的统计验证能力
+- `Phase 4C`：完成**效率与工程化升级**，强化 prepare/runtime 路径、缓存、回退和稳定性
+  - 聚焦点：让统计验证流程可重复、可稳定运行
+
+> **Phase 边界说明**：Phase 4 的全部工作围绕"量化和评估证据强度"展开，不涉及因果推断。
+
+### Phase 5（已完成，2026-04-23）— 产品化、架构收口与因果推断基础
+
+> **Phase 5 核心聚焦**：建立"为什么发生"的因果推断能力，同时完成产品化与架构收口。
 
 Phase 5 六项目标已全部完成，按批次交付如下：
 
@@ -486,6 +495,12 @@ Phase 5 六项目标已全部完成，按批次交付如下：
 - **Batch 3 — Task Executor 与 Repository 抽象**：`task_executor` 统一封装 prepare/run/report 执行与重试语义；文件持久化抽象为 `ProjectRepository`、`ConsumerStateRepository`、`SimulationRepository`、`BranchRepository`、`ReportRepository`、`BenchmarkRepository`，由文件系统实现承接
 - **Batch 4 — Consumer Bounded Context 与 Canonical Routes**：`consumer_test` 主线进一步独立为 bounded context，新增 `app/api/consumer`、`ConsumerAppService`、`ConsumerApiGuard`、`ConsumerSimulationStateAccessor`；canonical consumer 路由与 typed contracts 已落地
 - **Batch 5 — 全套件稳定化与 Observability**：canonical error shape 统一；task executor observability 验证通过；smoke gate 确认 consumer blueprint 注册正确；全量回归 565 passed，仅剩预存 `zep_cloud` / Python 3.14 兼容性警告
+
+> **Phase 边界说明**：Phase 5 在 Phase 4 的统计验证基础之上，完成两件事：
+> 1. **产品化与架构收口**：让系统从"可运行的原型"升级为"可维护的产品"
+> 2. **因果推断基础**：引入 counterfactual analysis、reasoning trace 填充、动态社交拓扑等机制，为理解"为什么"奠定基础
+>
+> **Phase 4 vs Phase 5 清晰分工**：Phase 4 回答"发生了什么、证据多强"（统计显著性）；Phase 5 回答"为什么发生、如何改进"（因果推断）+ 产品化收口。
 
 Phase 5 收口完成后，下一阶段（Phase 6 或等效新路线图）可安全推进：
 
