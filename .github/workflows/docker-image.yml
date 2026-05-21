@@ -106,7 +106,7 @@ jobs:
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@v0.36.0
-        continue-on-error: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/heads/release/') }}
+        continue-on-error: false
         with:
           image-ref: miroconsumer:${{ github.sha }}
           format: 'sarif'

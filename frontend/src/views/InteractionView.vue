@@ -88,7 +88,7 @@ const props = defineProps({
 })
 
 // Layout State - 默认切换到工作台视角
-const viewMode = ref('workbench')
+const viewMode = ref('split')
 
 // Data State
 const currentReportId = ref(route.params.reportId)

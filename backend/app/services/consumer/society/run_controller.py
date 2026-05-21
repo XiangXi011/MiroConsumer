@@ -237,7 +237,8 @@ class RunController:
                 snapshot_path = snapshot_dir / f"graph_snapshot_round_{round_index}.json"
                 atomic_write_json(snapshot_path, graph_snapshot)
             except Exception:
-                pass  # non-critical
+                import logging
+                logging.getLogger(__name__).warning("Failed to save graph snapshot for round %s", round_index, exc_info=True)
 
             if should_stop:
                 import logging
@@ -339,7 +340,8 @@ class RunController:
                 drift_path = self.store.society_dir(simulation_id) / "drift_report.json"
                 atomic_write_json(drift_path, drift_report.to_dict())
         except Exception:
-            pass  # non-critical — drift report is advisory
+            import logging
+                logging.getLogger(__name__).warning("Drift detection failed for simulation %s", simulation_id, exc_info=True)
 
         return SocietyReportAdapter(base_dir=self.store.base_dir).build_report_context(simulation_id)
 

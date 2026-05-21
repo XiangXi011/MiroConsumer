@@ -12,7 +12,7 @@ Copy Test uses copy element attention. The perception layer scores headline, bod
 
 ## Packaging Test
 
-Packaging Test uses a visual attention model. The perception layer produces a text-based heatmap for color, layout, imagery, and text, and marks shelf context as simulated. This gives packaging work a real perception-layer signal rather than only a packaging prompt.
+Packaging Test uses a text-based simulated visual attention description. The perception layer produces a text-based heatmap for color, layout, imagery, and text based on textual packaging descriptions and cues (not actual image recognition). This gives packaging work a simulated perception-layer signal derived from text descriptions rather than only a packaging prompt.
 
 ## A/B Test
 

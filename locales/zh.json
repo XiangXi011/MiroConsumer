@@ -34,12 +34,12 @@
   },
   "home": {
     "tagline": "AI消费者传播测试平台",
-    "version": "/ v0.1-预览版",
+    "version": "/ v1.0-RC",
     "heroTitle1": "上传任意报告",
     "heroTitle2": "即刻推演未来",
     "heroDesc": "即使只有一段文字，{brand} 也能基于其中的现实种子，全自动生成与之对应的至多{agentScale}构成的平行世界。通过上帝视角注入变量，在复杂的群体交互中寻找动态环境下的{optimalSolution}",
     "heroDescBrand": "MiroConsumer",
-    "heroDescAgentScale": "百万级Agent",
+    "heroDescAgentScale": "可配置消费者画像",
     "heroDescOptimalSolution": "\"局部最优解\"",
     "slogan": "让未来在 Agent 群中预演，让决策在百战后胜出",
     "systemStatus": "系统状态",
@@ -48,7 +48,7 @@
     "metricLowCost": "低成本",
     "metricLowCostDesc": "常规模拟平均5$/次",
     "metricHighAvail": "高可用",
-    "metricHighAvailDesc": "最多百万级Agent模拟",
+    "metricHighAvailDesc": "每次测试4-16个消费者画像",
     "workflowSequence": "工作流序列",
     "step01Title": "图谱构建",
     "step01Desc": "现实种子提取 & 个体与群体记忆注入 & GraphRAG构建",
@@ -108,7 +108,8 @@
     "consumerEnableLaneBOn": "开启",
     "consumerEnableLaneBHint": "开启公开网络补充研究，以外部来源填补信息缺口。",
     "consumerBackgroundMaterialsLabel": "背景材料",
-    "consumerBackgroundMaterialsPlaceholder": "选填。粘贴任何背景研究、竞品信号或已知风险点，每行一条。"
+    "consumerBackgroundMaterialsPlaceholder": "选填。粘贴任何背景研究、竞品信号或已知风险点，每行一条。",
+    "consumerTaskTypeCopy": "文案反馈"
   },
   "main": {
     "layoutGraph": "图谱",
@@ -224,7 +225,7 @@
   "step3": {
     "startGenerateReport": "开始生成结果报告",
     "generatingReport": "启动中...",
-    "waitingForActions": "Waiting for agent actions...",
+    "waitingForActions": "等待代理操作...",
     "errorMissingSimId": "错误：缺少 simulationId",
     "startingDualSim": "正在启动双平台并行模拟...",
     "graphMemoryUpdateEnabled": "已开启动态图谱更新模式",
@@ -255,7 +256,7 @@
   "step4": {
     "generatingSection": "正在生成{title}...",
     "goToInteraction": "进入深度互动",
-    "waitingForReportAgent": "Waiting for Report Agent...",
+    "waitingForReportAgent": "等待报告代理...",
     "collapse": "收起 ▲",
     "expandAll": "展开全部 {count} 条 ▼",
     "expandAllEntities": "展开全部 {count} 个 ▼",
@@ -295,8 +296,8 @@
     "world2": "世界2"
   },
   "step5": {
-    "interactiveTools": "Interactive Tools",
-    "agentsAvailable": "{count} agents available",
+    "interactiveTools": "互动工具",
+    "agentsAvailable": "{count} 个代理可用",
     "chatWithReportAgent": "与Report Agent对话",
     "chatWithAgent": "与世界中任意个体对话",
     "selectChatTarget": "选择对话对象",
@@ -343,7 +344,8 @@
       "concept_test": "概念测试",
       "packaging_test": "包装测试",
       "ab_test": "A/B 测试",
-      "price_test": "价格测试"
+      "price_test": "价格测试",
+      "copy_feedback": "文案反馈"
     },
     "representativeVoc": "代表性 VOC 原声",
     "recommendedFollowUps": "建议追问",
@@ -587,13 +589,13 @@
     }
   },
   "graph": {
-    "panelTitle": "Graph Relationship Visualization",
+    "panelTitle": "图谱关系可视化",
     "refreshGraph": "刷新图谱",
     "graphMemoryRealtime": "GraphRAG长短期记忆实时更新中",
     "realtimeUpdating": "实时更新中...",
     "pendingContentHint": "还有少量内容处理中，建议稍后手动刷新图谱",
-    "nodeDetails": "Node Details",
-    "relationship": "Relationship",
+    "nodeDetails": "节点详情",
+    "relationship": "关系",
     "graphDataLoading": "图谱数据加载中...",
     "waitingOntology": "等待本体生成...",
     "toggleMaximize": "最大化/还原",

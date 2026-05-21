@@ -230,6 +230,14 @@
                     >
                       {{ $t('home.consumerTaskTypePrice') }}
                     </button>
+                    <button
+                      class="mode-btn"
+                      :class="{ active: formData.consumerTaskType === 'copy_feedback' }"
+                      @click="formData.consumerTaskType = 'copy_feedback'"
+                      :disabled="loading"
+                    >
+                      {{ $t('home.consumerTaskTypeCopy') }}
+                    </button>
                   </div>
                 </div>
 
@@ -530,12 +538,14 @@ const resolvedSimulationRequirement = computed(() => (
 ))
 
 const canSubmit = computed(() => {
-  if (files.value.length === 0) {
-    return false
-  }
-
+  // Consumer mode: file upload is optional, brief form is required
   if (isConsumerMode.value) {
     return isConsumerBriefComplete(formData.value)
+  }
+
+  // Non-consumer mode: require at least one file or simulation requirement
+  if (files.value.length === 0 && formData.value.simulationRequirement.trim() === '') {
+    return false
   }
 
   return formData.value.simulationRequirement.trim() !== ''

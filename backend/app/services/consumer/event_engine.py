@@ -43,6 +43,21 @@ def classify_propagation_event(
     if before == "negative" and after in {"positive", "neutral"}:
         return "clarification_recovery"
 
+    # Handle misread -> positive (recovery from misinterpretation)
+    if before == "misread" and after == "positive":
+        return "clarification_recovery"
+
+    # Explicit neutral transitions
+    if before == "neutral" and after == "negative":
+        return "skeptical_challenge"
+
+    if before == "neutral" and after == "positive":
+        return "positive_relay"
+
+    # positive -> neutral (interest decay/hesitation)
+    if before == "positive" and after == "neutral":
+        return "skeptical_challenge"
+
     if after == "negative":
         return "skeptical_challenge"
 
@@ -65,7 +80,7 @@ def build_propagation_event(
     target_communities: Optional[List[str]] = None,
 ) -> PropagationEvent:
     """Build a typed PropagationEvent with a deterministic ID."""
-    event_id = f"evt_{actor_id}_r{round_index}_{event_type[:3]}"
+    event_id = f"evt_{actor_id}_r{round_index}_{event_type[:3]}_{__import__('uuid').uuid4().hex[:8]}"
     return PropagationEvent(
         event_id=event_id,
         event_type=event_type,  # type: ignore[arg-type]

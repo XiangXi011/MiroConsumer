@@ -34,12 +34,12 @@
   },
   "home": {
     "tagline": "AI-Powered Consumer Propagation Testing",
-    "version": "/ v0.1-Preview",
+    "version": "/ v1.0-RC",
     "heroTitle1": "Upload Reports,",
     "heroTitle2": "Predict the Future",
     "heroDesc": "From a single document, {brand} extracts reality seeds to auto-generate a parallel world with up to {agentScale}. Inject variables from a god's-eye view to find the {optimalSolution} in complex group dynamics.",
     "heroDescBrand": "MiroConsumer",
-    "heroDescAgentScale": "million-scale Agents",
+    "heroDescAgentScale": "configurable consumer personas",
     "heroDescOptimalSolution": "\"local optimum\"",
     "slogan": "Let Agents rehearse the future, let decisions prevail",
     "systemStatus": "System Status",
@@ -48,7 +48,7 @@
     "metricLowCost": "Low Cost",
     "metricLowCostDesc": "Avg. $5/sim",
     "metricHighAvail": "Scalable",
-    "metricHighAvailDesc": "Millions of Agents",
+    "metricHighAvailDesc": "4-16 consumer profiles per test",
     "workflowSequence": "Workflow",
     "step01Title": "Graph Build",
     "step01Desc": "Seed extraction & memory injection & GraphRAG construction",
@@ -114,7 +114,13 @@
     "layoutGraph": "Graph",
     "layoutSplit": "Split",
     "layoutWorkbench": "Workbench",
-    "stepNames": ["Graph Build", "Env Setup", "Run Simulation", "Report Generation", "Deep Interaction"]
+    "stepNames": [
+      "Graph Build",
+      "Env Setup",
+      "Run Simulation",
+      "Report Generation",
+      "Deep Interaction"
+    ]
   },
   "step1": {
     "ontologyGeneration": "Ontology Generation",

@@ -22,6 +22,7 @@ class BusinessBriefRequest(BaseModel):
     task_type: str = Field(default="concept_test", description="Consumer test type.")
     product_concept_assets: List[str] = Field(default_factory=list, description="Concept assets or text inputs.")
     copy_material: List[str] = Field(default_factory=list, description="Copy claims to evaluate.")
+    claims: List[str] = Field(default_factory=list, description="Explicit product claims extracted from copy or provided separately.")
     target_audience: List[str] = Field(default_factory=list, description="Audience segments.")
     usage_scene: List[str] = Field(default_factory=list, description="Usage contexts.")
     research_goal: str = Field(default="", description="Research question for this run.")
