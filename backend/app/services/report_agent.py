@@ -15,7 +15,7 @@ import time
 import re
 from collections import Counter
 from typing import Dict, Any, List, Optional, Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from enum import Enum
 
@@ -38,6 +38,17 @@ from .zep_tools import (
     PanoramaResult,
     InterviewResult
 )
+
+try:
+    from .consumer.selling_point_analyzer import analyze_selling_points, SellingPointRole
+except ImportError:
+    analyze_selling_points = None  # type: ignore[assignment]
+    SellingPointRole = None  # type: ignore[assignment,misc]
+
+try:
+    from .consumer.compliance_checker import check_compliance
+except ImportError:
+    check_compliance = None  # type: ignore[assignment]
 
 logger = get_logger('miroconsumer.report_agent')
 
@@ -2404,6 +2415,54 @@ class ReportAgent:
         # Phase 4A: include latest replay alignment for this simulation if available
         context["replay_alignment"] = self._load_latest_replay_alignment()
 
+        # Phase 5: Selling point analysis & compliance check
+        context['all_events'] = all_events
+        claims = self._extract_claims_from_context(context)
+        try:
+            if analyze_selling_points is not None and claims:
+                sp_report = analyze_selling_points(
+                    claims=claims,
+                    events=context.get('all_events', []),
+                    voc_quotes=context.get('representative_voc_quotes', {}),
+                    channel_metrics=context.get('channel_metrics'),
+                    event_counts=context.get('consumer_event_counts', {}),
+                )
+                # Ensure JSON-serializable storage in context
+                if hasattr(sp_report, 'to_dict'):
+                    context['selling_point_report'] = sp_report.to_dict()
+                elif hasattr(sp_report, '__dataclass_fields__'):
+                    context['selling_point_report'] = asdict(sp_report)
+                else:
+                    context['selling_point_report'] = sp_report
+        except Exception as e:
+            logger.warning("Selling point analysis failed: %s", e)
+
+        try:
+            if check_compliance is not None and claims:
+                comp_report = check_compliance(
+                    claims=claims,
+                    misread_quotes=context.get('representative_voc_quotes', {}).get('misread', []),
+                    risk_quotes=context.get('representative_voc_quotes', {}).get('risk', []),
+                )
+                # Ensure JSON-serializable storage in context
+                comp_dict = asdict(comp_report) if hasattr(comp_report, '__dataclass_fields__') else comp_report
+                # findings is a property on ComplianceReport, not a field — add manually
+                if isinstance(comp_dict, dict) and 'findings' not in comp_dict:
+                    try:
+                        comp_dict['findings'] = [
+                            {
+                                'expression': f.expression,
+                                'risk_reason': f.risk_reason,
+                                'suggested_alternative': f.suggested_alternative,
+                            }
+                            for f in comp_report.findings
+                        ]
+                    except Exception:
+                        comp_dict['findings'] = []
+                context['compliance_report'] = comp_dict
+        except Exception as e:
+            logger.warning("Compliance check failed: %s", e)
+
         from .consumer.society.report_adapter import SocietyReportAdapter
 
         society_adapter = SocietyReportAdapter()
@@ -2777,37 +2836,328 @@ class ReportAgent:
             context.get("research_findings_count")
             or (len(research_findings_value) if isinstance(research_findings_value, list) else 0)
         )
+
+        # Determine concept recommendation for summary
+        post_pos = summary['post_propagation_acceptance']['positive']
+        init_pos = summary['initial_acceptance']['positive']
+        shift_rate = summary['attitude_shift_rate']
+        neg_growth = summary['post_propagation_acceptance']['negative'] - summary['initial_acceptance']['negative']
+        if post_pos > init_pos and shift_rate > 0.1:
+            recommendation = "建议继续推进"
+        elif neg_growth > 0.1:
+            recommendation = "建议暂缓"
+        else:
+            recommendation = "建议优化后继续"
+
         outline_summary = (
             f"本报告基于 {research_findings_count} 条研究发现与消费者原声综合生成，"
-            f"初始正向接受度 {summary['initial_acceptance']['positive']:.0%}，"
-            f"传播后正向接受度 {summary['post_propagation_acceptance']['positive']:.0%}，"
-            f"态度转向率 {summary['attitude_shift_rate']:.0%}。"
+            f"概念决策：{recommendation}。"
+            f"初始正向接受度 {init_pos:.0%}，"
+            f"传播后正向接受度 {post_pos:.0%}，"
+            f"态度转向率 {shift_rate:.0%}。"
         )
+
         sections = [
+            # Layer 1: Executive Summary
+            ReportSection(title="总裁结论页", content=""),
+            # Layer 2: Action Playbook
+            ReportSection(title="卖点决策表", content=""),
+            ReportSection(title="合规话术边界", content=""),
+            ReportSection(title="渠道策略与执行建议", content=""),
+            # Layer 3: Technical Appendix
             ReportSection(title="测试概览", content=""),
             ReportSection(title="研究发现综合", content=""),
-            ReportSection(title="初始反应", content=""),
             ReportSection(title="传播演化", content=""),
             ReportSection(title="风险与误读", content=""),
             ReportSection(title="代表性消费者原声", content=""),
-            ReportSection(title="行动建议", content=""),
         ]
+
+        # Task-specific sections still appended to Layer 3
         if task_type == "price_test":
-            sections.insert(2, ReportSection(title="价格敏感度与 WTP 分析", content=""))
-            sections.insert(3, ReportSection(title="价格接受区间与弹性", content=""))
+            sections.insert(7, ReportSection(title="价格敏感度与 WTP 分析", content=""))
+            sections.insert(8, ReportSection(title="价格接受区间与弹性", content=""))
         elif task_type == "packaging_test":
-            sections.insert(2, ReportSection(title="视觉认知与货架吸引力", content=""))
-            sections.insert(3, ReportSection(title="包装识别与注意力路径", content=""))
+            sections.insert(7, ReportSection(title="视觉认知与货架吸引力", content=""))
+            sections.insert(8, ReportSection(title="包装识别与注意力路径", content=""))
         elif task_type == "ab_test":
-            sections.insert(2, ReportSection(title="偏好对比与统计显著性", content=""))
-            sections.insert(3, ReportSection(title="版本差异与选择理由", content=""))
+            sections.insert(7, ReportSection(title="偏好对比与统计显著性", content=""))
+            sections.insert(8, ReportSection(title="版本差异与选择理由", content=""))
+
         return ReportOutline(
-            title="消费者传播测试报告",
+            title="消费者传播测试与市场决策报告",
             summary=outline_summary,
             sections=sections,
         )
 
+    # ── Layer 1 & 2 rendering methods ──────────────────────────────────
+
+    def _render_executive_summary(self, context: Dict[str, Any]) -> str:
+        """Render 总裁结论页 — Layer 1 executive summary."""
+        summary = context["summary"]
+        init_pos = summary['initial_acceptance']['positive']
+        post_pos = summary['post_propagation_acceptance']['positive']
+        shift_rate = summary['attitude_shift_rate']
+        neg_growth = summary['post_propagation_acceptance']['negative'] - summary['initial_acceptance']['negative']
+
+        # Concept recommendation
+        if post_pos > init_pos and shift_rate > 0.1:
+            recommendation = "建议继续推进"
+        elif neg_growth > 0.1:
+            recommendation = "建议暂缓"
+        else:
+            recommendation = "建议优化后继续"
+
+        lines: List[str] = []
+        lines.append(f"## 概念决策：{recommendation}")
+        lines.append("")
+
+        # Core findings — top 3 resonance points
+        lines.append("## 核心发现")
+        resonance = context.get('top_resonance_points', [])
+        for point in resonance[:3]:
+            lines.append(f"- {point}")
+        if not resonance:
+            lines.append("- 暂无显著共鸣点")
+        lines.append("")
+
+        # Biggest opportunity & biggest risk
+        top_opportunity = resonance[0] if resonance else "暂无"
+        risk_points = context.get('top_risk_points', [])
+        top_risk = risk_points[0] if risk_points else "暂无"
+        lines.append(f"## 最大机会\n{top_opportunity}")
+        lines.append("")
+        lines.append(f"## 最大风险\n{top_risk}")
+        lines.append("")
+
+        # Main selling point suggestion
+        sp_report = context.get('selling_point_report')
+        main_rec = None
+        if isinstance(sp_report, dict):
+            main_rec = sp_report.get('main_recommendation')
+            if not main_rec:
+                analyses = sp_report.get('analyses') or sp_report.get('recommendations') or []
+                if analyses:
+                    a = analyses[0]
+                    main_rec = a.get('claim_text', a.get('claim', '')) if isinstance(a, dict) else getattr(a, 'claim_text', '')
+        elif sp_report is not None:
+            main_rec = getattr(sp_report, 'main_recommendation', None)
+            if not main_rec:
+                analyses = getattr(sp_report, 'analyses', None) or getattr(sp_report, 'recommendations', None) or []
+                if analyses:
+                    main_rec = getattr(analyses[0], 'claim_text', '')
+        if main_rec:
+            lines.append(f"## 主卖点建议\n{main_rec}")
+        else:
+            anchor = resonance[0] if resonance else "暂无"
+            lines.append(f"## 主卖点建议\n围绕核心共鸣点「{anchor}」构建主传播叙事")
+        lines.append("")
+
+        # Next steps
+        lines.append("## 下一步行动")
+        lines.append(f"1. 根据概念决策（{recommendation}），明确下一阶段资源配置")
+        if resonance:
+            lines.append(f"2. 围绕「{resonance[0]}」打磨核心文案与传播素材")
+        if risk_points:
+            lines.append(f"3. 针对风险点「{risk_points[0]}」准备应对话术与证据")
+        lines.append("4. 参阅执行页（Layer 2）获取卖点、合规、渠道的具体落地方案")
+        return "\n".join(lines)
+
+    def _render_selling_point_table(self, context: Dict[str, Any]) -> str:
+        """Render 卖点决策表 — Layer 2 selling point decision table."""
+        sp_report = context.get('selling_point_report')
+        # Handle both dict (model_dump) and object forms
+        analyses = None
+        if isinstance(sp_report, dict):
+            analyses = sp_report.get('analyses') or sp_report.get('recommendations')
+        elif sp_report is not None:
+            analyses = getattr(sp_report, 'analyses', None) or getattr(sp_report, 'recommendations', None)
+        if analyses:
+            lines: List[str] = []
+            lines.append("## 卖点决策表")
+            lines.append("")
+            lines.append("| 排名 | 卖点 | 建议角色 | 共鸣度 | 风险度 | 最佳渠道 | 处理方式 |")
+            lines.append("| --- | --- | --- | --- | --- | --- | --- |")
+            for a in analyses:
+                if isinstance(a, dict):
+                    rank = a.get('priority_rank', a.get('rank', ''))
+                    claim = a.get('claim_text', a.get('claim', ''))
+                    role = a.get('role', '')
+                    resonance = a.get('resonance_score', 0)
+                    risk = a.get('risk_score', 0)
+                    best_ch = a.get('best_channel', '')
+                    handling = a.get('handling_suggestion', a.get('handling', ''))
+                else:
+                    rank = getattr(a, 'priority_rank', '')
+                    claim = getattr(a, 'claim_text', '')
+                    role = getattr(a, 'role', '')
+                    resonance = getattr(a, 'resonance_score', 0)
+                    risk = getattr(a, 'risk_score', 0)
+                    best_ch = getattr(a, 'best_channel', '')
+                    handling = getattr(a, 'handling_suggestion', '')
+                try:
+                    resonance_str = f"{float(resonance):.0%}"
+                except (ValueError, TypeError):
+                    resonance_str = str(resonance)
+                try:
+                    risk_str = f"{float(risk):.0%}"
+                except (ValueError, TypeError):
+                    risk_str = str(risk)
+                lines.append(
+                    f"| {rank} | {claim} | {role} | {resonance_str} | {risk_str} | {best_ch} | {handling} |"
+                )
+            return "\n".join(lines)
+
+        # Fallback: simplified table from existing context data
+        lines = []
+        lines.append("## 卖点决策表")
+        lines.append("")
+        lines.append("| 卖点 | 建议角色 | 原因 | 风险 | 处理方式 |")
+        lines.append("| --- | --- | --- | --- | --- |")
+        resonance = context.get('top_resonance_points', [])
+        risk_points = context.get('top_risk_points', [])
+        for i, point in enumerate(resonance[:5]):
+            role = "主打卖点" if i == 0 else "辅助卖点"
+            reason = "消费者高共鸣" if i == 0 else "强化概念支撑"
+            risk = risk_points[i] if i < len(risk_points) else "暂无已知风险"
+            handling = "持续强化传播" if i == 0 else "配合主卖点使用"
+            lines.append(f"| {point} | {role} | {reason} | {risk} | {handling} |")
+        if not resonance:
+            lines.append("| 暂无 | - | - | - | - |")
+        return "\n".join(lines)
+
+    def _render_compliance_table(self, context: Dict[str, Any]) -> str:
+        """Render 合规话术边界 — Layer 2 compliance boundary table."""
+        comp_report = context.get('compliance_report')
+        # Handle both dict (model_dump) and object forms
+        findings = None
+        if isinstance(comp_report, dict):
+            findings = comp_report.get('findings')
+        elif comp_report is not None:
+            findings = getattr(comp_report, 'findings', None)
+        if findings:
+            lines: List[str] = []
+            lines.append("## 合规话术边界")
+            lines.append("")
+            lines.append("| 高风险表达 | 风险原因 | 建议替代表达 |")
+            lines.append("| --- | --- | --- |")
+            for finding in findings:
+                if isinstance(finding, dict):
+                    expr = finding.get('expression', '')
+                    reason = finding.get('risk_reason', '')
+                    alternative = finding.get('suggested_alternative', '')
+                else:
+                    expr = getattr(finding, 'expression', '')
+                    reason = getattr(finding, 'risk_reason', '')
+                    alternative = getattr(finding, 'suggested_alternative', '')
+                lines.append(f"| {expr} | {reason} | {alternative} |")
+            return "\n".join(lines)
+
+        # Fallback: derive from misreads and risk points
+        lines = []
+        lines.append("## 合规话术边界")
+        lines.append("")
+        lines.append("| 高风险表达 | 风险原因 | 建议替代表达 |")
+        lines.append("| --- | --- | --- |")
+        misreads = context.get('top_misreads', [])
+        for misread in misreads[:3]:
+            lines.append(f"| {misread} | 消费者误读/歧义 | 建议使用更明确、具体化表述 |")
+        risk_points = context.get('top_risk_points', [])
+        for risk in risk_points[:3]:
+            lines.append(f"| {risk} | 可能引发负面解读 | 建议补充证据支撑或弱化表述 |")
+        if not misreads and not risk_points:
+            lines.append("| 暂无 | - | - |")
+        lines.append("")
+        lines.append("> 注：以上为自动生成的初步筛查，正式发布前请法务/合规团队复核。")
+        return "\n".join(lines)
+
+    def _render_channel_strategy(self, context: Dict[str, Any]) -> str:
+        """Render 渠道策略与执行建议 — Layer 2 channel strategy."""
+        channel_metrics = context.get('channel_metrics', {})
+        channel_fit = context.get('channel_fit_scores', {})
+        resonance = context.get('top_resonance_points', [])
+        risk_points = context.get('top_risk_points', [])
+        main_hook = resonance[0] if resonance else "产品核心价值"
+        main_risk = risk_points[0] if risk_points else "暂无已知风险"
+
+        lines: List[str] = []
+        lines.append("## 渠道策略与执行建议")
+        lines.append("")
+
+        # Per-channel recommendations
+        channels = [
+            ("小红书", "种草笔记 + 素人口碑", "图文笔记、合集测评、素人试用分享"),
+            ("抖音", "短视频 + 信息流", "15-60秒短视频、达人合作、信息流投放"),
+            ("直播间", "即时转化场景", "主播话术、互动引导、限时促销"),
+            ("详情页", "深度说服场景", "长图文、对比数据、FAQ、用户证言"),
+        ]
+        for name, positioning, format_hint in channels:
+            fit_score = channel_fit.get(name, channel_fit.get(name.lower(), ""))
+            fit_label = f"（适配度: {fit_score}）" if fit_score else ""
+            ch_metric = channel_metrics.get(name, channel_metrics.get(name.lower(), {}))
+            lines.append(f"### {name} {fit_label}")
+            lines.append(f"- 定位：{positioning}")
+            lines.append(f"- 推荐形式：{format_hint}")
+            lines.append(f"- 核心传播锚点：「{main_hook}」")
+            if ch_metric and isinstance(ch_metric, dict):
+                for k, v in ch_metric.items():
+                    lines.append(f"- {k}: {v}")
+            lines.append("")
+
+        # 直播间FAQ预埋
+        lines.append("## 直播间FAQ预埋")
+        lines.append("")
+        faq_items = [
+            (f"这个产品的核心优势是什么？", f"核心优势在于「{main_hook}」，这是我们测试中消费者最认可的点。"),
+            ("跟竞品相比有什么不同？", "我们的差异化在于经过消费者传播验证的独特卖点组合。"),
+            ("适合什么样的人群？", f"目标人群画像详见报告，核心受众对「{main_hook}」有强需求。"),
+            ("有没有什么需要注意的？", f"关于「{main_risk}」的疑问，我们准备了专业的解答话术。"),
+            ("效果怎么样？有数据吗？", "消费者传播测试显示了明确的正向接受度，具体数据可在详情页查看。"),
+        ]
+        for i, (q, a) in enumerate(faq_items, 1):
+            lines.append(f"**Q{i}: {q}**")
+            lines.append(f"A: {a}")
+            lines.append("")
+
+        # 短视频脚本建议
+        lines.append("## 短视频脚本建议")
+        lines.append("")
+        angles = [
+            ("痛点切入", f"从消费者常见痛点出发，引出「{main_hook}」作为解决方案"),
+            ("对比实验", f"通过与现有方案的对比，直观展示「{main_hook}」的优势"),
+            ("用户证言", f"用真实消费者原声包装，围绕「{main_hook}」讲述使用体验"),
+        ]
+        for i, (title, desc) in enumerate(angles, 1):
+            lines.append(f"**角度{i}: {title}**")
+            lines.append(f"- {desc}")
+            lines.append("")
+
+        # 评论区回复模板
+        lines.append("## 评论区回复模板")
+        lines.append("")
+        lines.append("**正面评论回复：**")
+        lines.append(f"「感谢认可！「{main_hook}」确实是我们最引以为傲的特点，感谢您的支持！」")
+        lines.append("")
+        lines.append("**质疑/负面评论回复：**")
+        lines.append(f"「感谢您的反馈。关于您提到的「{main_risk}」，我们非常重视，这里补充一些说明……」")
+        lines.append("")
+        lines.append("**咨询类评论回复：**")
+        lines.append(f"「您好！关于产品详情，核心卖点是「{main_hook}」，详情页有完整的数据和说明，欢迎查看～」")
+        return "\n".join(lines)
+
+    # ── Layer 3 rendering (existing) ───────────────────────────────────
+
     def _render_consumer_section(self, section_title: str, context: Dict[str, Any]) -> str:
+        # Layer 1 & 2 sections — delegate to dedicated renderers
+        if section_title == "总裁结论页":
+            return self._render_executive_summary(context)
+        if section_title == "卖点决策表":
+            return self._render_selling_point_table(context)
+        if section_title == "合规话术边界":
+            return self._render_compliance_table(context)
+        if section_title == "渠道策略与执行建议":
+            return self._render_channel_strategy(context)
+
+        # Layer 3 sections — existing template-based rendering
         summary = context["summary"]
         task_type = str(context.get("task_type", "")).strip().lower()
         research_findings_value = context.get("research_findings", [])
@@ -3047,6 +3397,27 @@ class ReportAgent:
 
     def _first_point(self, points: List[str], fallback: str) -> str:
         return points[0] if points else fallback
+
+    def _extract_claims_from_context(self, context: Dict[str, Any]) -> List[str]:
+        """Extract selling-point claims from consumer config or business brief."""
+        claims: List[str] = []
+        # Try resonance points as primary claims
+        resonance = context.get("top_resonance_points", [])
+        if resonance:
+            claims.extend(resonance[:5])
+        # Try consumer_brief claims
+        brief_summary = context.get("consumer_brief", {})
+        if isinstance(brief_summary, dict):
+            brief_claims = brief_summary.get("claims") or brief_summary.get("selling_points") or []
+            for c in brief_claims:
+                if isinstance(c, str) and c not in claims:
+                    claims.append(c)
+        # Try research insight pillars
+        for pillar in context.get("research_insight_pillars", []):
+            summary_text = str(pillar.get("summary", "")).strip()
+            if summary_text and summary_text not in claims:
+                claims.append(summary_text)
+        return claims
 
     def _format_quotes(self, quotes: List[Dict[str, Any]]) -> str:
         if not quotes:
