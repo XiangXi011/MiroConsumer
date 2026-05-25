@@ -2,10 +2,10 @@
   <section
     v-if="visible"
     class="propagation-timeline"
-    aria-label="Propagation Timeline Initial reaction Claim amplification Objection emergence Misread spread Evidence repair"
+    aria-label="Consumer response timeline"
   >
     <div class="timeline-head">
-      <span>Propagation Timeline</span>
+      <span>Response Timeline</span>
       <strong>传播阶段</strong>
     </div>
     <div class="timeline-list">

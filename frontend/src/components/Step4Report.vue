@@ -1,7 +1,7 @@
 <template>
   <div class="report-panel">
     <!-- Main Split Layout -->
-    <div class="main-split-layout">
+    <div class="main-split-layout" :class="{ 'technical-open': showTechnical }">
       <!-- LEFT PANEL: Report Style -->
       <div class="left-panel report-style" ref="leftPanel">
         <div v-if="reportOutline" class="report-content-wrapper">
@@ -43,11 +43,13 @@
             :consumer-low-confidence-risk-findings="consumerLowConfidenceRiskFindings"
             :consumer-findings-requiring-more-evidence="consumerFindingsRequiringMoreEvidence"
             :consumer-causal-voc-quotes="consumerCausalVocQuotes"
+            :show-technical="showTechnical"
           />
 
           <SocietyRunSummary
             v-if="isConsumerMode"
             :context="reportContext"
+            :show-technical="showTechnical"
           />
 
           <div v-if="isConsumerMode" class="channel-propagation-stack">
@@ -57,7 +59,7 @@
           </div>
 
           <EvidenceGraphPanel
-            v-if="isConsumerMode"
+            v-if="showTechnical && isConsumerMode"
             :graph="evidenceGraph"
             :loading="evidenceGraphLoading"
             :error="evidenceGraphError"
@@ -65,6 +67,7 @@
 
           <!-- Research Assets / Comparison Workspace -->
           <ResearchAssetWorkspace
+            v-if="showTechnical"
             :project-id="projectId"
             :simulation-id="simulationId"
             :is-consumer-mode="isConsumerMode"
@@ -147,12 +150,12 @@
             <div class="waiting-ring"></div>
             <div class="waiting-ring"></div>
           </div>
-          <span class="waiting-text">Waiting for Report Agent...</span>
+          <span class="waiting-text">正在准备洞察报告...</span>
         </div>
       </div>
 
       <!-- RIGHT PANEL: Workflow Timeline -->
-      <div class="right-panel" ref="rightPanel">
+      <div v-if="showTechnical" class="right-panel" ref="rightPanel">
         <div class="panel-header" :class="`panel-header--${activeStep.status}`" v-if="!isComplete">
           <span class="header-dot" v-if="activeStep.status === 'active'"></span>
           <span class="header-index mono">{{ activeStep.noLabel }}</span>
@@ -450,7 +453,7 @@
     </div>
 
     <!-- Bottom Console Logs -->
-    <div class="console-logs">
+    <div v-if="showTechnical" class="console-logs">
       <div class="log-header">
         <span class="log-title">CONSOLE OUTPUT</span>
         <span class="log-id">{{ reportId || 'NO_REPORT' }}</span>
@@ -526,7 +529,8 @@ const props = defineProps({
   simulationId: String,
   reportData: Object,
   projectData: Object,
-  systemLogs: Array
+  systemLogs: Array,
+  showTechnical: { type: Boolean, default: false }
 })
 
 const emit = defineEmits(['add-log', 'update-status'])
@@ -2681,8 +2685,8 @@ watch(() => props.reportId, (newId) => {
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: #F8F9FA;
-  font-family: 'Inter', 'Noto Sans SC', system-ui, sans-serif;
+  background: var(--mc-bg-canvas);
+  font-family: var(--mc-font-body);
   overflow: hidden;
 }
 
@@ -2693,17 +2697,25 @@ watch(() => props.reportId, (newId) => {
   overflow: hidden;
 }
 
+.main-split-layout:not(.technical-open) .left-panel.report-style {
+  width: 100%;
+  min-width: 0;
+  max-width: 1040px;
+  margin: 0 auto;
+  border-right: none;
+}
+
 /* Panel Headers */
 .panel-header {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 14px 20px;
-  background: #FFFFFF;
-  border-bottom: 1px solid #E5E7EB;
+  background: var(--mc-surface);
+  border-bottom: 1px solid var(--mc-border);
   font-size: 13px;
   font-weight: 600;
-  color: #374151;
+  color: var(--mc-text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   position: sticky;
@@ -2715,8 +2727,8 @@ watch(() => props.reportId, (newId) => {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #1F2937;
-  box-shadow: 0 0 0 3px rgba(31, 41, 55, 0.15);
+  background: var(--mc-accent);
+  box-shadow: 0 0 0 3px rgba(34, 92, 75, 0.15);
   margin-right: 10px;
   flex-shrink: 0;
   animation: pulse-dot 1.5s ease-in-out infinite;
@@ -2724,17 +2736,17 @@ watch(() => props.reportId, (newId) => {
 
 @keyframes pulse-dot {
   0%, 100% {
-    box-shadow: 0 0 0 3px rgba(31, 41, 55, 0.15);
+    box-shadow: 0 0 0 3px rgba(34, 92, 75, 0.15);
   }
   50% {
-    box-shadow: 0 0 0 5px rgba(31, 41, 55, 0.1);
+    box-shadow: 0 0 0 5px rgba(34, 92, 75, 0.1);
   }
 }
 
 .header-index {
   font-size: 12px;
   font-weight: 600;
-  color: #9CA3AF;
+  color: var(--mc-text-tertiary);
   margin-right: 10px;
   flex-shrink: 0;
 }
@@ -2742,7 +2754,7 @@ watch(() => props.reportId, (newId) => {
 .header-title {
   font-size: 13px;
   font-weight: 600;
-  color: #374151;
+  color: var(--mc-text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2760,41 +2772,41 @@ watch(() => props.reportId, (newId) => {
 
 /* Panel header status variants */
 .panel-header--active {
-  background: #FAFAFA;
-  border-color: #1F2937;
+  background: var(--mc-accent-wash);
+  border-color: var(--mc-accent);
 }
 
 .panel-header--active .header-index {
-  color: #1F2937;
+  color: var(--mc-accent);
 }
 
 .panel-header--active .header-title {
-  color: #1F2937;
+  color: var(--mc-text-primary);
 }
 
 .panel-header--active .header-meta {
-  color: #1F2937;
+  color: var(--mc-accent);
 }
 
 .panel-header--done {
-  background: #F9FAFB;
+  background: var(--mc-status-success-bg);
 }
 
 .panel-header--done .header-index {
-  color: #10B981;
+  color: var(--mc-status-success);
 }
 
 .panel-header--todo .header-index,
 .panel-header--todo .header-title {
-  color: #9CA3AF;
+  color: var(--mc-text-tertiary);
 }
 
 /* Left Panel - Report Style */
 .left-panel.report-style {
   width: 45%;
   min-width: 450px;
-  background: #FFFFFF;
-  border-right: 1px solid #E5E7EB;
+  background: var(--mc-bg-subtle);
+  border-right: 1px solid var(--mc-border);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -2850,12 +2862,12 @@ watch(() => props.reportId, (newId) => {
 }
 
 .section-header-row.clickable:hover {
-  background-color: #F9FAFB;
+  background-color: var(--mc-surface-muted);
 }
 
 .collapse-icon {
   margin-left: auto;
-  color: #9CA3AF;
+  color: var(--mc-text-tertiary);
   transition: transform 0.3s ease;
   flex-shrink: 0;
   align-self: center;
@@ -2866,29 +2878,29 @@ watch(() => props.reportId, (newId) => {
 }
 
 .section-number {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--mc-font-mono);
   font-size: 16px;
-  color: #9CA3AF; /* 深灰色，不随状态变化 */
+  color: var(--mc-text-tertiary);
   font-weight: 500;
 }
 
 .section-title {
-  font-family: 'Times New Roman', Times, serif;
+  font-family: var(--mc-font-display);
   font-size: 24px;
   font-weight: 600;
-  color: #111827;
+  color: var(--mc-text-primary);
   margin: 0;
   transition: color 0.3s ease;
 }
 
 /* States */
 .report-section-item.is-pending .section-title {
-  color: #D1D5DB;
+  color: var(--mc-border-strong);
 }
 
 .report-section-item.is-active .section-title,
 .report-section-item.is-completed .section-title {
-  color: #111827;
+  color: var(--mc-text-primary);
 }
 
 .section-body {
@@ -2898,10 +2910,10 @@ watch(() => props.reportId, (newId) => {
 
 /* Generated Content */
 .generated-content {
-  font-family: 'Inter', 'Noto Sans SC', system-ui, sans-serif;
+  font-family: var(--mc-font-body);
   font-size: 14px;
   line-height: 1.8;
-  color: #374151;
+  color: var(--mc-text-secondary);
 }
 
 .generated-content :deep(p) {
@@ -2911,14 +2923,14 @@ watch(() => props.reportId, (newId) => {
 .generated-content :deep(.md-h2),
 .generated-content :deep(.md-h3),
 .generated-content :deep(.md-h4) {
-  font-family: 'Times New Roman', Times, serif;
-  color: #111827;
+  font-family: var(--mc-font-display);
+  color: var(--mc-text-primary);
   margin-top: 1.5em;
   margin-bottom: 0.8em;
   font-weight: 700;
 }
 
-.generated-content :deep(.md-h2) { font-size: 20px; border-bottom: 1px solid #F3F4F6; padding-bottom: 8px; }
+.generated-content :deep(.md-h2) { font-size: 20px; border-bottom: 1px solid var(--mc-border); padding-bottom: 8px; }
 .generated-content :deep(.md-h3) { font-size: 18px; }
 .generated-content :deep(.md-h4) { font-size: 16px; }
 
@@ -2934,28 +2946,28 @@ watch(() => props.reportId, (newId) => {
 }
 
 .generated-content :deep(.md-quote) {
-  border-left: 3px solid #E5E7EB;
+  border-left: 3px solid var(--mc-accent-soft);
   padding-left: 16px;
   margin: 1.5em 0;
-  color: #6B7280;
+  color: var(--mc-text-secondary);
   font-style: italic;
-  font-family: 'Times New Roman', Times, serif;
+  font-family: var(--mc-font-body);
 }
 
 .generated-content :deep(.code-block) {
-  background: #F9FAFB;
+  background: var(--mc-surface-muted);
   padding: 12px;
   border-radius: 6px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--mc-font-mono);
   font-size: 12px;
   overflow-x: auto;
   margin: 1em 0;
-  border: 1px solid #E5E7EB;
+  border: 1px solid var(--mc-border);
 }
 
 .generated-content :deep(strong) {
   font-weight: 600;
-  color: #111827;
+  color: var(--mc-text-primary);
 }
 
 /* Loading State */
@@ -2963,7 +2975,7 @@ watch(() => props.reportId, (newId) => {
   display: flex;
   align-items: center;
   gap: 10px;
-  color: #6B7280;
+  color: var(--mc-text-secondary);
   font-size: 14px;
   margin-top: 4px;
 }
@@ -2978,16 +2990,16 @@ watch(() => props.reportId, (newId) => {
 }
 
 .loading-text {
-  font-family: 'Times New Roman', Times, serif;
+  font-family: var(--mc-font-body);
   font-size: 15px;
-  color: #4B5563;
+  color: var(--mc-text-secondary);
 }
 
 .cursor-blink {
   display: inline-block;
   width: 8px;
   height: 14px;
-  background: #8B5CF6;
+  background: var(--mc-accent);
   opacity: 0.5;
   animation: blink 1s step-end infinite;
 }
@@ -3003,7 +3015,7 @@ watch(() => props.reportId, (newId) => {
 
 /* Content Styles Override for this view */
 .generated-content :deep(.md-h2) {
-  font-family: 'Times New Roman', Times, serif;
+  font-family: var(--mc-font-display);
   font-size: 18px;
   margin-top: 0;
 }
@@ -3265,16 +3277,16 @@ watch(() => props.reportId, (newId) => {
 .wf-step-index {
   font-size: 11px;
   font-weight: 700;
-  color: #9CA3AF;
+  color: var(--mc-text-tertiary);
   letter-spacing: 0.02em;
   flex-shrink: 0;
 }
 
 .wf-step-title {
-  font-family: 'Times New Roman', Times, serif;
+  font-family: var(--mc-font-body);
   font-size: 13px;
   font-weight: 600;
-  color: #111827;
+  color: var(--mc-text-primary);
   line-height: 1.35;
   min-width: 0;
   overflow: hidden;
@@ -3565,22 +3577,22 @@ watch(() => props.reportId, (newId) => {
 
 /* Tool Colors - Purple (Deep Insight) */
 .tool-badge.tool-purple {
-  background: linear-gradient(135deg, #F5F3FF 0%, #EDE9FE 100%);
-  border-color: #C4B5FD;
-  color: #6D28D9;
+  background: linear-gradient(135deg, var(--mc-accent-wash) 0%, var(--mc-bg-subtle) 100%);
+  border-color: var(--mc-border);
+  color: var(--mc-accent);
 }
 .tool-badge.tool-purple .tool-icon {
-  stroke: #7C3AED;
+  stroke: var(--mc-accent);
 }
 
 /* Tool Colors - Blue (Panorama Search) */
 .tool-badge.tool-blue {
-  background: linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%);
-  border-color: #93C5FD;
-  color: #1D4ED8;
+  background: linear-gradient(135deg, var(--mc-status-info-bg) 0%, var(--mc-bg-subtle) 100%);
+  border-color: var(--mc-border);
+  color: var(--mc-status-info);
 }
 .tool-badge.tool-blue .tool-icon {
-  stroke: #2563EB;
+  stroke: var(--mc-status-info);
 }
 
 /* Tool Colors - Green (Agent Interview) */
@@ -4629,9 +4641,9 @@ watch(() => props.reportId, (newId) => {
 
 :deep(.insight-header) {
   padding: 12px 16px;
-  background: linear-gradient(135deg, #F5F3FF 0%, #EDE9FE 100%);
+  background: linear-gradient(135deg, var(--mc-accent-wash) 0%, var(--mc-bg-subtle) 100%);
   border-radius: 8px 8px 0 0;
-  border: 1px solid #C4B5FD;
+  border: 1px solid var(--mc-border);
   border-bottom: none;
 }
 
@@ -4645,7 +4657,7 @@ watch(() => props.reportId, (newId) => {
 :deep(.insight-header .header-title) {
   font-size: 14px;
   font-weight: 700;
-  color: #6D28D9;
+  color: var(--mc-accent);
 }
 
 :deep(.insight-header .header-stats) {
@@ -4664,16 +4676,16 @@ watch(() => props.reportId, (newId) => {
 :deep(.insight-header .stat-value) {
   font-family: 'JetBrains Mono', monospace;
   font-weight: 700;
-  color: #7C3AED;
+  color: var(--mc-accent);
 }
 
 :deep(.insight-header .stat-label) {
-  color: #8B5CF6;
+  color: var(--mc-text-tertiary);
   font-size: 10px;
 }
 
 :deep(.insight-header .stat-divider) {
-  color: #C4B5FD;
+  color: var(--mc-border-strong);
   margin: 0 4px;
 }
 
@@ -4685,14 +4697,14 @@ watch(() => props.reportId, (newId) => {
 
 :deep(.insight-header .header-topic) {
   font-size: 13px;
-  color: #5B21B6;
+  color: var(--mc-text-secondary);
   line-height: 1.5;
 }
 
 :deep(.insight-header .header-scenario) {
   margin-top: 6px;
   font-size: 11px;
-  color: #7C3AED;
+  color: var(--mc-accent);
 }
 
 :deep(.insight-header .scenario-label) {
@@ -4703,8 +4715,8 @@ watch(() => props.reportId, (newId) => {
   display: flex;
   gap: 2px;
   padding: 8px 12px;
-  background: #FAFAFA;
-  border: 1px solid #E5E7EB;
+  background: var(--mc-bg-subtle);
+  border: 1px solid var(--mc-border);
   border-top: none;
 }
 
@@ -4729,9 +4741,9 @@ watch(() => props.reportId, (newId) => {
 }
 
 :deep(.insight-tab.active) {
-  background: #FFFFFF;
-  color: #7C3AED;
-  border-color: #C4B5FD;
+  background: var(--mc-surface);
+  color: var(--mc-accent);
+  border-color: var(--mc-border-strong);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
@@ -4835,8 +4847,8 @@ watch(() => props.reportId, (newId) => {
 
 :deep(.insight-display .entity-tag .entity-type) {
   font-size: 9px;
-  color: #7C3AED;
-  background: #EDE9FE;
+  color: var(--mc-accent);
+  background: var(--mc-accent-wash);
   padding: 1px 4px;
   border-radius: 3px;
 }
@@ -4873,8 +4885,8 @@ watch(() => props.reportId, (newId) => {
 
 :deep(.insight-display .entity-card .entity-type) {
   font-size: 10px;
-  color: #7C3AED;
-  background: #EDE9FE;
+  color: var(--mc-accent);
+  background: var(--mc-accent-wash);
   padding: 2px 6px;
   border-radius: 4px;
   display: inline-block;
@@ -4935,11 +4947,11 @@ watch(() => props.reportId, (newId) => {
 
 :deep(.insight-display .rel-label) {
   padding: 2px 6px;
-  background: #EDE9FE;
+  background: var(--mc-accent-wash);
   border-radius: 4px;
   font-size: 10px;
   font-weight: 500;
-  color: #7C3AED;
+  color: var(--mc-accent);
   white-space: nowrap;
 }
 
@@ -4956,7 +4968,7 @@ watch(() => props.reportId, (newId) => {
 :deep(.insight-display .subquery-number) {
   flex-shrink: 0;
   padding: 2px 6px;
-  background: #7C3AED;
+  background: var(--mc-accent);
   border-radius: 4px;
   font-family: 'JetBrains Mono', monospace;
   font-size: 10px;
@@ -5049,16 +5061,16 @@ watch(() => props.reportId, (newId) => {
 :deep(.panorama-header .stat-value) {
   font-family: 'JetBrains Mono', monospace;
   font-weight: 700;
-  color: #2563EB;
+  color: var(--mc-status-info);
 }
 
 :deep(.panorama-header .stat-label) {
-  color: #60A5FA;
+  color: var(--mc-text-tertiary);
   font-size: 10px;
 }
 
 :deep(.panorama-header .stat-divider) {
-  color: #93C5FD;
+  color: var(--mc-border-strong);
   margin: 0 4px;
 }
 
@@ -5070,7 +5082,7 @@ watch(() => props.reportId, (newId) => {
 
 :deep(.panorama-header .header-topic) {
   font-size: 13px;
-  color: #1E40AF;
+  color: var(--mc-text-secondary);
   line-height: 1.5;
 }
 
@@ -5078,8 +5090,8 @@ watch(() => props.reportId, (newId) => {
   display: flex;
   gap: 2px;
   padding: 8px 12px;
-  background: #FAFAFA;
-  border: 1px solid #E5E7EB;
+  background: var(--mc-bg-subtle);
+  border: 1px solid var(--mc-border);
   border-top: none;
 }
 
@@ -5093,28 +5105,28 @@ watch(() => props.reportId, (newId) => {
   border-radius: 6px;
   font-size: 11px;
   font-weight: 500;
-  color: #6B7280;
+  color: var(--mc-text-secondary);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 :deep(.panorama-tab:hover) {
-  background: #F3F4F6;
-  color: #374151;
+  background: var(--mc-surface-muted);
+  color: var(--mc-text-primary);
 }
 
 :deep(.panorama-tab.active) {
-  background: #FFFFFF;
-  color: #2563EB;
-  border-color: #93C5FD;
+  background: var(--mc-surface);
+  color: var(--mc-status-info);
+  border-color: var(--mc-border-strong);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 
 :deep(.panorama-content) {
   padding: 12px;
-  background: #FFFFFF;
-  border: 1px solid #E5E7EB;
+  background: var(--mc-surface);
+  border: 1px solid var(--mc-border);
   border-top: none;
   border-radius: 0 0 8px 8px;
 }
@@ -5233,8 +5245,8 @@ watch(() => props.reportId, (newId) => {
 
 :deep(.panorama-display .entity-type) {
   font-size: 10px;
-  color: #2563EB;
-  background: #DBEAFE;
+  color: var(--mc-status-info);
+  background: var(--mc-status-info-bg);
   padding: 2px 6px;
   border-radius: 4px;
 }
@@ -5511,22 +5523,22 @@ watch(() => props.reportId, (newId) => {
 
 /* Console Logs - 与 Step3Simulation.vue 保持一致 */
 .console-logs {
-  background: #000;
-  color: #DDD;
+  background: #211b14;
+  color: #eadfcd;
   padding: 16px;
   font-family: 'JetBrains Mono', monospace;
-  border-top: 1px solid #222;
+  border-top: 1px solid rgba(255, 253, 250, 0.12);
   flex-shrink: 0;
 }
 
 .log-header {
   display: flex;
   justify-content: space-between;
-  border-bottom: 1px solid #333;
+  border-bottom: 1px solid rgba(255, 253, 250, 0.14);
   padding-bottom: 8px;
   margin-bottom: 8px;
   font-size: 10px;
-  color: #666;
+  color: rgba(234, 223, 205, 0.58);
 }
 
 .log-title {

@@ -623,6 +623,7 @@ class SimulationManager:
                 "pinned_brief_summary": state.pinned_brief_summary,
                 "profiles_count": state.profiles_count,
                 "consumer_brief": brief.to_summary(),
+                "document_summary": document_text[:500],
                 "research_mode": brief.research_mode,
                 "enable_lane_b": brief.enable_lane_b,
                 "research_summary": build_research_summary(research_findings),

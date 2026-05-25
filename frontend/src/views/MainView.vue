@@ -1,44 +1,17 @@
 <template>
   <div class="main-view">
-    <!-- Header -->
-    <header class="app-header">
-      <div class="header-left">
-        <div class="brand" @click="router.push('/')">MIROCONSUMER</div>
-      </div>
-      
-      <div class="header-center">
-        <div class="view-switcher">
-          <button 
-            v-for="mode in ['graph', 'split', 'workbench']" 
-            :key="mode"
-            class="switch-btn"
-            :class="{ active: viewMode === mode }"
-            @click="viewMode = mode"
-          >
-            {{ { graph: $t('main.layoutGraph'), split: $t('main.layoutSplit'), workbench: $t('main.layoutWorkbench') }[mode] }}
-          </button>
-        </div>
-      </div>
-
-      <div class="header-right">
-        <LanguageSwitcher />
-        <div class="step-divider"></div>
-        <div class="workflow-step">
-          <span class="step-num">Step {{ currentStep }}/5</span>
-          <span class="step-name">{{ $tm('main.stepNames')[currentStep - 1] }}</span>
-        </div>
-        <div class="step-divider"></div>
-        <span class="status-indicator" :class="statusClass">
-          <span class="dot"></span>
-          {{ statusText }}
-        </span>
-      </div>
-    </header>
+    <BusinessFlowHeader
+      :current-step="1"
+      :status="businessStatus"
+      :show-technical="showTechnical"
+      @home="router.push('/')"
+      @toggle-technical="showTechnical = !showTechnical"
+    />
 
     <!-- Main Content Area -->
-    <main class="content-area">
+    <main class="content-area" :class="{ 'technical-open': showTechnical }">
       <!-- Left Panel: Graph -->
-      <div class="panel-wrapper left" :style="leftPanelStyle">
+      <div v-if="showTechnical" class="panel-wrapper left">
         <GraphPanel 
           :graphData="graphData"
           :loading="graphLoading"
@@ -49,7 +22,7 @@
       </div>
 
       <!-- Right Panel: Step Components -->
-      <div class="panel-wrapper right" :style="rightPanelStyle">
+      <div class="panel-wrapper right">
         <!-- Step 1: 图谱构建 -->
         <Step1GraphBuild 
           v-if="currentStep === 1"
@@ -59,6 +32,7 @@
           :buildProgress="buildProgress"
           :graphData="graphData"
           :systemLogs="systemLogs"
+          :show-technical="showTechnical"
           @next-step="handleNextStep"
         />
         <!-- Step 2: 环境搭建 -->
@@ -67,6 +41,7 @@
           :projectData="projectData"
           :graphData="graphData"
           :systemLogs="systemLogs"
+          :show-technical="showTechnical"
           @go-back="handleGoBack"
           @next-step="handleNextStep"
           @add-log="addLog"
@@ -84,16 +59,16 @@ import { useI18n } from 'vue-i18n'
 import GraphPanel from '../components/GraphPanel.vue'
 import Step1GraphBuild from '../components/Step1GraphBuild.vue'
 import Step2EnvSetup from '../components/Step2EnvSetup.vue'
+import BusinessFlowHeader from '../components/BusinessFlowHeader.vue'
 import { buildOntologyFormData, generateOntology, getProject, buildGraph, getTaskStatus, getGraphData } from '../api/graph'
 import { getPendingUpload, clearPendingUpload } from '../store/pendingUpload'
-import LanguageSwitcher from '../components/LanguageSwitcher.vue'
 
 const route = useRoute()
 const router = useRouter()
 const { t, tm } = useI18n()
 
 // Layout State
-const viewMode = ref('split') // graph | split | workbench
+const showTechnical = ref(false)
 
 // Step State
 const currentStep = ref(1) // 1: 图谱构建, 2: 环境搭建, 3: 开始模拟, 4: 报告生成, 5: 深度互动
@@ -115,19 +90,6 @@ const systemLogs = ref([])
 let pollTimer = null
 let graphPollTimer = null
 
-// --- Computed Layout Styles ---
-const leftPanelStyle = computed(() => {
-  if (viewMode.value === 'graph') return { width: '100%', opacity: 1, transform: 'translateX(0)' }
-  if (viewMode.value === 'workbench') return { width: '0%', opacity: 0, transform: 'translateX(-20px)' }
-  return { width: '50%', opacity: 1, transform: 'translateX(0)' }
-})
-
-const rightPanelStyle = computed(() => {
-  if (viewMode.value === 'workbench') return { width: '100%', opacity: 1, transform: 'translateX(0)' }
-  if (viewMode.value === 'graph') return { width: '0%', opacity: 0, transform: 'translateX(20px)' }
-  return { width: '50%', opacity: 1, transform: 'translateX(0)' }
-})
-
 // --- Status Computed ---
 const statusClass = computed(() => {
   if (error.value) return 'error'
@@ -135,12 +97,18 @@ const statusClass = computed(() => {
   return 'processing'
 })
 
+const businessStatus = computed(() => {
+  if (error.value) return 'error'
+  if (currentPhase.value >= 2) return 'completed'
+  return 'processing'
+})
+
 const statusText = computed(() => {
-  if (error.value) return 'Error'
-  if (currentPhase.value >= 2) return 'Ready'
-  if (currentPhase.value === 1) return 'Building Graph'
-  if (currentPhase.value === 0) return 'Generating Ontology'
-  return 'Initializing'
+  if (error.value) return '素材准备遇到问题'
+  if (currentPhase.value >= 2) return '测试素材已准备好'
+  if (currentPhase.value === 1) return '正在构建研究上下文'
+  if (currentPhase.value === 0) return '正在整理测试资料'
+  return '正在初始化'
 })
 
 // --- Helpers ---
@@ -154,12 +122,8 @@ const addLog = (msg) => {
 }
 
 // --- Layout Methods ---
-const toggleMaximize = (target) => {
-  if (viewMode.value === target) {
-    viewMode.value = 'split'
-  } else {
-    viewMode.value = target
-  }
+const toggleMaximize = () => {
+  showTechnical.value = !showTechnical.value
 }
 
 const handleNextStep = (params = {}) => {
@@ -432,115 +396,10 @@ onUnmounted(() => {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background: #FFF;
+  background: var(--mc-bg-canvas);
   overflow: hidden;
-  font-family: 'Space Grotesk', 'Noto Sans SC', system-ui, sans-serif;
+  font-family: var(--mc-font-body);
 }
-
-/* Header */
-.app-header {
-  height: 60px;
-  border-bottom: 1px solid #EAEAEA;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 24px;
-  background: #FFF;
-  z-index: 100;
-  position: relative;
-}
-
-.header-center {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-}
-
-.brand {
-  font-family: 'JetBrains Mono', monospace;
-  font-weight: 800;
-  font-size: 18px;
-  letter-spacing: 1px;
-  cursor: pointer;
-}
-
-.view-switcher {
-  display: flex;
-  background: #F5F5F5;
-  padding: 4px;
-  border-radius: 6px;
-  gap: 4px;
-}
-
-.switch-btn {
-  border: none;
-  background: transparent;
-  padding: 6px 16px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #666;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.switch-btn.active {
-  background: #FFF;
-  color: #000;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-}
-
-.status-indicator {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: #666;
-  font-weight: 500;
-}
-
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.workflow-step {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-}
-
-.step-num {
-  font-family: 'JetBrains Mono', monospace;
-  font-weight: 700;
-  color: #999;
-}
-
-.step-name {
-  font-weight: 700;
-  color: #000;
-}
-
-.step-divider {
-  width: 1px;
-  height: 14px;
-  background-color: #E0E0E0;
-}
-
-.dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #CCC;
-}
-
-.status-indicator.processing .dot { background: #FF5722; animation: pulse 1s infinite; }
-.status-indicator.completed .dot { background: #4CAF50; }
-.status-indicator.error .dot { background: #F44336; }
-
-@keyframes pulse { 50% { opacity: 0.5; } }
 
 /* Content */
 .content-area {
@@ -548,16 +407,25 @@ onUnmounted(() => {
   display: flex;
   position: relative;
   overflow: hidden;
+  background: var(--mc-bg-canvas);
 }
 
 .panel-wrapper {
   height: 100%;
   overflow: hidden;
-  transition: width 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), opacity 0.3s ease, transform 0.3s ease;
-  will-change: width, opacity, transform;
 }
 
 .panel-wrapper.left {
-  border-right: 1px solid #EAEAEA;
+  width: 38%;
+  border-right: 1px solid var(--mc-border);
+}
+
+.panel-wrapper.right {
+  flex: 1;
+  min-width: 0;
+}
+
+.content-area:not(.technical-open) .panel-wrapper.right {
+  width: 100%;
 }
 </style>

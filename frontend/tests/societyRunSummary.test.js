@@ -13,8 +13,7 @@ import {
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 
-test('buildSocietyRunSummaryItems formats fixed Phase 6G fields', () => {
-  const items = buildSocietyRunSummaryItems({
+const summaryContext = {
     society_mode: 'standard',
     society_agents_count: 252,
     society_rounds_completed: 3,
@@ -35,18 +34,39 @@ test('buildSocietyRunSummaryItems formats fixed Phase 6G fields', () => {
       trust_recovery_rate: 0.3,
       purchase_intent_delta: 0.18,
     },
-  })
+  }
+
+test('buildSocietyRunSummaryItems defaults to business-facing fields', () => {
+  const items = buildSocietyRunSummaryItems(summaryContext)
 
   assert.deepStrictEqual(items.map(item => item.key), [
-    'mode',
-    'agents',
+    'consumers',
     'rounds',
-    'llmBudget',
     'reach',
     'misread',
     'trustRecovery',
     'purchaseIntentDelta',
     'progressStatus',
+  ])
+  assert.equal(items.find(item => item.key === 'reach').value, '42%')
+  assert.equal(items.find(item => item.key === 'purchaseIntentDelta').value, '+18pp')
+  assert.equal(items.some(item => item.key === 'llmBudget'), false)
+  assert.equal(items.some(item => item.key === 'currentBackend'), false)
+})
+
+test('buildSocietyRunSummaryItems keeps technical fields when requested', () => {
+  const items = buildSocietyRunSummaryItems(summaryContext, { includeTechnical: true })
+
+  assert.deepStrictEqual(items.map(item => item.key), [
+    'mode',
+    'consumers',
+    'rounds',
+    'reach',
+    'misread',
+    'trustRecovery',
+    'purchaseIntentDelta',
+    'progressStatus',
+    'llmBudget',
     'agentProgress',
     'currentLayer',
     'currentBackend',
@@ -70,26 +90,31 @@ test('formatSocietyDelta includes sign and percentage point suffix', () => {
 test('SocietyRunSummary.vue renders all required labels', () => {
   const path = join(__dirname, '../src/components/consumer/SocietyRunSummary.vue')
   const content = readFileSync(path, 'utf-8')
+  const utilContent = readFileSync(join(__dirname, '../src/utils/societyRunSummary.ts'), 'utf-8')
 
   for (const label of [
-    'Society Mode',
-    'Agents',
-    'Rounds',
-    'LLM Budget',
-    'Reach',
-    'Misread',
-    'Trust Recovery',
-    'Purchase Intent',
-    'Progress',
+    '消费者测试摘要',
+    'Technical Details',
+  ]) {
+    assert.ok(content.includes(label), `missing ${label}`)
+  }
+
+  for (const label of [
+    '消费者画像',
+    '传播轮次',
+    '触达率',
+    '误读风险',
+    '信任修复',
+    '购买意向变化',
+    '测试状态',
     'Agent Progress',
-    'Current Layer',
     'Backend',
     'LLM Calls',
     'Rules',
     'Fallback',
     'Failed',
   ]) {
-    assert.ok(content.includes(label), `missing ${label}`)
+    assert.ok(utilContent.includes(label), `missing ${label}`)
   }
 })
 

@@ -1,0 +1,692 @@
+:root {
+  --mc-font-body: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", "Source Han Sans SC", system-ui, sans-serif;
+  --mc-font-display: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", "Source Han Sans SC", system-ui, sans-serif;
+  --mc-font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+
+  --mc-bg-canvas: #f3f5f2;
+  --mc-bg-subtle: #f8f9f6;
+  --mc-surface: #fffffc;
+  --mc-surface-muted: #eef2ec;
+  --mc-surface-raised: #ffffff;
+  --mc-text-primary: #1b211d;
+  --mc-text-secondary: #5a625c;
+  --mc-text-tertiary: #879086;
+  --mc-border: #d7ded5;
+  --mc-border-strong: #b9c5ba;
+  --mc-accent: #225c4b;
+  --mc-accent-strong: #174233;
+  --mc-accent-soft: #cfe0d8;
+  --mc-accent-wash: #eaf3ee;
+  --mc-status-success: #177a58;
+  --mc-status-success-bg: #e7f4ee;
+  --mc-status-warning: #a15c16;
+  --mc-status-warning-bg: #fbefe0;
+  --mc-status-error: #b42318;
+  --mc-status-error-bg: #fff0ed;
+  --mc-status-info: #315b73;
+  --mc-status-info-bg: #e8f1f5;
+  --mc-technical-bg: #20251f;
+  --mc-technical-surface: #283028;
+  --mc-technical-surface-muted: #1a201b;
+  --mc-technical-border: rgba(214, 224, 215, 0.16);
+  --mc-technical-text: #edf3ea;
+  --mc-technical-muted: #aeb9ad;
+  --mc-technical-accent: #91c7b4;
+  --mc-radius-card: 8px;
+  --mc-radius-control: 6px;
+  --mc-radius-pill: 999px;
+  --mc-shadow-card: 0 18px 44px rgba(24, 45, 35, 0.08);
+  --mc-shadow-subtle: 0 8px 24px rgba(24, 45, 35, 0.055);
+  --mc-focus-ring: 0 0 0 3px rgba(34, 92, 75, 0.16);
+}
+
+html {
+  background: var(--mc-bg-canvas);
+}
+
+body {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 252, 0.92), rgba(243, 245, 242, 0.98)),
+    var(--mc-bg-canvas);
+  color: var(--mc-text-primary);
+  font-family: var(--mc-font-body);
+}
+
+#app {
+  min-height: 100vh;
+  color: var(--mc-text-primary);
+  background: var(--mc-bg-canvas);
+  font-family: var(--mc-font-body);
+}
+
+#app .mono,
+#app .report-id,
+#app .log-time,
+#app .stat-value,
+#app .metric-value,
+#app .summary-metric-value,
+#app .header-meta,
+#app .step-num,
+#app .section-number {
+  font-family: var(--mc-font-mono);
+}
+
+.business-card {
+  background: var(--mc-surface);
+  border: 1px solid var(--mc-border);
+  border-radius: var(--mc-radius-card);
+  box-shadow: var(--mc-shadow-card);
+}
+
+.business-button {
+  border: 1px solid var(--mc-accent);
+  background: var(--mc-accent);
+  color: #fffdfa;
+  border-radius: var(--mc-radius-control);
+  font-weight: 760;
+  letter-spacing: 0;
+}
+
+.business-button:hover:not(:disabled) {
+  background: var(--mc-accent-strong);
+  border-color: var(--mc-accent-strong);
+}
+
+.technical-panel {
+  background: var(--mc-technical-bg);
+  color: var(--mc-technical-text);
+  border-color: var(--mc-technical-border);
+}
+
+#app button,
+#app input,
+#app textarea {
+  font-family: var(--mc-font-body);
+}
+
+#app textarea,
+#app input {
+  color: var(--mc-text-primary);
+}
+
+#app textarea::placeholder,
+#app input::placeholder {
+  color: var(--mc-text-tertiary);
+}
+
+#app textarea:focus,
+#app input:focus,
+#app button:focus-visible,
+#app [role="button"]:focus-visible {
+  outline: none;
+  box-shadow: var(--mc-focus-ring);
+}
+
+#app .main-view,
+#app .home-container,
+#app .simulation-panel,
+#app .report-panel,
+#app .interaction-panel,
+#app .workbench-panel {
+  background: var(--mc-bg-canvas);
+  color: var(--mc-text-primary);
+  font-family: var(--mc-font-body);
+}
+
+#app .content-area,
+#app .main-content-area,
+#app .main-split-layout,
+#app .right-panel,
+#app .left-panel.report-style,
+#app .report-content-wrapper {
+  background: var(--mc-bg-subtle);
+}
+
+#app .content-area.technical-open {
+  background:
+    linear-gradient(90deg, rgba(32, 37, 31, 0.04), transparent 42%),
+    var(--mc-bg-canvas);
+}
+
+#app .panel-wrapper.left,
+#app .left-panel.report-style,
+#app .right-panel,
+#app .control-bar,
+#app .action-bar,
+#app .consumer-summary-shell,
+#app .report-header-block,
+#app .report-section-item,
+#app .consumer-header-card,
+#app .consumer-confidence-card,
+#app .consumer-voc-strip,
+#app .consumer-chat-brief,
+#app .report-agent-tools-card,
+#app .agent-profile-card,
+#app .summary-metric-card,
+#app .summary-platform-card,
+#app .summary-recent-events,
+#app .platform-status,
+#app .step-card {
+  border-color: var(--mc-border);
+}
+
+#app .step-card,
+#app .platform-status,
+#app .summary-metric-card,
+#app .summary-platform-card,
+#app .summary-recent-events,
+#app .report-section-item,
+#app .consumer-header-card,
+#app .consumer-confidence-card,
+#app .consumer-voc-strip,
+#app .consumer-chat-brief,
+#app .report-agent-tools-card,
+#app .agent-profile-card,
+#app .tool-item,
+#app .result-card,
+#app .timeline-card,
+#app .workflow-metrics,
+#app .workflow-timeline,
+#app .workflow-overview,
+#app .consumer-round-card,
+#app .consumer-metric-card,
+#app .consumer-voc-chip,
+#app .consumer-events-panel,
+#app .consumer-cascade-panel {
+  background: var(--mc-surface);
+  border-radius: var(--mc-radius-card);
+  box-shadow: var(--mc-shadow-subtle);
+}
+
+#app .consumer-summary-shell {
+  background: linear-gradient(180deg, var(--mc-accent-wash), var(--mc-bg-subtle));
+}
+
+#app .main-title,
+#app h1,
+#app h2,
+#app h3,
+#app .section-title,
+#app .step-title,
+#app .consumer-round-title,
+#app .action-bar-title,
+#app .report-tag,
+#app .task-title {
+  color: var(--mc-text-primary);
+  font-family: var(--mc-font-display);
+  letter-spacing: 0;
+}
+
+#app .sub-title,
+#app .description,
+#app .intro-copy,
+#app .field-hint,
+#app .status-description,
+#app .consumer-round-desc,
+#app .action-bar-subtitle,
+#app .validation-copy,
+#app .summary-platform-actions,
+#app .consumer-metric-label,
+#app .summary-metric-label {
+  color: var(--mc-text-secondary);
+}
+
+#app .status-label.status-processing,
+#app .badge.processing,
+#app .badge.accent,
+#app .progress-section,
+#app .consumer-voc-kind,
+#app .consumer-chat-label,
+#app .report-tag,
+#app .eyebrow {
+  color: var(--mc-accent);
+}
+
+#app .badge.processing,
+#app .badge.accent,
+#app .toggle-btn.active,
+#app .action-btn.primary,
+#app .start-btn,
+#app .send-btn,
+#app .survey-submit-btn,
+#app .next-step-btn,
+#app .target-option.active,
+#app .tab-pill.active,
+#app .section-index,
+#app .flow-step.active .step-dot,
+#app .avatar-placeholder,
+#app .message-avatar,
+#app .profile-card-avatar,
+#app .tools-card-avatar,
+#app .agent-avatar {
+  background: var(--mc-accent);
+  border-color: var(--mc-accent);
+  color: #fffdfa;
+}
+
+#app .action-btn.primary:hover:not(:disabled),
+#app .start-btn:hover:not(:disabled),
+#app .send-btn:hover:not(:disabled),
+#app .survey-submit-btn:hover:not(:disabled),
+#app .next-step-btn:hover:not(:disabled) {
+  background: var(--mc-accent-strong);
+  border-color: var(--mc-accent-strong);
+}
+
+#app .status-label.status-completed,
+#app .flow-step.completed,
+#app .complete .validation-count,
+#app .status-badge,
+#app .badge.success {
+  color: var(--mc-status-success);
+}
+
+#app .badge.success,
+#app .flow-step.completed .step-dot,
+#app .brief-validation.complete,
+#app .status-completed,
+#app .agent-checkbox.checked {
+  background: var(--mc-status-success-bg);
+  border-color: rgba(23, 122, 88, 0.24);
+}
+
+#app .status-label.status-error,
+#app .error-message,
+#app .create-error {
+  color: var(--mc-status-error);
+}
+
+#app .error-message,
+#app .create-error,
+#app .status-exception {
+  background: var(--mc-status-error-bg);
+  border-color: rgba(180, 35, 24, 0.22);
+}
+
+#app .detail-toggle,
+#app .mode-btn,
+#app .segmented button,
+#app .toggle-btn,
+#app .tab-pill,
+#app .target-option,
+#app .action-link,
+#app .remove-btn {
+  border-radius: var(--mc-radius-control);
+}
+
+#app .detail-toggle,
+#app .mode-btn,
+#app .segmented button,
+#app .toggle-btn,
+#app .tab-pill,
+#app .target-option {
+  background: var(--mc-surface);
+  border-color: var(--mc-border);
+  color: var(--mc-text-secondary);
+}
+
+#app .detail-toggle:hover,
+#app .mode-btn:hover,
+#app .segmented button:hover,
+#app .toggle-btn:hover:not(.active),
+#app .tab-pill:hover,
+#app .target-option:hover {
+  border-color: var(--mc-border-strong);
+  color: var(--mc-text-primary);
+  background: var(--mc-surface-muted);
+}
+
+#app .mode-btn.active,
+#app .segmented button.active {
+  background: var(--mc-accent);
+  border-color: var(--mc-accent);
+  color: #fffdfa;
+}
+
+#app .system-logs,
+#app .console-logs {
+  background: var(--mc-technical-bg);
+  border-color: var(--mc-technical-border);
+  color: var(--mc-technical-text);
+}
+
+#app .log-header {
+  border-color: var(--mc-technical-border);
+  color: var(--mc-technical-muted);
+}
+
+#app .log-msg,
+#app .log-line {
+  color: var(--mc-technical-text);
+}
+
+#app .tool-purple .tool-icon-wrapper,
+#app .insight-header,
+#app .panorama-header,
+#app .quicksearch-header {
+  background: var(--mc-accent-wash);
+  border-color: var(--mc-border);
+  color: var(--mc-accent);
+}
+
+/* Route shells and technical detail surfaces */
+#app .panel-wrapper.left {
+  background: var(--mc-technical-bg);
+  border-right-color: var(--mc-technical-border);
+}
+
+#app .panel-wrapper.right {
+  background: var(--mc-bg-subtle);
+}
+
+#app .app-header {
+  background: rgba(255, 255, 252, 0.95);
+  border-bottom-color: var(--mc-border);
+  color: var(--mc-text-primary);
+  font-family: var(--mc-font-body);
+}
+
+#app .view-switcher {
+  background: var(--mc-surface-muted);
+  border: 1px solid var(--mc-border);
+}
+
+#app .switch-btn {
+  color: var(--mc-text-secondary);
+}
+
+#app .switch-btn.active {
+  background: var(--mc-surface);
+  color: var(--mc-text-primary);
+  box-shadow: var(--mc-shadow-subtle);
+}
+
+#app .status-indicator,
+#app .step-num {
+  color: var(--mc-text-secondary);
+}
+
+#app .step-name {
+  color: var(--mc-text-primary);
+}
+
+#app .status-indicator.processing .dot {
+  background: var(--mc-accent);
+}
+
+#app .status-indicator.ready .dot,
+#app .status-indicator.completed .dot {
+  background: var(--mc-status-success);
+}
+
+#app .status-indicator.error .dot {
+  background: var(--mc-status-error);
+}
+
+#app .graph-panel,
+#app .history-database,
+#app .evidence-graph-panel,
+#app .path-graph,
+#app .interview-workspace,
+#app .focus-group-panel,
+#app .consumer-research-workspace,
+#app .consumer-branch-panel {
+  background: var(--mc-surface) !important;
+  color: var(--mc-text-primary) !important;
+  border: 1px solid var(--mc-border) !important;
+  border-radius: var(--mc-radius-card) !important;
+  box-shadow: var(--mc-shadow-subtle) !important;
+  font-family: var(--mc-font-body) !important;
+}
+
+#app .technical-open .graph-panel,
+#app .panel-wrapper.left .graph-panel {
+  background: var(--mc-technical-bg) !important;
+  color: var(--mc-technical-text) !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+#app .graph-panel .panel-header,
+#app .history-database .section-header,
+#app .evidence-graph-panel .eg-header,
+#app .path-graph .path-head,
+#app .interview-workspace .interview-head,
+#app .focus-group-panel .focus-head,
+#app .consumer-research-workspace .workspace-header,
+#app .consumer-branch-panel .consumer-branch-header {
+  background: var(--mc-surface-muted) !important;
+  border-color: var(--mc-border) !important;
+  color: var(--mc-text-primary) !important;
+}
+
+#app .panel-wrapper.left .graph-panel .panel-header {
+  background: var(--mc-technical-surface) !important;
+  border-color: var(--mc-technical-border) !important;
+  color: var(--mc-technical-text) !important;
+}
+
+#app .graph-panel .panel-title,
+#app .history-database .section-title,
+#app .evidence-graph-panel .eg-title,
+#app .path-graph .path-head strong,
+#app .interview-workspace .interview-head strong,
+#app .focus-group-panel .focus-head strong,
+#app .consumer-research-workspace .workspace-title,
+#app .consumer-branch-panel .consumer-branch-title {
+  color: inherit !important;
+  font-family: var(--mc-font-display) !important;
+  letter-spacing: 0 !important;
+}
+
+#app .graph-panel .graph-container,
+#app .graph-panel .graph-view,
+#app .history-database .project-card,
+#app .history-database .modal-content,
+#app .evidence-graph-panel .eg-body,
+#app .path-graph .path-card,
+#app .interview-workspace .interview-section,
+#app .focus-group-panel .focus-section,
+#app .consumer-research-workspace .workspace-section,
+#app .consumer-branch-panel .consumer-branch-form,
+#app .consumer-branch-panel .consumer-intervention-section {
+  background: var(--mc-surface) !important;
+  border-color: var(--mc-border) !important;
+  color: var(--mc-text-primary) !important;
+  border-radius: var(--mc-radius-card) !important;
+}
+
+#app .panel-wrapper.left .graph-panel .graph-container,
+#app .panel-wrapper.left .graph-panel .graph-view,
+#app .panel-wrapper.left .graph-panel .detail-panel,
+#app .panel-wrapper.left .graph-panel .graph-legend {
+  background: var(--mc-technical-surface-muted) !important;
+  border-color: var(--mc-technical-border) !important;
+  color: var(--mc-technical-text) !important;
+}
+
+#app .graph-panel .detail-panel,
+#app .graph-panel .graph-legend,
+#app .graph-panel .graph-building-hint,
+#app .history-database .modal-content,
+#app .evidence-graph-panel .eg-state,
+#app .path-graph .node-popover {
+  border: 1px solid var(--mc-border) !important;
+  border-radius: var(--mc-radius-card) !important;
+  box-shadow: var(--mc-shadow-card) !important;
+}
+
+#app .graph-panel .tool-btn,
+#app .history-database .modal-btn,
+#app .path-graph select,
+#app .interview-workspace button,
+#app .focus-group-panel button,
+#app .consumer-research-workspace button,
+#app .consumer-branch-panel button,
+#app .consumer-branch-panel select,
+#app .consumer-branch-panel input,
+#app .interview-workspace input,
+#app .interview-workspace textarea,
+#app .focus-group-panel input,
+#app .consumer-research-workspace input {
+  border-color: var(--mc-border) !important;
+  border-radius: var(--mc-radius-control) !important;
+  font-family: var(--mc-font-body) !important;
+}
+
+#app .graph-panel .tool-btn,
+#app .history-database .modal-btn,
+#app .path-graph select,
+#app .interview-workspace button,
+#app .focus-group-panel button,
+#app .consumer-research-workspace button,
+#app .consumer-branch-panel button {
+  background: var(--mc-surface) !important;
+  color: var(--mc-text-secondary) !important;
+}
+
+#app .panel-wrapper.left .graph-panel .tool-btn {
+  background: var(--mc-technical-surface) !important;
+  border-color: var(--mc-technical-border) !important;
+  color: var(--mc-technical-text) !important;
+}
+
+#app .history-database .modal-btn:not(:disabled):hover,
+#app .graph-panel .tool-btn:not(:disabled):hover,
+#app .interview-workspace button:not(:disabled):hover,
+#app .focus-group-panel button:not(:disabled):hover,
+#app .consumer-research-workspace button:not(:disabled):hover,
+#app .consumer-branch-panel button:not(:disabled):hover {
+  border-color: var(--mc-accent) !important;
+  color: var(--mc-accent) !important;
+  background: var(--mc-accent-wash) !important;
+}
+
+#app .focus-group-panel .focus-run-btn,
+#app .interview-workspace .interview-run-btn,
+#app .consumer-research-workspace .workspace-btn,
+#app .consumer-branch-panel .consumer-branch-btn.primary,
+#app .history-database .modal-btn:not(:disabled) {
+  background: var(--mc-accent) !important;
+  border-color: var(--mc-accent) !important;
+  color: #fffdfa !important;
+}
+
+#app .graph-panel .detail-label,
+#app .history-database .card-desc,
+#app .history-database .modal-label,
+#app .evidence-graph-panel .eg-kicker,
+#app .path-graph .path-head span,
+#app .path-graph .path-grid span,
+#app .interview-workspace .section-label,
+#app .focus-group-panel .section-label,
+#app .consumer-research-workspace .workspace-section-title,
+#app .consumer-branch-panel .consumer-intervention-title {
+  color: var(--mc-text-secondary) !important;
+}
+
+#app .panel-wrapper.left .graph-panel .detail-label,
+#app .panel-wrapper.left .graph-panel .legend-title,
+#app .panel-wrapper.left .graph-panel .empty-text {
+  color: var(--mc-technical-muted) !important;
+}
+
+#app .graph-panel .uuid-text,
+#app .graph-panel .property-key,
+#app .history-database .card-id,
+#app .history-database .modal-id,
+#app .evidence-graph-panel .eg-stat,
+#app .path-graph .mono,
+#app .consumer-research-workspace .mono {
+  color: var(--mc-accent) !important;
+  font-family: var(--mc-font-mono) !important;
+}
+
+#app .panel-wrapper.left .graph-panel .uuid-text,
+#app .panel-wrapper.left .graph-panel .property-key {
+  color: var(--mc-technical-accent) !important;
+}
+
+#app .history-database .status-icon.available,
+#app .history-database .btn-icon,
+#app .evidence-graph-panel .eg-edge--source,
+#app .evidence-graph-panel .eg-edge--evidence,
+#app .evidence-graph-panel .eg-edge--finding {
+  color: var(--mc-accent) !important;
+  stroke: var(--mc-accent) !important;
+}
+
+#app .evidence-graph-panel .eg-node rect,
+#app .path-graph .path-card,
+#app .interview-workspace .role-chip,
+#app .interview-workspace .prompt-chip,
+#app .focus-group-panel .role-chip,
+#app .consumer-branch-panel .consumer-intervention-item {
+  fill: var(--mc-surface) !important;
+  background: var(--mc-surface) !important;
+  border-color: var(--mc-border) !important;
+}
+
+#app .evidence-graph-panel .eg-node text {
+  fill: var(--mc-text-primary) !important;
+}
+
+#app .path-graph .path-card--critical,
+#app .path-graph .path-card--hub,
+#app .interview-workspace .role-chip.active,
+#app .focus-group-panel .role-chip.active,
+#app .consumer-branch-panel .branch-run-status-badge {
+  background: var(--mc-accent-wash) !important;
+  border-color: var(--mc-accent-soft) !important;
+  color: var(--mc-accent) !important;
+}
+
+body .modal-overlay {
+  background: rgba(27, 33, 29, 0.42) !important;
+  backdrop-filter: blur(6px);
+}
+
+body .modal-content {
+  background: var(--mc-surface) !important;
+  border: 1px solid var(--mc-border) !important;
+  border-radius: var(--mc-radius-card) !important;
+  box-shadow: var(--mc-shadow-card) !important;
+  color: var(--mc-text-primary) !important;
+  font-family: var(--mc-font-body) !important;
+}
+
+body .modal-header {
+  background: var(--mc-surface-muted) !important;
+  border-bottom-color: var(--mc-border) !important;
+}
+
+body .modal-close {
+  color: var(--mc-text-secondary) !important;
+}
+
+@media (max-width: 720px) {
+  #app .main-view {
+    min-height: 100vh;
+    height: auto;
+  }
+
+  #app .content-area {
+    overflow: auto;
+    flex-direction: column;
+  }
+
+  #app .content-area.technical-open .panel-wrapper.left,
+  #app .panel-wrapper.left,
+  #app .panel-wrapper.right {
+    width: 100% !important;
+    min-height: auto;
+    height: auto;
+    border-right: 0;
+  }
+
+  #app .content-area.technical-open .panel-wrapper.left {
+    max-height: 46vh;
+    border-bottom: 1px solid var(--mc-technical-border);
+  }
+}

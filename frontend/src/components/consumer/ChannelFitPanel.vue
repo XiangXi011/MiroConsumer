@@ -1,25 +1,25 @@
 <template>
-  <section v-if="visible" class="channel-fit-panel" aria-label="Channel Fit Panel">
+  <section v-if="visible" class="channel-fit-panel" aria-label="Channel fit for the consumer test">
     <div class="channel-fit-head">
-      <span class="channel-fit-kicker">Channel Runtime</span>
+      <span class="channel-fit-kicker">Channel Fit</span>
       <strong>多渠道适配</strong>
     </div>
 
     <div class="channel-fit-summary">
       <div class="summary-item">
-        <span>Best Launch Channel</span>
+        <span>优先投放渠道</span>
         <strong>{{ fitItems.summary.bestLaunchChannel }}</strong>
       </div>
       <div class="summary-item">
-        <span>Highest Misread Channel</span>
+        <span>最高误读渠道</span>
         <strong>{{ fitItems.summary.highestMisreadChannel }}</strong>
       </div>
       <div class="summary-item">
-        <span>Evidence Demand Channel</span>
+        <span>最需证据渠道</span>
         <strong>{{ fitItems.summary.highestEvidenceDemandChannel }}</strong>
       </div>
       <div class="summary-item">
-        <span>Price Resistance Channel</span>
+        <span>价格阻力渠道</span>
         <strong>{{ fitItems.summary.highestPriceResistanceChannel }}</strong>
       </div>
     </div>

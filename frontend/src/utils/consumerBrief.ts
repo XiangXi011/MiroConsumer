@@ -1,5 +1,6 @@
 // @ts-nocheck
 const ITEM_SPLIT_PATTERN = /[\n,，;；]+/
+export const PACKAGING_ASSET_EXTENSIONS = ['pdf', 'png', 'jpg', 'jpeg', 'webp']
 
 function normalizeText(value) {
   return typeof value === 'string' ? value.trim() : ''
@@ -17,6 +18,23 @@ function splitItems(value) {
     .split(ITEM_SPLIT_PATTERN)
     .map(item => item.trim())
     .filter(Boolean)
+}
+
+function fileExtension(file) {
+  const name = typeof file === 'string' ? file : file?.name
+  return normalizeText(name).split('.').pop()?.toLowerCase() || ''
+}
+
+export function isPackagingAssetFile(file) {
+  return PACKAGING_ASSET_EXTENSIONS.includes(fileExtension(file))
+}
+
+export function buildPackagingAssetSummary(files = []) {
+  const names = files
+    .map(file => normalizeText(typeof file === 'string' ? file : file?.name))
+    .filter(Boolean)
+
+  return names.length > 0 ? `包装素材文件：${names.join('、')}` : ''
 }
 
 export function buildConsumerBrief(formData = {}) {

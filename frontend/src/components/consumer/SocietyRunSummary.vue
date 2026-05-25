@@ -2,11 +2,11 @@
   <section
     v-if="visible"
     class="society-run-summary"
-    aria-label="Society Mode Agents Rounds LLM Budget Reach Misread Trust Recovery Purchase Intent Progress Agent Progress Current Layer Backend LLM Calls Rules Fallback Failed"
+    :aria-label="showTechnical ? 'Consumer test summary and technical diagnostics' : 'Consumer test summary'"
   >
     <div class="society-summary-head">
-      <span class="society-kicker">Consumer Society Runtime</span>
-      <strong>大社会运行摘要</strong>
+      <span class="society-kicker">{{ showTechnical ? 'Technical Details' : 'Test Summary' }}</span>
+      <strong>消费者测试摘要</strong>
     </div>
     <div class="society-summary-grid">
       <div v-for="item in items" :key="item.key" class="society-summary-item">
@@ -14,7 +14,7 @@
         <span class="society-summary-value mono">{{ item.value }}</span>
       </div>
     </div>
-    <div v-if="diagnosticItems.length" class="society-diagnostics">
+    <div v-if="showTechnical && diagnosticItems.length" class="society-diagnostics">
       <div class="society-diagnostics-head">
         <span class="society-kicker">Diagnostics</span>
       </div>
@@ -41,9 +41,15 @@ const props = defineProps({
     type: Object,
     default: () => ({}),
   },
+  showTechnical: {
+    type: Boolean,
+    default: false,
+  },
 })
 
-const items = computed(() => buildSocietyRunSummaryItems(props.context || {}))
+const items = computed(() => buildSocietyRunSummaryItems(props.context || {}, {
+  includeTechnical: props.showTechnical,
+}))
 
 const diagnosticItems = computed(() => buildSocietyRunDiagnosticItems(props.context || {}))
 
@@ -54,7 +60,7 @@ const visible = computed(() => {
     context.society_agents_count ||
     context.society_metrics,
   )
-  const hasDiagnostics = diagnosticItems.value.length > 0
+  const hasDiagnostics = props.showTechnical && diagnosticItems.value.length > 0
   return hasMetrics || hasDiagnostics
 })
 </script>

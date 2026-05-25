@@ -32,6 +32,8 @@ class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY', '')
     JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY', '')
     DEBUG = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
+    TESTING = os.environ.get('TESTING', 'False').lower() == 'true'
+    AUTH_BYPASS_IN_TESTING = os.environ.get('AUTH_BYPASS_IN_TESTING', 'True').lower() == 'true'
     ENVIRONMENT = os.environ.get('FLASK_ENV', 'development').lower()
     CORS_ALLOW_ORIGINS = os.environ.get(
         'CORS_ALLOW_ORIGINS',
@@ -69,7 +71,7 @@ class Config:
     SENTRY_ENVIRONMENT = os.environ.get('SENTRY_ENVIRONMENT', os.environ.get('FLASK_ENV', 'development'))
     SENTRY_TRACES_SAMPLE_RATE = float(os.environ.get('SENTRY_TRACES_SAMPLE_RATE', '0.05'))
     UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), '../uploads')
-    ALLOWED_EXTENSIONS = {'pdf', 'md', 'txt', 'markdown'}
+    ALLOWED_EXTENSIONS = {'pdf', 'md', 'txt', 'markdown', 'png', 'jpg', 'jpeg', 'webp'}
 
     DEFAULT_CHUNK_SIZE = 500
     DEFAULT_CHUNK_OVERLAP = 50

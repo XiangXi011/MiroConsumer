@@ -2,10 +2,10 @@
   <section
     v-if="visible"
     class="channel-heatmap"
-    aria-label="Channel Heatmap Channel x Claim Channel x Persona Segment Channel x Risk Type Channel x Purchase Intent"
+    aria-label="Channel performance matrix"
   >
     <div class="heatmap-head">
-      <span>Channel Heatmap</span>
+      <span>Channel Matrix</span>
       <strong>渠道 × 指标</strong>
     </div>
     <div class="heatmap-grid">

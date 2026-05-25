@@ -47,10 +47,12 @@ test('formatChannelPercent clamps invalid values to zero percent', () => {
 
 test('ChannelHeatmap.vue is mounted by Step4Report', () => {
   const component = readFileSync(join(__dirname, '../src/components/consumer/ChannelHeatmap.vue'), 'utf-8')
+  const util = readFileSync(join(__dirname, '../src/utils/channelPropagation.ts'), 'utf-8')
   const step4 = readFileSync(join(__dirname, '../src/components/Step4Report.vue'), 'utf-8')
 
-  for (const label of ['Channel x Claim', 'Channel x Persona Segment', 'Channel x Risk Type', 'Channel x Purchase Intent']) {
-    assert.ok(component.includes(label), `missing ${label}`)
+  for (const label of ['核心卖点共鸣', '目标人群适配', '误读风险', '购买意向变化']) {
+    assert.ok(util.includes(label), `missing ${label}`)
   }
+  assert.ok(component.includes('Channel Matrix'))
   assert.ok(step4.includes('ChannelHeatmap'), 'Step4Report must mount ChannelHeatmap')
 })

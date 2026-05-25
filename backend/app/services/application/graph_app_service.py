@@ -27,6 +27,7 @@ from ...services.consumer.research_ingest import (
     build_research_summary,
     resolve_research_findings,
     default_auto_research_provider,
+    llm_auto_research_provider,
     build_research_snapshot,
 )
 from ...services.consumer.source_quality import build_source_quality_summary
@@ -101,9 +102,14 @@ def _build_consumer_graph(project, text: str, project_repo: ProjectRepository):
     )
 
     lane_b_provider = build_lane_b_provider(project.project_id, upload_root=Config.UPLOAD_FOLDER)
+    auto_research_provider = (
+        llm_auto_research_provider
+        if brief.research_mode == "auto_enrich"
+        else default_auto_research_provider
+    )
     research_findings = resolve_research_findings(
         brief,
-        provider=default_auto_research_provider,
+        provider=auto_research_provider,
         project_id=project.project_id,
         upload_root=Config.UPLOAD_FOLDER,
         enable_lane_b=brief.enable_lane_b,
@@ -131,7 +137,7 @@ def _build_consumer_graph(project, text: str, project_repo: ProjectRepository):
         project.project_id,
         brief=brief,
         upload_root=Config.UPLOAD_FOLDER,
-        provider=default_auto_research_provider,
+        provider=auto_research_provider,
         enable_lane_b=brief.enable_lane_b,
         lane_b_provider=lane_b_provider,
     )

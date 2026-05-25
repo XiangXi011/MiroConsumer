@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 from .models import (
@@ -23,6 +24,8 @@ from .source_quality import (
     evaluate_sources,
 )
 from .source_registry import SourceRegistry
+
+logger = logging.getLogger(__name__)
 
 
 def _deterministic_finding_id(text: str, prefix: str = "mf") -> str:
@@ -290,6 +293,141 @@ def default_auto_research_provider(brief: ConsumerBusinessBrief) -> List[Researc
                 confidence=0.7,
             )
         )
+
+    return findings
+
+
+def llm_auto_research_provider(brief: ConsumerBusinessBrief) -> List[ResearchFinding]:
+    """LLM-powered auto-research provider that generates real findings.
+
+    Uses the project's configured LLM to synthesize category context,
+    risk signals, competitor signals, and trend signals based on the
+    brief content. Returns structured ResearchFinding objects.
+
+    Falls back to default_auto_research_provider if LLM is unavailable
+    or the call fails.
+    """
+    try:
+        from ...utils.llm_client import LLMClient
+
+        client = LLMClient()
+    except Exception as exc:
+        logger.warning("LLM not available for auto-research, falling back: %s", exc)
+        return default_auto_research_provider(brief)
+
+    # Build a rich research prompt from the brief
+    context_parts: List[str] = []
+    if brief.research_goal:
+        context_parts.append(f"Research Goal: {brief.research_goal}")
+    if brief.product_concept_assets:
+        context_parts.append(f"Product Concepts: {' | '.join(brief.product_concept_assets)}")
+    if brief.copy_material:
+        context_parts.append(f"Copy Material: {' | '.join(brief.copy_material)}")
+    if brief.claims:
+        context_parts.append(f"Claims: {' | '.join(brief.claims)}")
+    if brief.target_audience:
+        context_parts.append(f"Target Audience: {' | '.join(brief.target_audience)}")
+    if brief.usage_scene:
+        context_parts.append(f"Usage Scene: {' | '.join(brief.usage_scene)}")
+    if brief.packaging_assets:
+        context_parts.append(f"Packaging Assets: {' | '.join(brief.packaging_assets)}")
+    if brief.test_variants:
+        context_parts.append(f"Test Variants: {' | '.join(v.label for v in brief.test_variants)}")
+    if brief.price_points:
+        context_parts.append(f"Price Points: {' | '.join(brief.price_points)}")
+    if brief.price_context:
+        context_parts.append(f"Price Context: {brief.price_context}")
+
+    context = "\n".join(context_parts)
+    if not context:
+        return default_auto_research_provider(brief)
+
+    system_prompt = (
+        "You are a market research analyst. Based on the consumer brief provided, "
+        "generate structured pre-research findings that would help a consumer "
+        "propagation simulation. Identify category context, potential risk signals, "
+        "competitor signals, and trend signals."
+    )
+
+    user_prompt = (
+        f"{context}\n\n"
+        "Respond with a single JSON object containing a 'findings' array. "
+        "Each finding must have:\n"
+        '- "type": one of [category_context, risk_signal, competitor_signal, trend_signal]\n'
+        '- "summary": a concise sentence (max 200 chars)\n'
+        '- "visibility": one of [Initial, Propagation_Only, Restricted]\n'
+        '- "confidence": a float between 0.0 and 1.0\n'
+        "Generate at most 8 findings. Be specific and insightful."
+    )
+
+    try:
+        data = client.chat_json(
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.5,
+            max_tokens=2048,
+        )
+    except Exception as exc:
+        logger.warning("LLM auto-research call failed, falling back: %s", exc)
+        return default_auto_research_provider(brief)
+
+    raw_findings = data.get("findings") if isinstance(data, Mapping) else None
+    if not isinstance(raw_findings, list):
+        logger.warning("LLM auto-research returned invalid findings format, falling back")
+        return default_auto_research_provider(brief)
+
+    findings: List[ResearchFinding] = []
+    seen: set[str] = set()
+
+    visibility_map: Dict[str, GraphVisibility] = {
+        "Initial": GraphVisibility.Initial,
+        "Propagation_Only": GraphVisibility.Propagation_Only,
+        "Restricted": GraphVisibility.Restricted,
+    }
+    type_map: Dict[str, str] = {
+        "category_context": "category_context",
+        "risk_signal": "risk_signal",
+        "competitor_signal": "competitor_signal",
+        "trend_signal": "trend_signal",
+    }
+
+    for idx, item in enumerate(raw_findings):
+        if not isinstance(item, Mapping):
+            continue
+        summary = str(item.get("summary", "")).strip()
+        if not summary:
+            continue
+        key = summary.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+
+        finding_type = type_map.get(str(item.get("type", "")).strip().lower(), "category_context")
+        visibility = visibility_map.get(
+            str(item.get("visibility", "")).strip(), GraphVisibility.Propagation_Only
+        )
+        try:
+            confidence = float(item.get("confidence", 0.6))
+        except (TypeError, ValueError):
+            confidence = 0.6
+        confidence = max(0.0, min(1.0, confidence))
+
+        findings.append(
+            ResearchFinding(
+                finding_id=_deterministic_finding_id(summary, prefix=f"ae_llm_{idx}"),
+                finding_type=finding_type,  # type: ignore[arg-type]
+                summary=summary,
+                evidence_snippets=[summary],
+                source_label="auto_enrich",
+                visibility=visibility,
+                confidence=confidence,
+            )
+        )
+
+    if not findings:
+        return default_auto_research_provider(brief)
 
     return findings
 

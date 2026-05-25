@@ -72,7 +72,7 @@
     </div>
 
     <!-- Source Quality Summary -->
-    <div v-if="isConsumerMode && consumerSourceQualitySummary.length > 0" class="consumer-confidence-strip">
+    <div v-if="showTechnical && isConsumerMode && consumerSourceQualitySummary.length > 0" class="consumer-confidence-strip">
       <div class="consumer-confidence-header">{{ $t('consumer.sourceQuality.title') }}</div>
       <div class="consumer-confidence-grid">
         <div v-for="item in consumerSourceQualitySummary" :key="item.key" class="consumer-confidence-card">
@@ -206,7 +206,7 @@
       </div>
     </div>
 
-    <div v-if="isConsumerMode && consumerResearchSnapshot" class="consumer-findings-strip">
+    <div v-if="showTechnical && isConsumerMode && consumerResearchSnapshot" class="consumer-findings-strip">
       <div class="consumer-findings-header">{{ $t('consumer.researchSnapshot') }}</div>
       <div class="snapshot-grid report">
         <div class="snapshot-item">
@@ -232,7 +232,7 @@
       </div>
     </div>
 
-    <div v-if="isConsumerMode && consumerSourceCatalog.length > 0" class="consumer-findings-strip">
+    <div v-if="showTechnical && isConsumerMode && consumerSourceCatalog.length > 0" class="consumer-findings-strip">
       <div class="consumer-findings-header">{{ $t('consumer.sourcesUsed') }}</div>
       <div class="consumer-source-list">
         <div
@@ -247,7 +247,7 @@
       </div>
     </div>
 
-    <div v-if="isConsumerMode && consumerEnrichedFindings.length > 0" class="consumer-findings-strip">
+    <div v-if="showTechnical && isConsumerMode && consumerEnrichedFindings.length > 0" class="consumer-findings-strip">
       <div class="consumer-findings-header">{{ $t('consumer.citationReadyFindings') }}</div>
       <div class="consumer-findings-list">
         <div
@@ -278,7 +278,7 @@
       </div>
     </div>
 
-    <div v-if="isConsumerMode && consumerEnrichedTraces.length > 0" class="consumer-findings-strip">
+    <div v-if="showTechnical && isConsumerMode && consumerEnrichedTraces.length > 0" class="consumer-findings-strip">
       <div class="consumer-findings-header">{{ $t('consumer.retrievalTraces') }}</div>
       <div class="consumer-findings-list">
         <div
@@ -551,6 +551,7 @@ defineProps({
   title: String,
   summary: String,
   isConsumerMode: Boolean,
+  showTechnical: { type: Boolean, default: false },
   consumerReportTag: String,
   consumerMetricCards: { type: Array, default: () => [] },
   consumerReportConfidence: Object,
@@ -599,8 +600,8 @@ defineProps({
 }
 
 .report-tag {
-  background: #000000;
-  color: #FFFFFF;
+  background: var(--mc-accent);
+  color: #fffdfa;
   font-size: 11px;
   font-weight: 700;
   padding: 4px 8px;
@@ -610,26 +611,26 @@ defineProps({
 
 .report-id {
   font-size: 11px;
-  color: #9CA3AF;
+  color: var(--mc-text-tertiary);
   font-weight: 500;
   letter-spacing: 0.02em;
 }
 
 .main-title {
-  font-family: 'Times New Roman', Times, serif;
+  font-family: var(--mc-font-display);
   font-size: 36px;
   font-weight: 700;
-  color: #111827;
+  color: var(--mc-text-primary);
   line-height: 1.2;
   margin: 0 0 16px 0;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
 }
 
 .sub-title {
-  font-family: 'Times New Roman', Times, serif;
+  font-family: var(--mc-font-body);
   font-size: 16px;
-  color: #6B7280;
-  font-style: italic;
+  color: var(--mc-text-secondary);
+  font-style: normal;
   line-height: 1.6;
   margin: 0 0 30px 0;
   font-weight: 400;
@@ -637,12 +638,12 @@ defineProps({
 
 .header-divider {
   height: 1px;
-  background: #E5E7EB;
+  background: var(--mc-border);
   width: 100%;
 }
 
 .mono {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--mc-font-mono);
 }
 
 .consumer-header-grid {
@@ -653,8 +654,9 @@ defineProps({
 }
 
 .consumer-header-card {
-  border: 1px solid #E5E7EB;
-  background: #FAFAFA;
+  border: 1px solid var(--mc-border);
+  background: var(--mc-surface);
+  border-radius: var(--mc-radius-card);
   padding: 14px 16px;
   display: flex;
   flex-direction: column;
@@ -665,19 +667,20 @@ defineProps({
   font-size: 11px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #6B7280;
+  color: var(--mc-text-secondary);
 }
 
 .consumer-header-value {
   font-size: 20px;
   font-weight: 700;
-  color: #111827;
+  color: var(--mc-text-primary);
 }
 
 .consumer-voc-strip {
   margin-top: 18px;
-  border: 1px solid #E5E7EB;
-  background: #FCFCFC;
+  border: 1px solid var(--mc-border);
+  background: var(--mc-accent-wash);
+  border-radius: var(--mc-radius-card);
   padding: 16px 18px;
 }
 
@@ -685,7 +688,7 @@ defineProps({
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: #6B7280;
+  color: var(--mc-accent);
   margin-bottom: 10px;
 }
 
@@ -705,13 +708,13 @@ defineProps({
   min-width: 82px;
   font-size: 11px;
   font-weight: 700;
-  color: #FF4500;
+  color: var(--mc-accent);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 
 .consumer-voc-text {
-  color: #374151;
+  color: var(--mc-text-secondary);
   line-height: 1.6;
 }
 
@@ -855,8 +858,8 @@ defineProps({
   font-size: 0.65rem;
   font-family: 'JetBrains Mono', monospace;
   padding: 1px 5px;
-  background: #F3E8FF;
-  color: #7C3AED;
+  background: var(--mc-accent-wash);
+  color: var(--mc-accent);
   border-radius: 3px;
 }
 

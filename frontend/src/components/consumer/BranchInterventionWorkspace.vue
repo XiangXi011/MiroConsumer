@@ -351,37 +351,39 @@ defineExpose({
 .consumer-branch-select {
   padding: 6px 10px;
   font-size: 13px;
-  border: 1px solid #D1D5DB;
+  border: 1px solid var(--mc-border);
   border-radius: 4px;
-  background: #FFF;
+  background: var(--mc-surface);
   min-width: 200px;
-  color: #111827;
+  color: var(--mc-text-primary);
 }
 
 .consumer-branch-btn {
   padding: 6px 12px;
   font-size: 12px;
   font-weight: 600;
-  border: 1px solid #D1D5DB;
+  border: 1px solid var(--mc-border);
   border-radius: 4px;
-  background: #FFF;
-  color: #374151;
+  background: var(--mc-surface);
+  color: var(--mc-text-secondary);
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .consumer-branch-btn:hover:not(:disabled) {
-  background: #F3F4F6;
+  background: var(--mc-accent-wash);
+  border-color: var(--mc-accent);
+  color: var(--mc-accent);
 }
 
 .consumer-branch-btn.primary {
-  background: #111827;
-  color: #FFF;
-  border-color: #111827;
+  background: var(--mc-accent);
+  color: #fffdfa;
+  border-color: var(--mc-accent);
 }
 
 .consumer-branch-btn.primary:hover:not(:disabled) {
-  background: #374151;
+  background: var(--mc-accent-strong);
 }
 
 .consumer-branch-btn:disabled {
@@ -405,10 +407,10 @@ defineExpose({
 .consumer-input {
   padding: 6px 10px;
   font-size: 13px;
-  border: 1px solid #D1D5DB;
+  border: 1px solid var(--mc-border);
   border-radius: 4px;
-  background: #FFF;
-  color: #111827;
+  background: var(--mc-surface);
+  color: var(--mc-text-primary);
   min-width: 180px;
 }
 
@@ -422,7 +424,7 @@ defineExpose({
   flex-direction: column;
   gap: 8px;
   padding: 10px;
-  background: #F9FAFB;
+  background: var(--mc-bg-subtle);
   border-radius: 4px;
 }
 
@@ -435,7 +437,7 @@ defineExpose({
 .consumer-intervention-title {
   font-size: 12px;
   font-weight: 700;
-  color: #374151;
+  color: var(--mc-text-primary);
 }
 
 .consumer-intervention-list {
@@ -450,21 +452,21 @@ defineExpose({
   align-items: center;
   font-size: 12px;
   padding: 6px 8px;
-  background: #FFF;
-  border: 1px solid #E5E7EB;
+  background: var(--mc-surface);
+  border: 1px solid var(--mc-border);
   border-radius: 4px;
 }
 
 .consumer-intervention-item .intervention-type {
   font-weight: 600;
-  color: #4338CA;
+  color: var(--mc-accent);
   text-transform: uppercase;
   font-size: 10px;
   letter-spacing: 0.05em;
 }
 
 .consumer-intervention-item .intervention-payload {
-  color: #111827;
+  color: var(--mc-text-primary);
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;

@@ -724,9 +724,9 @@ onUnmounted(() => {
 }
 
 /* 不同功能的颜色 */
-.status-icon:nth-child(1).available { color: #3B82F6; } /* 图谱构建 - 蓝色 */
-.status-icon:nth-child(2).available { color: #F59E0B; } /* 环境搭建 - 橙色 */
-.status-icon:nth-child(3).available { color: #10B981; } /* 分析报告 - 绿色 */
+.status-icon:nth-child(1).available { color: var(--mc-accent); }
+.status-icon:nth-child(2).available { color: var(--mc-status-warning); }
+.status-icon:nth-child(3).available { color: var(--mc-status-success); }
 
 .status-icon.unavailable {
   color: #D1D5DB;
@@ -897,7 +897,7 @@ onUnmounted(() => {
 }
 
 .project-card:hover .card-title {
-  color: #2563EB;
+  color: var(--mc-accent);
 }
 
 /* 卡片描述 */
@@ -961,7 +961,7 @@ onUnmounted(() => {
   left: 0;
   height: 2px;
   width: 0;
-  background-color: #000;
+  background-color: var(--mc-accent);
   transition: width 0.5s cubic-bezier(0.23, 1, 0.32, 1);
   z-index: 20;
 }
@@ -1281,7 +1281,7 @@ onUnmounted(() => {
 }
 
 .modal-btn:hover:not(:disabled) {
-  border-color: #000000;
+  border-color: var(--mc-accent);
   transform: translateY(-2px);
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
 }
@@ -1315,12 +1315,12 @@ onUnmounted(() => {
   color: #4B5563;
 }
 
-.modal-btn.btn-project .btn-icon { color: #3B82F6; }
-.modal-btn.btn-simulation .btn-icon { color: #F59E0B; }
-.modal-btn.btn-report .btn-icon { color: #10B981; }
+.modal-btn.btn-project .btn-icon { color: var(--mc-accent); }
+.modal-btn.btn-simulation .btn-icon { color: var(--mc-status-warning); }
+.modal-btn.btn-report .btn-icon { color: var(--mc-status-success); }
 
 .modal-btn:hover:not(:disabled) .btn-text {
-  color: #111827;
+  color: var(--mc-accent);
 }
 
 /* 不可回放提示 */

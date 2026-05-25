@@ -1,44 +1,17 @@
 <template>
   <div class="main-view">
-    <!-- Header -->
-    <header class="app-header">
-      <div class="header-left">
-        <div class="brand" @click="router.push('/')">MIROCONSUMER</div>
-      </div>
-      
-      <div class="header-center">
-        <div class="view-switcher">
-          <button 
-            v-for="mode in ['graph', 'split', 'workbench']" 
-            :key="mode"
-            class="switch-btn"
-            :class="{ active: viewMode === mode }"
-            @click="viewMode = mode"
-          >
-            {{ { graph: $t('main.layoutGraph'), split: $t('main.layoutSplit'), workbench: $t('main.layoutWorkbench') }[mode] }}
-          </button>
-        </div>
-      </div>
-
-      <div class="header-right">
-        <LanguageSwitcher />
-        <div class="step-divider"></div>
-        <div class="workflow-step">
-          <span class="step-num">Step 4/5</span>
-          <span class="step-name">{{ $tm('main.stepNames')[3] }}</span>
-        </div>
-        <div class="step-divider"></div>
-        <span class="status-indicator" :class="statusClass">
-          <span class="dot"></span>
-          {{ statusText }}
-        </span>
-      </div>
-    </header>
+    <BusinessFlowHeader
+      :current-step="4"
+      :status="businessStatus"
+      :show-technical="showTechnical"
+      @home="router.push('/')"
+      @toggle-technical="showTechnical = !showTechnical"
+    />
 
     <!-- Main Content Area -->
-    <main class="content-area">
+    <main class="content-area" :class="{ 'technical-open': showTechnical }">
       <!-- Left Panel: Graph -->
-      <div class="panel-wrapper left" :style="leftPanelStyle">
+      <div v-if="showTechnical" class="panel-wrapper left">
         <GraphPanel 
           :graphData="graphData"
           :loading="graphLoading"
@@ -50,13 +23,14 @@
       </div>
 
       <!-- Right Panel: Step4 报告生成 -->
-      <div class="panel-wrapper right" :style="rightPanelStyle">
+      <div class="panel-wrapper right">
         <Step4Report
           :reportId="currentReportId"
           :simulationId="simulationId"
           :reportData="reportData"
           :projectData="projectData"
           :systemLogs="systemLogs"
+          :show-technical="showTechnical"
           @add-log="addLog"
           @update-status="updateStatus"
         />
@@ -75,7 +49,7 @@ import Step4Report from '../components/Step4Report.vue'
 import { getProject, getGraphData } from '../api/graph'
 import { getSimulation } from '../api/simulation'
 import { getReport } from '../api/report'
-import LanguageSwitcher from '../components/LanguageSwitcher.vue'
+import BusinessFlowHeader from '../components/BusinessFlowHeader.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -87,7 +61,7 @@ const props = defineProps({
 })
 
 // Layout State - 默认切换到工作台视角
-const viewMode = ref('split')
+const showTechnical = ref(false)
 
 // Data State
 const currentReportId = ref(route.params.reportId)
@@ -99,23 +73,12 @@ const graphLoading = ref(false)
 const systemLogs = ref([])
 const currentStatus = ref('processing') // processing | completed | error
 
-// --- Computed Layout Styles ---
-const leftPanelStyle = computed(() => {
-  if (viewMode.value === 'graph') return { width: '100%', opacity: 1, transform: 'translateX(0)' }
-  if (viewMode.value === 'workbench') return { width: '0%', opacity: 0, transform: 'translateX(-20px)' }
-  return { width: '50%', opacity: 1, transform: 'translateX(0)' }
-})
-
-const rightPanelStyle = computed(() => {
-  if (viewMode.value === 'workbench') return { width: '100%', opacity: 1, transform: 'translateX(0)' }
-  if (viewMode.value === 'graph') return { width: '0%', opacity: 0, transform: 'translateX(20px)' }
-  return { width: '50%', opacity: 1, transform: 'translateX(0)' }
-})
-
 // --- Status Computed ---
 const statusClass = computed(() => {
   return currentStatus.value
 })
+
+const businessStatus = computed(() => currentStatus.value)
 
 const statusText = computed(() => {
   if (currentStatus.value === 'error') return 'Error'
@@ -137,12 +100,8 @@ const updateStatus = (status) => {
 }
 
 // --- Layout Methods ---
-const toggleMaximize = (target) => {
-  if (viewMode.value === target) {
-    viewMode.value = 'split'
-  } else {
-    viewMode.value = target
-  }
+const toggleMaximize = () => {
+  showTechnical.value = !showTechnical.value
 }
 
 // --- Data Logic ---
@@ -226,9 +185,9 @@ onMounted(() => {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background: #FFF;
+  background: var(--mc-bg-canvas);
   overflow: hidden;
-  font-family: 'Space Grotesk', 'Noto Sans SC', system-ui, sans-serif;
+  font-family: var(--mc-font-body);
 }
 
 /* Header */
@@ -280,7 +239,7 @@ onMounted(() => {
 
 .switch-btn.active {
   background: #FFF;
-  color: #000;
+  color: var(--mc-text-primary);
   box-shadow: 0 2px 4px rgba(0,0,0,0.05);
 }
 
@@ -305,7 +264,7 @@ onMounted(() => {
 
 .step-name {
   font-weight: 700;
-  color: #000;
+  color: var(--mc-text-primary);
 }
 
 .step-divider {
@@ -342,16 +301,21 @@ onMounted(() => {
   display: flex;
   position: relative;
   overflow: hidden;
+  background: var(--mc-bg-canvas);
 }
 
 .panel-wrapper {
   height: 100%;
   overflow: hidden;
-  transition: width 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), opacity 0.3s ease, transform 0.3s ease;
-  will-change: width, opacity, transform;
 }
 
 .panel-wrapper.left {
-  border-right: 1px solid #EAEAEA;
+  width: 38%;
+  border-right: 1px solid var(--mc-border);
+}
+
+.panel-wrapper.right {
+  flex: 1;
+  min-width: 0;
 }
 </style>

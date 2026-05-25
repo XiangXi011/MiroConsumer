@@ -210,22 +210,22 @@ defineExpose({
   flex: 1;
   min-width: 120px;
   padding: 6px 10px;
-  background: #FFFFFF;
-  border: 1px solid #D1D5DB;
+  background: var(--mc-surface);
+  border: 1px solid var(--mc-border);
   border-radius: 6px;
   font-size: 12px;
-  color: #374151;
+  color: var(--mc-text-primary);
   outline: none;
   transition: border-color 0.15s ease;
 }
 
 .workspace-input:focus {
-  border-color: #22C55E;
-  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.1);
+  border-color: var(--mc-accent);
+  box-shadow: var(--mc-focus-ring);
 }
 
 .workspace-input::placeholder {
-  color: #9CA3AF;
+  color: var(--mc-text-tertiary);
 }
 
 .workspace-btn {
@@ -233,8 +233,8 @@ defineExpose({
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
-  background: #22C55E;
-  color: #FFFFFF;
+  background: var(--mc-accent);
+  color: #fffdfa;
   border: none;
   border-radius: 6px;
   font-size: 12px;
@@ -245,7 +245,7 @@ defineExpose({
 }
 
 .workspace-btn:hover:not(:disabled) {
-  background: #16A34A;
+  background: var(--mc-accent-strong);
 }
 
 .workspace-btn:disabled {
@@ -257,7 +257,7 @@ defineExpose({
   width: 14px;
   height: 14px;
   border: 2px solid rgba(255, 255, 255, 0.3);
-  border-top-color: #FFFFFF;
+  border-top-color: #fffdfa;
   border-radius: 50%;
   animation: ws-spin 0.6s linear infinite;
 }
@@ -277,15 +277,15 @@ defineExpose({
   align-items: center;
   justify-content: space-between;
   padding: 8px 10px;
-  background: #FFFFFF;
-  border: 1px solid #E5E7EB;
+  background: var(--mc-surface);
+  border: 1px solid var(--mc-border);
   border-radius: 6px;
   font-size: 12px;
 }
 
 .workspace-item-name {
   font-weight: 500;
-  color: #374151;
+  color: var(--mc-text-primary);
 }
 
 .workspace-item-meta {

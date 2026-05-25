@@ -190,19 +190,19 @@ function shorten(value) {
 .eg-canvas {
   width: 100%;
   min-height: 230px;
-  background: linear-gradient(180deg, #FFFFFF 0%, #F7F6F2 100%);
-  border: 1px solid #E5E7EB;
+  background: linear-gradient(180deg, var(--mc-surface) 0%, var(--mc-bg-subtle) 100%);
+  border: 1px solid var(--mc-border);
   border-radius: 6px;
 }
 
 .eg-edge {
   fill: none;
-  stroke: #9CA3AF;
+  stroke: var(--mc-border-strong);
   stroke-width: 2;
 }
 
 .eg-edge--supported_by {
-  stroke: #2563EB;
+  stroke: var(--mc-status-info);
 }
 
 .eg-edge--sourced_from {
@@ -210,17 +210,17 @@ function shorten(value) {
 }
 
 .eg-node rect {
-  fill: #FFFFFF;
-  stroke: #D1D5DB;
+  fill: var(--mc-surface);
+  stroke: var(--mc-border-strong);
   stroke-width: 1.5;
 }
 
 .eg-node--finding rect {
-  stroke: #2563EB;
+  stroke: var(--mc-status-info);
 }
 
 .eg-node--evidence rect {
-  stroke: #7C3AED;
+  stroke: var(--mc-accent);
 }
 
 .eg-node--source rect {

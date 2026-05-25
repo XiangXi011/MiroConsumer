@@ -65,6 +65,33 @@ test('buildOntologyFormData appends files to form data', () => {
   assert.equal(entries.length, 2)
 })
 
+test('buildOntologyFormData carries packaging pdf and image assets into consumer test payload', () => {
+  const packagingPdf = new File(['pdf'], 'shuke-packaging-front.pdf', { type: 'application/pdf' })
+  const packagingImage = new File(['png'], 'shuke-packaging-shelf.png', { type: 'image/png' })
+  const fd = buildOntologyFormData({
+    files: [packagingPdf, packagingImage],
+    simulationRequirement: 'Run packaging test',
+    projectType: 'consumer_test',
+    consumerBrief: {
+      task_type: 'packaging_test',
+      packaging_assets: ['Packaging asset files: shuke-packaging-front.pdf, shuke-packaging-shelf.png'],
+      target_audience: ['daily toothpaste buyers'],
+      research_goal: 'Evaluate whether the pack communicates gentle whitening',
+    },
+  })
+
+  const files = fd.getAll('files')
+  assert.equal(files.length, 2)
+  assert.equal(files[0].name, 'shuke-packaging-front.pdf')
+  assert.equal(files[1].name, 'shuke-packaging-shelf.png')
+
+  const parsed = JSON.parse(fd.get('consumer_brief'))
+  assert.equal(parsed.task_type, 'packaging_test')
+  assert.deepEqual(parsed.packaging_assets, [
+    'Packaging asset files: shuke-packaging-front.pdf, shuke-packaging-shelf.png',
+  ])
+})
+
 test('buildOntologyFormData handles empty payload gracefully', () => {
   const fd = buildOntologyFormData()
 

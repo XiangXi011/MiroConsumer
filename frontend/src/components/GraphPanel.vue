@@ -872,7 +872,7 @@ onUnmounted(() => {
 
 .tool-btn:hover {
   background: #F5F5F5;
-  color: #000;
+  color: var(--mc-text-primary);
   border-color: #CCC;
 }
 
@@ -971,7 +971,7 @@ onUnmounted(() => {
   gap: 10px;
   background: #FFF;
   padding: 8px 14px;
-  border-radius: 20px;
+  border-radius: var(--mc-radius-pill);
   border: 1px solid #E0E0E0;
   box-shadow: 0 2px 8px rgba(0,0,0,0.04);
   z-index: 10;

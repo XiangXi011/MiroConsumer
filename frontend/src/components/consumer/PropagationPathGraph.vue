@@ -98,7 +98,7 @@ const visible = computed(() => rows.value.length > 0)
 <style scoped>
 .path-graph {
   border-bottom: 1px solid #E5E7EB;
-  background: #FFFFFF;
+  background: var(--mc-surface);
   padding: 16px 20px;
   display: flex;
   flex-direction: column;
@@ -128,8 +128,8 @@ const visible = computed(() => rows.value.length > 0)
 
 .path-controls select {
   border: 1px solid #D1D5DB;
-  background: #FFFFFF;
-  color: #111827;
+  background: var(--mc-surface);
+  color: var(--mc-text-primary);
   font-size: 12px;
   padding: 4px 6px;
 }
@@ -158,7 +158,7 @@ const visible = computed(() => rows.value.length > 0)
 
 .path-card--critical {
   border-color: #F59E0B;
-  background: #FFFBEB;
+  background: var(--mc-status-warning-bg);
 }
 
 .path-card--hub {
@@ -171,7 +171,7 @@ const visible = computed(() => rows.value.length > 0)
   gap: 10px;
   font-size: 14px;
   font-weight: 700;
-  color: #111827;
+  color: var(--mc-text-primary);
   margin-bottom: 10px;
 }
 
@@ -194,7 +194,7 @@ const visible = computed(() => rows.value.length > 0)
 
 .path-grid strong {
   font-size: 12px;
-  color: #111827;
+  color: var(--mc-text-primary);
   overflow-wrap: anywhere;
 }
 
@@ -204,14 +204,14 @@ const visible = computed(() => rows.value.length > 0)
 
 .node-popover {
   border: 1px solid #D1D5DB;
-  background: #FFFFFF;
+  background: var(--mc-surface);
   padding: 10px 12px;
 }
 
 .node-popover strong {
   display: block;
   margin-top: 4px;
-  color: #111827;
+  color: var(--mc-text-primary);
 }
 
 .node-popover p {

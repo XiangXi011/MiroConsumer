@@ -26,7 +26,7 @@ test('buildChannelFitItems formats best channel and fixed channel risks', () => 
   assert.equal(items.summary.bestLaunchChannel, '小红书')
   assert.equal(items.summary.highestMisreadChannel, '抖音')
   assert.equal(items.channels[0].fitScoreText, '78%')
-  assert.ok(items.channels[1].primaryRisk.includes('Misread'))
+  assert.ok(items.channels[1].primaryRisk.includes('误读'))
 })
 
 test('ChannelFitPanel.vue is mounted by Step3Simulation and Step4Report', () => {
@@ -34,8 +34,8 @@ test('ChannelFitPanel.vue is mounted by Step3Simulation and Step4Report', () => 
   const step3 = readFileSync(join(__dirname, '../src/components/Step3Simulation.vue'), 'utf-8')
   const step4 = readFileSync(join(__dirname, '../src/components/Step4Report.vue'), 'utf-8')
 
-  assert.ok(component.includes('Best Launch Channel'))
-  assert.ok(component.includes('Highest Misread Channel'))
+  assert.ok(component.includes('优先投放渠道'))
+  assert.ok(component.includes('最高误读渠道'))
   assert.ok(step3.includes('ChannelFitPanel'))
   assert.ok(step4.includes('ChannelFitPanel'))
 })

@@ -1,467 +1,427 @@
 <template>
   <div class="home-container">
-    <!-- 顶部导航栏 -->
     <nav class="navbar">
-      <div class="nav-brand">MIROCONSUMER</div>
+      <button class="nav-brand" type="button">MIROCONSUMER</button>
       <div class="nav-links">
         <LanguageSwitcher />
-        <a href="https://github.com/XiangXi011/MiroConsumer" target="_blank" class="github-link">
-          {{ $t('nav.visitGithub') }} <span class="arrow">↗</span>
-        </a>
       </div>
     </nav>
 
-    <div class="main-content">
-      <!-- 上半部分：Hero 区域 -->
-      <section class="hero-section">
-        <div class="hero-left">
-          <div class="tag-row">
-            <span class="orange-tag">{{ $t('home.tagline') }}</span>
-            <span class="version-text">{{ $t('home.version') }}</span>
-          </div>
-          
-          <h1 class="main-title">
-            {{ $t('home.heroTitle1') }}<br>
-            <span class="gradient-text">{{ $t('home.heroTitle2') }}</span>
-          </h1>
-          
-          <div class="hero-desc">
-            <p>
-              <i18n-t keypath="home.heroDesc" tag="span">
-                <template #brand><span class="highlight-bold">{{ $t('home.heroDescBrand') }}</span></template>
-                <template #agentScale><span class="highlight-orange">{{ $t('home.heroDescAgentScale') }}</span></template>
-                <template #optimalSolution><span class="highlight-code">{{ $t('home.heroDescOptimalSolution') }}</span></template>
-              </i18n-t>
-            </p>
-            <p class="slogan-text">
-              {{ $t('home.slogan') }}<span class="blinking-cursor">_</span>
-            </p>
-          </div>
-           
-          <div class="decoration-square"></div>
-        </div>
-        
-        <div class="hero-right">
-          <!-- Logo 区域 -->
-          <div class="logo-container">
-            <img src="../assets/logo/MiroConsumer_logo_left.jpeg" alt="MiroConsumer Logo" class="hero-logo" />
-          </div>
-          
-          <button class="scroll-down-btn" @click="scrollToBottom">
-            ↓
-          </button>
+    <main class="business-workspace">
+      <section class="workspace-intro">
+        <div>
+          <p class="eyebrow">品牌/市场消费者测试工作台</p>
+          <h1>新建一次消费者传播测试</h1>
+          <p class="intro-copy">
+            填入要测试的概念、包装、价格或文案，系统会生成消费者画像、运行传播反应，并输出可追问的业务洞察报告。
+          </p>
         </div>
       </section>
 
-      <!-- 下半部分：双栏布局 -->
-      <section class="dashboard-section">
-        <!-- 左栏：状态与步骤 -->
-        <div class="left-panel">
-          <div class="panel-header">
-            <span class="status-dot">■</span> {{ $t('home.systemStatus') }}
-          </div>
-          
-          <h2 class="section-title">{{ $t('home.systemReady') }}</h2>
-          <p class="section-desc">
-            {{ $t('home.systemReadyDesc') }}
-          </p>
-          
-          <!-- 数据指标卡片 -->
-          <div class="metrics-row">
-            <div class="metric-card">
-              <div class="metric-value">{{ $t('home.metricLowCost') }}</div>
-              <div class="metric-label">{{ $t('home.metricLowCostDesc') }}</div>
-            </div>
-            <div class="metric-card">
-              <div class="metric-value">{{ $t('home.metricHighAvail') }}</div>
-              <div class="metric-label">{{ $t('home.metricHighAvailDesc') }}</div>
-            </div>
-          </div>
-
-          <!-- 项目模拟步骤介绍 (新增区域) -->
-          <div class="steps-container">
-            <div class="steps-header">
-               <span class="diamond-icon">◇</span> {{ $t('home.workflowSequence') }}
-            </div>
-            <div class="workflow-list">
-              <div class="workflow-item">
-                <span class="step-num">01</span>
-                <div class="step-info">
-                  <div class="step-title">{{ $t('home.step01Title') }}</div>
-                  <div class="step-desc">{{ $t('home.step01Desc') }}</div>
-                </div>
-              </div>
-              <div class="workflow-item">
-                <span class="step-num">02</span>
-                <div class="step-info">
-                  <div class="step-title">{{ $t('home.step02Title') }}</div>
-                  <div class="step-desc">{{ $t('home.step02Desc') }}</div>
-                </div>
-              </div>
-              <div class="workflow-item">
-                <span class="step-num">03</span>
-                <div class="step-info">
-                  <div class="step-title">{{ $t('home.step03Title') }}</div>
-                  <div class="step-desc">{{ $t('home.step03Desc') }}</div>
-                </div>
-              </div>
-              <div class="workflow-item">
-                <span class="step-num">04</span>
-                <div class="step-info">
-                  <div class="step-title">{{ $t('home.step04Title') }}</div>
-                  <div class="step-desc">{{ $t('home.step04Desc') }}</div>
-                </div>
-              </div>
-              <div class="workflow-item">
-                <span class="step-num">05</span>
-                <div class="step-info">
-                  <div class="step-title">{{ $t('home.step05Title') }}</div>
-                  <div class="step-desc">{{ $t('home.step05Desc') }}</div>
-                </div>
+      <section class="workspace-grid">
+        <form class="brief-form" @submit.prevent="startSimulation">
+          <section class="form-section">
+            <div class="section-heading">
+              <span class="section-index">01</span>
+              <div>
+                <h2>选择测试类型</h2>
+                <p>先告诉系统这次业务问题属于哪一类。</p>
               </div>
             </div>
-          </div>
-        </div>
-
-        <!-- 右栏：交互控制台 -->
-        <div class="right-panel">
-          <div class="console-box">
-            <!-- 上传区域 -->
-            <div class="console-section">
-              <div class="console-header">
-                <span class="console-label">{{ $t('home.realitySeed') }}</span>
-                <span class="console-meta">{{ $t('home.supportedFormats') }}</span>
-              </div>
-              
-              <div 
-                class="upload-zone"
-                :class="{ 'drag-over': isDragOver, 'has-files': files.length > 0 }"
-                @dragover.prevent="handleDragOver"
-                @dragleave.prevent="handleDragLeave"
-                @drop.prevent="handleDrop"
-                @click="triggerFileInput"
+            <div class="task-type-grid">
+              <button
+                v-for="task in taskTypes"
+                :key="task.value"
+                type="button"
+                class="task-card"
+                :class="{ active: formData.consumerTaskType === task.value }"
+                @click="formData.consumerTaskType = task.value"
+                :disabled="loading"
               >
+                <span class="task-title">{{ task.label }}</span>
+                <span class="task-desc">{{ task.desc }}</span>
+              </button>
+            </div>
+          </section>
+
+          <section class="form-section">
+            <div class="section-heading">
+              <span class="section-index">02</span>
+              <div>
+                <h2>输入测试素材</h2>
+                <p>填写或上传消费者会看到的内容，每行一条更利于对比。</p>
+              </div>
+            </div>
+
+            <div class="field-grid">
+              <div
+                v-if="formData.consumerTaskType === 'concept_test' || formData.consumerTaskType === 'price_test'"
+                class="field wide"
+                :class="{ missing: isMissing('consumerConcept') }"
+              >
+                <label for="consumerConcept">产品概念</label>
+                <textarea
+                  id="consumerConcept"
+                  ref="consumerConceptRef"
+                  v-model="formData.consumerConcept"
+                  rows="4"
+                  placeholder="例如：舒客酵素亮白牙膏，主打去黄提亮、温和护龈和清新口气，适合日常通勤和约会前使用。"
+                  :disabled="loading"
+                ></textarea>
+              </div>
+
+              <div
+                v-if="formData.consumerTaskType === 'concept_test' || formData.consumerTaskType === 'packaging_test' || formData.consumerTaskType === 'price_test'"
+                class="field wide"
+                :class="{ missing: isMissing('consumerCopy') }"
+              >
+                <label for="consumerCopy">测试文案</label>
+                <textarea
+                  id="consumerCopy"
+                  ref="consumerCopyRef"
+                  v-model="formData.consumerCopy"
+                  rows="4"
+                  placeholder="例如：舒客酵素亮白牙膏｜温和去黄不刺激｜早晚刷出自然亮白笑容"
+                  :disabled="loading"
+                ></textarea>
+              </div>
+
+              <div
+                v-if="formData.consumerTaskType === 'packaging_test'"
+                class="field wide"
+                :class="{ missing: isMissing('consumerPackagingAssets') }"
+              >
+                <label for="consumerPackagingAssetsInput">包装素材</label>
+                <div
+                  id="consumerPackagingAssets"
+                  ref="consumerPackagingAssetsRef"
+                  class="upload-zone packaging-upload packaging-tray"
+                  :class="{ 'drag-over': isPackagingDragOver, 'has-files': packagingFiles.length > 0 }"
+                  tabindex="0"
+                  role="button"
+                  @dragover.prevent="handlePackagingDragOver"
+                  @dragleave.prevent="handlePackagingDragLeave"
+                  @drop.prevent="handlePackagingDrop"
+                  @click="triggerPackagingFileInput"
+                  @keydown.enter.prevent="triggerPackagingFileInput"
+                  @keydown.space.prevent="triggerPackagingFileInput"
+                >
+                  <input
+                    id="consumerPackagingAssetsInput"
+                    ref="packagingFileInput"
+                    type="file"
+                    multiple
+                    accept=".pdf,.png,.jpg,.jpeg,.webp"
+                    @change="handlePackagingFileSelect"
+                    style="display: none"
+                    :disabled="loading"
+                  />
+                  <div v-if="packagingFiles.length === 0" class="upload-placeholder">
+                    <span class="upload-title">上传包装 PDF / 图片素材，或拖入文件</span>
+                    <span class="upload-hint">支持 PDF、PNG、JPG、JPEG、WebP；可上传包装正面、背面、外盒或陈列图。</span>
+                  </div>
+                  <div v-else class="file-list">
+                    <div v-for="(file, index) in packagingFiles" :key="`${file.name}-${index}`" class="file-item">
+                      <span class="file-name">{{ file.name }}</span>
+                      <button type="button" @click.stop="removePackagingFile(index)" class="remove-btn">移除</button>
+                    </div>
+                  </div>
+                </div>
+                <p class="field-hint">包装测试会优先分析你上传的包装素材，文件名会同步写入测试 brief。</p>
+              </div>
+
+              <div
+                v-if="formData.consumerTaskType === 'ab_test'"
+                class="field wide"
+                :class="{ missing: isMissing('consumerTestVariants') }"
+              >
+                <label for="consumerTestVariants">测试变体</label>
+                <textarea
+                  id="consumerTestVariants"
+                  ref="consumerTestVariantsRef"
+                  v-model="formData.consumerTestVariants"
+                  rows="5"
+                  placeholder="A 版：舒客酵素亮白牙膏，温和去黄，刷出自然亮白&#10;B 版：舒客清新护龈牙膏，减少牙龈负担，口气更清新"
+                  :disabled="loading"
+                ></textarea>
+              </div>
+
+              <div
+                v-if="formData.consumerTaskType === 'price_test'"
+                class="field"
+                :class="{ missing: isMissing('consumerPricePoints') }"
+              >
+                <label for="consumerPricePoints">价格点</label>
+                <textarea
+                  id="consumerPricePoints"
+                  ref="consumerPricePointsRef"
+                  v-model="formData.consumerPricePoints"
+                  rows="3"
+                  placeholder="例如：19.9 元、29.9 元、39.9 元"
+                  :disabled="loading"
+                ></textarea>
+              </div>
+
+              <div v-if="formData.consumerTaskType === 'price_test'" class="field">
+                <label for="consumerPriceContext">价格语境</label>
+                <textarea
+                  id="consumerPriceContext"
+                  v-model="formData.consumerPriceContext"
+                  rows="3"
+                  placeholder="例如：120g 单支装，线上旗舰店和商超渠道，首发第二件半价。"
+                  :disabled="loading"
+                ></textarea>
+              </div>
+
+              <div v-if="formData.consumerTaskType !== 'packaging_test'" class="field">
+                <label for="consumerClaims">核心 Claim</label>
+                <textarea
+                  id="consumerClaims"
+                  v-model="formData.consumerClaims"
+                  rows="3"
+                  placeholder="选填，例如：酵素亮白、温和去黄、护龈、清新口气"
+                  :disabled="loading"
+                ></textarea>
+              </div>
+
+              <div class="field wide">
+                <label for="consumerBackgroundMaterials">背景材料</label>
+                <textarea
+                  id="consumerBackgroundMaterials"
+                  v-model="formData.consumerBackgroundMaterials"
+                  rows="3"
+                  placeholder="选填。粘贴已有调研、竞品信息、风险假设或客服反馈。"
+                  :disabled="loading"
+                ></textarea>
+              </div>
+            </div>
+          </section>
+
+          <section class="form-section">
+            <div class="section-heading">
+              <span class="section-index">03</span>
+              <div>
+                <h2>定义目标人群与研究目标</h2>
+                <p>让报告围绕具体业务问题作答。</p>
+              </div>
+            </div>
+
+            <div class="field-grid">
+              <div class="field" :class="{ missing: isMissing('consumerAudience') }">
+                <label for="consumerAudience">目标人群</label>
+                <textarea
+                  id="consumerAudience"
+                  ref="consumerAudienceRef"
+                  v-model="formData.consumerAudience"
+                  rows="3"
+                  placeholder="例如：一二线城市 20-35 岁重视口气和牙齿美观的职场人、咖啡茶饮高频用户。"
+                  :disabled="loading"
+                ></textarea>
+              </div>
+
+              <div class="field">
+                <label for="consumerScene">使用/购买场景</label>
+                <textarea
+                  id="consumerScene"
+                  v-model="formData.consumerScene"
+                  rows="3"
+                  placeholder="选填，例如：早晚刷牙、约会/面试前、喝咖啡或茶后担心牙黄和口气。"
+                  :disabled="loading"
+                ></textarea>
+              </div>
+
+              <div class="field wide" :class="{ missing: isMissing('consumerResearchGoal') }">
+                <label for="consumerResearchGoal">研究目标</label>
+                <textarea
+                  id="consumerResearchGoal"
+                  ref="consumerResearchGoalRef"
+                  v-model="formData.consumerResearchGoal"
+                  rows="4"
+                  placeholder="例如：判断“酵素亮白”是否有记忆点，消费者是否担心刺激牙龈，以及哪类人群最愿意尝试。"
+                  :disabled="loading"
+                ></textarea>
+              </div>
+
+              <div class="field wide">
+                <label for="simulationRequirement">补充说明</label>
+                <textarea
+                  id="simulationRequirement"
+                  v-model="formData.simulationRequirement"
+                  rows="3"
+                  :placeholder="simulationPromptPlaceholder"
+                  :disabled="loading"
+                ></textarea>
+              </div>
+            </div>
+          </section>
+
+          <section class="form-section optional-section">
+            <button
+              class="advanced-toggle"
+              type="button"
+              @click="showAdvanced = !showAdvanced"
+            >
+              <span>高级设置与辅助材料</span>
+              <span>{{ showAdvanced ? '收起' : '展开' }}</span>
+            </button>
+
+            <div v-if="showAdvanced" class="advanced-content">
+              <div class="field wide">
+                <label>消费者画像包</label>
+                <div class="pack-options">
+                  <button
+                    v-for="pack in availablePacks"
+                    :key="pack.pack_id"
+                    type="button"
+                    class="mode-btn"
+                    :class="{ active: formData.personaPackSelection?.pack_id === pack.pack_id && !formData.personaPackSelection?.custom_upload }"
+                    @click="selectPersonaPack(pack)"
+                    :disabled="loading"
+                    :title="pack.description"
+                  >
+                    {{ pack.label }}
+                  </button>
+                  <button
+                    type="button"
+                    class="mode-btn"
+                    :class="{ active: formData.personaPackSelection?.custom_upload }"
+                    @click="$refs.personaPackFileInput?.click()"
+                    :disabled="loading"
+                  >
+                    {{ personaPackFileName ? '自定义：' + personaPackFileName : '上传自定义画像包' }}
+                  </button>
+                </div>
                 <input
-                  ref="fileInput"
+                  ref="personaPackFileInput"
                   type="file"
-                  multiple
-                  accept=".pdf,.md,.txt"
-                  @change="handleFileSelect"
+                  accept=".json"
+                  @change="handlePersonaPackFileSelect"
                   style="display: none"
                   :disabled="loading"
                 />
-                
-                <div v-if="files.length === 0" class="upload-placeholder">
-                  <div class="upload-icon">↑</div>
-                  <div class="upload-title">{{ $t('home.dragToUpload') }}</div>
-                  <div class="upload-hint">{{ $t('home.orBrowse') }}</div>
-                </div>
-                
-                <div v-else class="file-list">
-                  <div v-for="(file, index) in files" :key="index" class="file-item">
-                    <span class="file-icon">📄</span>
-                    <span class="file-name">{{ file.name }}</span>
-                    <button @click.stop="removeFile(index)" class="remove-btn">×</button>
-                  </div>
-                </div>
+                <p class="field-hint">{{ selectedPackLabel }}</p>
               </div>
-            </div>
 
-            <!-- 分割线 -->
-            <div class="console-divider">
-              <span>{{ $t('home.inputParams') }}</span>
-            </div>
-
-            <!-- 输入区域 -->
-            <div class="console-section">
-              <div class="console-header">
-                <span class="console-label">{{ $t('home.simulationPrompt') }}</span>
-              </div>
-              <div class="input-wrapper">
-                <textarea
-                  v-model="formData.simulationRequirement"
-                  class="code-input"
-                  :placeholder="simulationPromptPlaceholder"
-                  rows="6"
-                  :disabled="loading"
-                ></textarea>
-                <div class="model-badge">{{ $t('home.engineBadge') }}</div>
-              </div>
-            </div>
-
-            <div class="console-section consumer-brief-section">
-              <div class="console-header">
-                <span class="console-label">{{ $t('home.consumerBriefLabel') }}</span>
-                <span class="console-meta">{{ $t('home.consumerBriefHint') }}</span>
-              </div>
-              <div class="brief-grid">
-                <div class="brief-field brief-field-wide">
-                  <label>{{ $t('home.consumerTaskTypeLabel') }}</label>
-                  <div class="research-mode-switch">
+              <div class="settings-grid">
+                <div class="setting-card">
+                  <span class="setting-title">预研增强</span>
+                  <p>自动补充品类语境和潜在风险。</p>
+                  <div class="segmented">
                     <button
-                      class="mode-btn"
-                      :class="{ active: formData.consumerTaskType === 'concept_test' }"
-                      @click="formData.consumerTaskType = 'concept_test'"
-                      :disabled="loading"
-                    >
-                      {{ $t('home.consumerTaskTypeConcept') }}
-                    </button>
-                    <button
-                      class="mode-btn"
-                      :class="{ active: formData.consumerTaskType === 'packaging_test' }"
-                      @click="formData.consumerTaskType = 'packaging_test'"
-                      :disabled="loading"
-                    >
-                      {{ $t('home.consumerTaskTypePackaging') }}
-                    </button>
-                    <button
-                      class="mode-btn"
-                      :class="{ active: formData.consumerTaskType === 'ab_test' }"
-                      @click="formData.consumerTaskType = 'ab_test'"
-                      :disabled="loading"
-                    >
-                      {{ $t('home.consumerTaskTypeAB') }}
-                    </button>
-                    <button
-                      class="mode-btn"
-                      :class="{ active: formData.consumerTaskType === 'price_test' }"
-                      @click="formData.consumerTaskType = 'price_test'"
-                      :disabled="loading"
-                    >
-                      {{ $t('home.consumerTaskTypePrice') }}
-                    </button>
-                    <button
-                      class="mode-btn"
-                      :class="{ active: formData.consumerTaskType === 'copy_feedback' }"
-                      @click="formData.consumerTaskType = 'copy_feedback'"
-                      :disabled="loading"
-                    >
-                      {{ $t('home.consumerTaskTypeCopy') }}
-                    </button>
-                  </div>
-                </div>
-
-                <div class="brief-field brief-field-wide">
-                  <label>Persona Pack</label>
-                  <div class="persona-pack-selector">
-                    <div class="pack-options">
-                      <button
-                        v-for="pack in availablePacks"
-                        :key="pack.pack_id"
-                        class="mode-btn"
-                        :class="{ active: formData.personaPackSelection?.pack_id === pack.pack_id && !formData.personaPackSelection?.custom_upload }"
-                        @click="selectPersonaPack(pack)"
-                        :disabled="loading"
-                        :title="pack.description"
-                      >
-                        {{ pack.label }}
-                      </button>
-                      <button
-                        class="mode-btn"
-                        :class="{ active: formData.personaPackSelection?.custom_upload }"
-                        @click="$refs.personaPackFileInput?.click()"
-                        :disabled="loading"
-                      >
-                        {{ personaPackFileName ? 'Custom: ' + personaPackFileName : '+ Upload Custom' }}
-                      </button>
-                    </div>
-                    <input
-                      ref="personaPackFileInput"
-                      type="file"
-                      accept=".json"
-                      @change="handlePersonaPackFileSelect"
-                      style="display: none"
-                      :disabled="loading"
-                    />
-                    <p v-if="selectedPackLabel && !formData.personaPackSelection?.custom_upload" class="research-mode-hint">
-                      {{ selectedPackLabel }}
-                      <span v-if="availablePacks.find(p => p.pack_id === formData.personaPackSelection?.pack_id)?.description">
-                        — {{ availablePacks.find(p => p.pack_id === formData.personaPackSelection?.pack_id)?.description }}
-                      </span>
-                    </p>
-                    <p v-if="formData.personaPackSelection?.custom_upload" class="research-mode-hint">
-                      Custom persona pack: {{ personaPackFileName }}
-                      <button @click="removePersonaPackFile" class="remove-btn" style="margin-left: 8px;">×</button>
-                    </p>
-                  </div>
-                </div>
-
-                <div v-if="formData.consumerTaskType === 'concept_test' || formData.consumerTaskType === 'price_test'" class="brief-field brief-field-wide">
-                  <label>{{ $t('home.consumerConceptLabel') }}</label>
-                  <textarea
-                    v-model="formData.consumerConcept"
-                    class="brief-input"
-                    rows="3"
-                    :placeholder="$t('home.consumerConceptPlaceholder')"
-                    :disabled="loading"
-                  ></textarea>
-                </div>
-                <div v-if="formData.consumerTaskType === 'concept_test' || formData.consumerTaskType === 'packaging_test' || formData.consumerTaskType === 'price_test'" class="brief-field brief-field-wide">
-                  <label>{{ $t('home.consumerCopyLabel') }}</label>
-                  <textarea
-                    v-model="formData.consumerCopy"
-                    class="brief-input"
-                    rows="3"
-                    :placeholder="$t('home.consumerCopyPlaceholder')"
-                    :disabled="loading"
-                  ></textarea>
-                </div>
-                <div v-if="formData.consumerTaskType === 'packaging_test'" class="brief-field brief-field-wide">
-                  <label>{{ $t('home.consumerPackagingAssetsLabel') }}</label>
-                  <textarea
-                    v-model="formData.consumerPackagingAssets"
-                    class="brief-input"
-                    rows="3"
-                    :placeholder="$t('home.consumerPackagingAssetsPlaceholder')"
-                    :disabled="loading"
-                  ></textarea>
-                </div>
-                <div v-if="formData.consumerTaskType === 'ab_test'" class="brief-field brief-field-wide">
-                  <label>{{ $t('home.consumerTestVariantsLabel') }}</label>
-                  <textarea
-                    v-model="formData.consumerTestVariants"
-                    class="brief-input"
-                    rows="4"
-                    :placeholder="$t('home.consumerTestVariantsPlaceholder')"
-                    :disabled="loading"
-                  ></textarea>
-                </div>
-                <div v-if="formData.consumerTaskType === 'price_test'" class="brief-field">
-                  <label>{{ $t('home.consumerPricePointsLabel') }}</label>
-                  <textarea
-                    v-model="formData.consumerPricePoints"
-                    class="brief-input"
-                    rows="2"
-                    :placeholder="$t('home.consumerPricePointsPlaceholder')"
-                    :disabled="loading"
-                  ></textarea>
-                </div>
-                <div v-if="formData.consumerTaskType === 'price_test'" class="brief-field">
-                  <label>{{ $t('home.consumerPriceContextLabel') }}</label>
-                  <textarea
-                    v-model="formData.consumerPriceContext"
-                    class="brief-input"
-                    rows="2"
-                    :placeholder="$t('home.consumerPriceContextPlaceholder')"
-                    :disabled="loading"
-                  ></textarea>
-                </div>
-                <div v-if="formData.consumerTaskType !== 'packaging_test'" class="brief-field">
-                  <label>{{ $t('home.consumerClaimsLabel') }}</label>
-                  <textarea
-                    v-model="formData.consumerClaims"
-                    class="brief-input"
-                    rows="2"
-                    :placeholder="$t('home.consumerClaimsPlaceholder')"
-                    :disabled="loading"
-                  ></textarea>
-                </div>
-                <div class="brief-field">
-                  <label>{{ $t('home.consumerAudienceLabel') }}</label>
-                  <textarea
-                    v-model="formData.consumerAudience"
-                    class="brief-input"
-                    rows="2"
-                    :placeholder="$t('home.consumerAudiencePlaceholder')"
-                    :disabled="loading"
-                  ></textarea>
-                </div>
-                <div class="brief-field">
-                  <label>{{ $t('home.consumerSceneLabel') }}</label>
-                  <textarea
-                    v-model="formData.consumerScene"
-                    class="brief-input"
-                    rows="2"
-                    :placeholder="$t('home.consumerScenePlaceholder')"
-                    :disabled="loading"
-                  ></textarea>
-                </div>
-                <div class="brief-field brief-field-wide">
-                  <label>{{ $t('home.consumerResearchGoalLabel') }}</label>
-                  <textarea
-                    v-model="formData.consumerResearchGoal"
-                    class="brief-input"
-                    rows="3"
-                    :placeholder="$t('home.consumerResearchGoalPlaceholder')"
-                    :disabled="loading"
-                  ></textarea>
-                </div>
-                <div class="brief-field brief-field-wide">
-                  <label>{{ $t('home.consumerResearchModeLabel') }}</label>
-                  <div class="research-mode-switch">
-                    <button
-                      class="mode-btn"
+                      type="button"
                       :class="{ active: formData.consumerResearchMode === 'manual_only' }"
                       @click="formData.consumerResearchMode = 'manual_only'"
-                      :disabled="loading"
                     >
-                      {{ $t('home.consumerResearchModeManual') }}
+                      仅使用输入材料
                     </button>
                     <button
-                      class="mode-btn"
+                      type="button"
                       :class="{ active: formData.consumerResearchMode === 'auto_enrich' }"
                       @click="formData.consumerResearchMode = 'auto_enrich'"
-                      :disabled="loading"
                     >
-                      {{ $t('home.consumerResearchModeAuto') }}
+                      自动增强
                     </button>
                   </div>
-                  <p class="research-mode-hint">{{ $t('home.consumerResearchModeHint') }}</p>
                 </div>
-                <div class="brief-field brief-field-wide">
-                  <label>{{ $t('home.consumerEnableLaneBLabel') }}</label>
-                  <div class="research-mode-switch">
+
+                <div class="setting-card">
+                  <span class="setting-title">公开资料补充</span>
+                  <p>当内部素材不足时，允许使用公开网络来源补足背景。</p>
+                  <div class="segmented">
                     <button
-                      class="mode-btn"
+                      type="button"
                       :class="{ active: !formData.consumerEnableLaneB }"
                       @click="formData.consumerEnableLaneB = false"
-                      :disabled="loading"
                     >
-                      {{ $t('home.consumerEnableLaneBOff') }}
+                      关闭
                     </button>
                     <button
-                      class="mode-btn"
+                      type="button"
                       :class="{ active: formData.consumerEnableLaneB }"
                       @click="formData.consumerEnableLaneB = true"
-                      :disabled="loading"
                     >
-                      {{ $t('home.consumerEnableLaneBOn') }}
+                      开启
                     </button>
                   </div>
-                  <p class="research-mode-hint">{{ $t('home.consumerEnableLaneBHint') }}</p>
                 </div>
-                <div class="brief-field brief-field-wide">
-                  <label>{{ $t('home.consumerBackgroundMaterialsLabel') }}</label>
-                  <textarea
-                    v-model="formData.consumerBackgroundMaterials"
-                    class="brief-input"
-                    rows="3"
-                    :placeholder="$t('home.consumerBackgroundMaterialsPlaceholder')"
+              </div>
+
+              <div class="field wide">
+                <label>上传辅助材料</label>
+                <div
+                  class="upload-zone"
+                  :class="{ 'drag-over': isDragOver, 'has-files': files.length > 0 }"
+                  @dragover.prevent="handleDragOver"
+                  @dragleave.prevent="handleDragLeave"
+                  @drop.prevent="handleDrop"
+                  @click="triggerFileInput"
+                >
+                  <input
+                    ref="fileInput"
+                    type="file"
+                    multiple
+                    accept=".pdf,.md,.txt"
+                    @change="handleFileSelect"
+                    style="display: none"
                     :disabled="loading"
-                  ></textarea>
+                  />
+                  <div v-if="files.length === 0" class="upload-placeholder">
+                    <span class="upload-title">拖入 PDF / Markdown / 文本，或点击选择</span>
+                    <span class="upload-hint">可选，用于补充已有调研、竞品资料或产品说明。</span>
+                  </div>
+                  <div v-else class="file-list">
+                    <div v-for="(file, index) in files" :key="index" class="file-item">
+                      <span class="file-name">{{ file.name }}</span>
+                      <button type="button" @click.stop="removeFile(index)" class="remove-btn">移除</button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
+          </section>
 
-            <!-- 启动按钮 -->
-            <div class="console-section btn-section">
-              <button 
-                class="start-engine-btn"
-                @click="startSimulation"
-                :disabled="!canSubmit || loading"
-              >
-                <span v-if="!loading">{{ $t('home.startEngine') }}</span>
-                <span v-else>{{ $t('home.initializing') }}</span>
-                <span class="btn-arrow">→</span>
-              </button>
+          <div v-if="error" class="error-message">{{ error }}</div>
+
+          <div class="submit-bar">
+            <div class="submit-copy">
+              <strong>{{ canSubmit ? '可以开始测试' : '请先补齐必填信息' }}</strong>
+              <span>{{ canSubmit ? '下一步会自动准备测试素材和消费者画像。' : '右侧会提示缺少哪些信息。' }}</span>
+            </div>
+            <button class="start-btn" type="submit" :disabled="!canSubmit || loading">
+              开始消费者测试
+            </button>
+          </div>
+        </form>
+
+        <aside class="side-panel">
+          <BriefValidationSummary
+            :items="briefValidationItems"
+            @focus-field="focusField"
+          />
+
+          <div class="flow-card">
+            <h2>接下来会发生什么</h2>
+            <div class="flow-list">
+              <div v-for="(step, idx) in flowSteps" :key="step.key" class="flow-item">
+                <span>{{ idx + 1 }}</span>
+                <div>
+                  <strong>{{ step.title }}</strong>
+                  <p>{{ step.description }}</p>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
+        </aside>
       </section>
 
-      <!-- 历史项目数据库 -->
-      <HistoryDatabase />
-    </div>
+      <section class="history-section">
+        <div class="history-heading">
+          <p class="eyebrow">历史测试</p>
+          <h2>继续查看已有项目</h2>
+        </div>
+        <HistoryDatabase />
+      </section>
+    </main>
   </div>
 </template>
 
@@ -472,18 +432,25 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import HistoryDatabase from '../components/HistoryDatabase.vue'
 import LanguageSwitcher from '../components/LanguageSwitcher.vue'
+import BriefValidationSummary from '../components/BriefValidationSummary.vue'
 import {
+  buildPackagingAssetSummary,
   buildConsumerBrief,
+  isPackagingAssetFile,
   isConsumerBriefComplete,
   resolveSimulationRequirement
 } from '../utils/consumerBrief'
+import {
+  buildBriefValidationItems,
+  getBusinessFlowSteps,
+  isBriefFieldMissing
+} from '../utils/businessUx'
 import { setPendingUpload } from '../store/pendingUpload.ts'
 import { listPersonaPacks } from '../api/graph.ts'
 
 const router = useRouter()
 const { t } = useI18n()
 
-// 表单数据
 const formData = ref({
   projectType: 'consumer_test',
   simulationRequirement: '',
@@ -504,28 +471,54 @@ const formData = ref({
   personaPackSelection: null
 })
 
-// Persona pack state
+const taskTypes = [
+  { value: 'concept_test', label: '概念测试', desc: '验证概念是否清楚、有吸引力、会不会被误读。' },
+  { value: 'packaging_test', label: '包装测试', desc: '观察包装信息、视觉线索和信任感。' },
+  { value: 'ab_test', label: 'A/B 测试', desc: '比较多个方案在不同人群中的共鸣差异。' },
+  { value: 'price_test', label: '价格测试', desc: '判断价格接受度、价值感和价格异议。' },
+  { value: 'copy_feedback', label: '文案反馈', desc: '快速收集消费者对文案表达的反应。' },
+]
+
+const fieldRefs = {
+  consumerConcept: ref(null),
+  consumerCopy: ref(null),
+  consumerPackagingAssets: ref(null),
+  consumerTestVariants: ref(null),
+  consumerPricePoints: ref(null),
+  consumerAudience: ref(null),
+  consumerResearchGoal: ref(null),
+}
+
+const {
+  consumerConcept: consumerConceptRef,
+  consumerCopy: consumerCopyRef,
+  consumerPackagingAssets: consumerPackagingAssetsRef,
+  consumerTestVariants: consumerTestVariantsRef,
+  consumerPricePoints: consumerPricePointsRef,
+  consumerAudience: consumerAudienceRef,
+  consumerResearchGoal: consumerResearchGoalRef,
+} = fieldRefs
+
 const availablePacks = ref([])
 const personaPackFile = ref(null)
 const personaPackFileName = ref('')
-
-// 文件列表
 const files = ref([])
-
-// 状态
+const packagingFiles = ref([])
 const loading = ref(false)
 const error = ref('')
 const isDragOver = ref(false)
-
-// 文件输入引用
+const isPackagingDragOver = ref(false)
 const fileInput = ref(null)
+const packagingFileInput = ref(null)
+const showAdvanced = ref(false)
 
-// 计算属性:是否可以提交
 const isConsumerMode = computed(() => formData.value.projectType === 'consumer_test')
+const flowSteps = computed(() => getBusinessFlowSteps())
+const briefValidationItems = computed(() => buildBriefValidationItems(formData.value))
 
 const simulationPromptPlaceholder = computed(() => (
   isConsumerMode.value
-    ? t('home.consumerPromptPlaceholder')
+    ? '选填。补充这次测试需要特别关注的角度，例如「更关注消费者是否相信酵素亮白」或「比较咖啡用户与普通用户的接受差异」。'
     : t('home.promptPlaceholder')
 ))
 
@@ -538,52 +531,83 @@ const resolvedSimulationRequirement = computed(() => (
 ))
 
 const canSubmit = computed(() => {
-  // Consumer mode: file upload is optional, brief form is required
   if (isConsumerMode.value) {
     return isConsumerBriefComplete(formData.value)
   }
-
-  // Non-consumer mode: require at least one file or simulation requirement
   if (files.value.length === 0 && formData.value.simulationRequirement.trim() === '') {
     return false
   }
-
   return formData.value.simulationRequirement.trim() !== ''
 })
 
-// 触发文件选择
+const isMissing = (field) => isBriefFieldMissing(formData.value, field)
+
+const focusField = (field) => {
+  const target = fieldRefs[field]?.value
+  if (target?.focus) {
+    target.focus()
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
+}
+
 const triggerFileInput = () => {
   if (!loading.value) {
     fileInput.value?.click()
   }
 }
 
-// 处理文件选择
+const triggerPackagingFileInput = () => {
+  if (!loading.value) {
+    packagingFileInput.value?.click()
+  }
+}
+
 const handleFileSelect = (event) => {
   const selectedFiles = Array.from(event.target.files)
   addFiles(selectedFiles)
+  event.target.value = ''
 }
 
-// 处理拖拽相关
-const handleDragOver = (e) => {
+const handlePackagingFileSelect = (event) => {
+  const selectedFiles = Array.from(event.target.files)
+  addPackagingFiles(selectedFiles)
+  event.target.value = ''
+}
+
+const handleDragOver = () => {
   if (!loading.value) {
     isDragOver.value = true
   }
 }
 
-const handleDragLeave = (e) => {
+const handleDragLeave = () => {
   isDragOver.value = false
 }
 
 const handleDrop = (e) => {
   isDragOver.value = false
   if (loading.value) return
-  
   const droppedFiles = Array.from(e.dataTransfer.files)
   addFiles(droppedFiles)
 }
 
-// 添加文件
+const handlePackagingDragOver = () => {
+  if (!loading.value) {
+    isPackagingDragOver.value = true
+  }
+}
+
+const handlePackagingDragLeave = () => {
+  isPackagingDragOver.value = false
+}
+
+const handlePackagingDrop = (e) => {
+  isPackagingDragOver.value = false
+  if (loading.value) return
+  const droppedFiles = Array.from(e.dataTransfer.files)
+  addPackagingFiles(droppedFiles)
+}
+
 const addFiles = (newFiles) => {
   const validFiles = newFiles.filter(file => {
     const ext = file.name.split('.').pop().toLowerCase()
@@ -592,20 +616,31 @@ const addFiles = (newFiles) => {
   files.value.push(...validFiles)
 }
 
-// 移除文件
+const syncPackagingAssetSummary = () => {
+  formData.value.consumerPackagingAssets = buildPackagingAssetSummary(packagingFiles.value)
+}
+
+const addPackagingFiles = (newFiles) => {
+  const validFiles = newFiles.filter(isPackagingAssetFile)
+  const invalidCount = newFiles.length - validFiles.length
+  if (invalidCount > 0) {
+    error.value = '包装素材仅支持 PDF、PNG、JPG、JPEG、WebP 文件。'
+  } else {
+    error.value = ''
+  }
+  packagingFiles.value.push(...validFiles)
+  syncPackagingAssetSummary()
+}
+
 const removeFile = (index) => {
   files.value.splice(index, 1)
 }
 
-// 滚动到底部
-const scrollToBottom = () => {
-  window.scrollTo({
-    top: document.body.scrollHeight,
-    behavior: 'smooth'
-  })
+const removePackagingFile = (index) => {
+  packagingFiles.value.splice(index, 1)
+  syncPackagingAssetSummary()
 }
 
-// Persona pack handling
 const selectPersonaPack = (pack) => {
   formData.value.personaPackSelection = {
     pack_id: pack.pack_id,
@@ -620,10 +655,11 @@ const handlePersonaPackFileSelect = (event) => {
   const file = event.target.files?.[0]
   if (!file) return
   if (!file.name.toLowerCase().endsWith('.json')) {
-    alert('Persona pack must be a JSON file')
+    error.value = '画像包必须是 JSON 文件。'
     event.target.value = ''
     return
   }
+  error.value = ''
   personaPackFile.value = file
   personaPackFileName.value = file.name
   formData.value.personaPackSelection = {
@@ -633,35 +669,21 @@ const handlePersonaPackFileSelect = (event) => {
   }
 }
 
-const removePersonaPackFile = () => {
-  personaPackFile.value = null
-  personaPackFileName.value = ''
-  // Revert to default pack
-  const defaultPack = availablePacks.value.find(p => p.pack_id === 'default_persona_pack')
-  if (defaultPack) {
-    selectPersonaPack(defaultPack)
-  } else {
-    formData.value.personaPackSelection = null
-  }
-}
-
 const selectedPackLabel = computed(() => {
   if (formData.value.personaPackSelection?.custom_upload) {
-    return 'Custom: ' + personaPackFileName.value
+    return '自定义画像包：' + personaPackFileName.value
   }
   const pack = availablePacks.value.find(
     p => p.pack_id === formData.value.personaPackSelection?.pack_id
   )
-  return pack?.label || 'Default Consumer Pack'
+  return pack?.description ? `${pack.label}：${pack.description}` : (pack?.label || '默认消费者画像包')
 })
 
-// Fetch available persona packs on mount
 const fetchPersonaPacks = async () => {
   try {
     const res = await listPersonaPacks()
     if (res.success && res.data) {
       availablePacks.value = res.data
-      // Auto-select default if none selected
       if (!formData.value.personaPackSelection) {
         const defaultPack = res.data.find(p => p.pack_id === 'default_persona_pack')
         if (defaultPack) {
@@ -674,13 +696,19 @@ const fetchPersonaPacks = async () => {
   }
 }
 
-// 开始模拟 - 立即跳转，API调用在Process页面进行
 const startSimulation = () => {
-  if (!canSubmit.value || loading.value) return
+  if (!canSubmit.value || loading.value) {
+    const firstMissing = briefValidationItems.value[0]
+    if (firstMissing) focusField(firstMissing.field)
+    return
+  }
 
-  // 存储待上传的数据
+  const uploadFiles = formData.value.consumerTaskType === 'packaging_test'
+    ? [...packagingFiles.value, ...files.value]
+    : files.value
+
   setPendingUpload({
-    files: files.value,
+    files: uploadFiles,
     simulationRequirement: resolvedSimulationRequirement.value,
     projectType: formData.value.projectType,
     consumerBrief: isConsumerMode.value ? buildConsumerBrief(formData.value) : null,
@@ -690,7 +718,6 @@ const startSimulation = () => {
     personaPackFile: isConsumerMode.value ? personaPackFile.value : null
   })
 
-  // 立即跳转到Process页面（使用特殊标识表示新建项目）
   router.push({
     name: 'Process',
     params: { projectId: 'new' }
@@ -703,724 +730,557 @@ onMounted(() => {
 </script>
 
 <style scoped>
-/* 全局变量与重置 */
-:root {
-  --black: #000000;
-  --white: #FFFFFF;
-  --orange: #FF4500;
-  --gray-light: #F5F5F5;
-  --gray-text: #666666;
-  --border: #E5E5E5;
-  /* 
-    使用 Space Grotesk 作为主要标题字体，JetBrains Mono 作为代码/标签字体
-    确保已在 index.html 引入这些 Google Fonts 
-  */
-  --font-mono: 'JetBrains Mono', monospace;
-  --font-sans: 'Space Grotesk', 'Noto Sans SC', system-ui, sans-serif;
-  --font-cn: 'Noto Sans SC', system-ui, sans-serif;
-}
-
 .home-container {
   min-height: 100vh;
-  background: var(--white);
-  font-family: var(--font-sans);
-  color: var(--black);
+  background: var(--mc-bg-canvas);
+  color: var(--mc-text-primary);
+  font-family: var(--mc-font-body);
 }
 
-/* 顶部导航 */
 .navbar {
-  height: 60px;
-  background: var(--black);
-  color: var(--white);
+  min-height: 60px;
+  background: rgba(255, 253, 250, 0.94);
+  border-bottom: 1px solid var(--mc-border);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0 40px;
+  padding: 0 32px;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  backdrop-filter: blur(14px);
 }
 
 .nav-brand {
-  font-family: var(--font-mono);
+  border: none;
+  background: transparent;
+  font-family: var(--mc-font-mono);
   font-weight: 800;
+  font-size: 18px;
   letter-spacing: 1px;
-  font-size: 1.2rem;
+  color: var(--mc-text-primary);
 }
 
 .nav-links {
   display: flex;
   align-items: center;
-  gap: 16px;
-}
-
-.github-link {
-  color: var(--white);
-  text-decoration: none;
-  font-family: var(--font-mono);
-  font-size: 0.9rem;
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  transition: opacity 0.2s;
-}
-
-.github-link:hover {
-  opacity: 0.8;
-}
-
-.arrow {
-  font-family: sans-serif;
-}
-
-/* 主要内容区 */
-.main-content {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 60px 40px;
-}
-
-/* Hero 区域 */
-.hero-section {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 80px;
-  position: relative;
-}
-
-.hero-left {
-  flex: 1;
-  padding-right: 60px;
-}
-
-.tag-row {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-  margin-bottom: 25px;
-  font-family: var(--font-mono);
-  font-size: 0.8rem;
-}
-
-.orange-tag {
-  background: var(--orange);
-  color: var(--white);
-  padding: 4px 10px;
-  font-weight: 700;
-  letter-spacing: 1px;
-  font-size: 0.75rem;
-}
-
-.version-text {
-  color: #999;
-  font-weight: 500;
-  letter-spacing: 0.5px;
-}
-
-.main-title {
-  font-size: 4.5rem;
-  line-height: 1.2;
-  font-weight: 500;
-  margin: 0 0 40px 0;
-  letter-spacing: -2px;
-  color: var(--black);
-}
-
-.gradient-text {
-  background: linear-gradient(90deg, #000000 0%, #444444 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  display: inline-block;
-}
-
-.hero-desc {
-  font-size: 1.05rem;
-  line-height: 1.8;
-  color: var(--gray-text);
-  max-width: 640px;
-  margin-bottom: 50px;
-  font-weight: 400;
-  text-align: justify;
-}
-
-.hero-desc p {
-  margin-bottom: 1.5rem;
-}
-
-.highlight-bold {
-  color: var(--black);
-  font-weight: 700;
-}
-
-.highlight-orange {
-  color: var(--orange);
-  font-weight: 700;
-  font-family: var(--font-mono);
-}
-
-.highlight-code {
-  background: rgba(0, 0, 0, 0.05);
-  padding: 2px 6px;
-  border-radius: 2px;
-  font-family: var(--font-mono);
-  font-size: 0.9em;
-  color: var(--black);
-  font-weight: 600;
-}
-
-.slogan-text {
-  font-size: 1.2rem;
-  font-weight: 520;
-  color: var(--black);
-  letter-spacing: 1px;
-  border-left: 3px solid var(--orange);
-  padding-left: 15px;
-  margin-top: 20px;
-}
-
-.blinking-cursor {
-  color: var(--orange);
-  animation: blink 1s step-end infinite;
-  font-weight: 700;
-}
-
-@keyframes blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
-}
-
-.decoration-square {
-  width: 16px;
-  height: 16px;
-  background: var(--orange);
-}
-
-.hero-right {
-  flex: 0.8;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  align-items: flex-end;
-}
-
-.logo-container {
-  width: 100%;
-  display: flex;
-  justify-content: flex-end;
-  padding-right: 40px;
-}
-
-.hero-logo {
-  max-width: 500px; /* 调整logo大小 */
-  width: 100%;
-}
-
-.scroll-down-btn {
-  width: 40px;
-  height: 40px;
-  border: 1px solid var(--border);
-  background: transparent;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  color: var(--orange);
-  font-size: 1.2rem;
-  transition: all 0.2s;
-}
-
-.scroll-down-btn:hover {
-  border-color: var(--orange);
-}
-
-/* Dashboard 双栏布局 */
-.dashboard-section {
-  display: flex;
-  gap: 60px;
-  border-top: 1px solid var(--border);
-  padding-top: 60px;
-  align-items: flex-start;
-}
-
-.dashboard-section .left-panel,
-.dashboard-section .right-panel {
-  display: flex;
-  flex-direction: column;
-}
-
-/* 左侧面板 */
-.left-panel {
-  flex: 0.8;
-}
-
-.panel-header {
-  font-family: var(--font-mono);
-  font-size: 0.8rem;
-  color: #999;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 20px;
-}
-
-.status-dot {
-  color: var(--orange);
-  font-size: 0.8rem;
-}
-
-.section-title {
-  font-size: 2rem;
-  font-weight: 520;
-  margin: 0 0 15px 0;
-}
-
-.section-desc {
-  color: var(--gray-text);
-  margin-bottom: 25px;
-  line-height: 1.6;
-}
-
-.metrics-row {
-  display: flex;
-  gap: 20px;
-  margin-bottom: 15px;
-}
-
-.metric-card {
-  border: 1px solid var(--border);
-  padding: 20px 30px;
-  min-width: 150px;
-}
-
-.metric-value {
-  font-family: var(--font-mono);
-  font-size: 1.8rem;
-  font-weight: 520;
-  margin-bottom: 5px;
-}
-
-.metric-label {
-  font-size: 0.85rem;
-  color: #999;
-}
-
-/* 项目模拟步骤介绍 */
-.steps-container {
-  border: 1px solid var(--border);
-  padding: 30px;
-  position: relative;
-}
-
-.steps-header {
-  font-family: var(--font-mono);
-  font-size: 0.8rem;
-  color: #999;
-  margin-bottom: 25px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.diamond-icon {
-  font-size: 1.2rem;
-  line-height: 1;
-}
-
-.workflow-list {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.workflow-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 20px;
-}
-
-.step-num {
-  font-family: var(--font-mono);
-  font-weight: 700;
-  color: var(--black);
-  opacity: 0.3;
-}
-
-.step-info {
-  flex: 1;
-}
-
-.step-title {
-  font-weight: 520;
-  font-size: 1rem;
-  margin-bottom: 4px;
-}
-
-.step-desc {
-  font-size: 0.85rem;
-  color: var(--gray-text);
-}
-
-/* 右侧交互控制台 */
-.right-panel {
-  flex: 1.2;
-}
-
-.console-box {
-  border: 1px solid #CCC; /* 外部实线 */
-  padding: 8px; /* 内边距形成双重边框感 */
-}
-
-.console-section {
-  padding: 20px;
-}
-
-.console-section.btn-section {
-  padding-top: 0;
-}
-
-.console-header {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 15px;
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  color: #666;
-}
-
-.mode-switch {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
 
-.mode-btn {
-  border: 1px solid #DDD;
-  background: #FAFAFA;
-  color: var(--black);
-  padding: 14px 16px;
-  font-family: var(--font-mono);
-  font-size: 0.8rem;
+.business-workspace {
+  width: min(1440px, 100%);
+  margin: 0 auto;
+  padding: 30px 32px 46px;
+}
+
+.workspace-intro {
+  max-width: 820px;
+  margin-bottom: 24px;
+}
+
+.eyebrow {
+  margin: 0 0 10px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--mc-accent);
+  letter-spacing: 0.08em;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(32px, 4vw, 56px);
+  line-height: 1.08;
+  letter-spacing: 0;
+  font-weight: 800;
+  color: var(--mc-text-primary);
+}
+
+.intro-copy {
+  max-width: 760px;
+  margin: 18px 0 0;
+  color: var(--mc-text-secondary);
+  font-size: 17px;
+  line-height: 1.8;
+}
+
+.workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 24px;
+  align-items: start;
+}
+
+.brief-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.form-section,
+.side-panel > *,
+.history-section {
+  background: var(--mc-surface);
+  border: 1px solid var(--mc-border);
+  border-radius: var(--mc-radius-card);
+  box-shadow: var(--mc-shadow-card);
+}
+
+.form-section {
+  padding: 22px;
+}
+
+.section-heading {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  margin-bottom: 18px;
+}
+
+.section-index {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: var(--mc-accent);
+  color: #fffdfa;
+  font-family: var(--mc-font-mono);
+  font-size: 12px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.section-heading h2,
+.flow-card h2,
+.history-heading h2 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.25;
+}
+
+.section-heading p,
+.flow-card p {
+  margin: 6px 0 0;
+  color: var(--mc-text-secondary);
+  line-height: 1.6;
+}
+
+.task-type-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.task-card {
+  min-height: 88px;
+  border: 1px solid var(--mc-border);
+  background: var(--mc-surface-muted);
+  border-radius: var(--mc-radius-card);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: left;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
-.mode-btn:hover:not(:disabled) {
-  border-color: var(--orange);
-  background: #FFF3EE;
+.task-card:hover:not(:disabled) {
+  border-color: var(--mc-border-strong);
+  background: var(--mc-surface);
+  transform: translateY(-1px);
 }
 
-.mode-btn.active {
-  background: var(--black);
-  border-color: var(--black);
-  color: var(--white);
+.task-card.active {
+  border-color: var(--mc-accent);
+  background: linear-gradient(180deg, var(--mc-accent), var(--mc-accent-strong));
+  color: #fffdfa;
+  box-shadow: 0 12px 28px rgba(34, 92, 75, 0.18);
 }
 
-.mode-btn:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
+.task-title {
+  font-size: 15px;
+  font-weight: 800;
 }
 
-.consumer-brief-section {
-  border-top: 1px solid #EEE;
+.task-desc {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--mc-text-secondary);
 }
 
-.brief-grid {
+.task-card.active .task-desc {
+  color: #e8f2ed;
+}
+
+.field-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
 }
 
-.brief-field {
+.field {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.brief-field label {
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  color: #666;
-}
-
-.brief-field-wide {
+.field.wide {
   grid-column: 1 / -1;
 }
 
-.brief-input {
+.field label {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--mc-text-primary);
+}
+
+.field textarea {
   width: 100%;
-  border: 1px solid #DDD;
-  background: #FAFAFA;
-  padding: 14px 16px;
-  font-family: var(--font-mono);
-  font-size: 0.85rem;
+  border: 1px solid var(--mc-border);
+  background: var(--mc-surface-raised);
+  border-radius: var(--mc-radius-control);
+  padding: 12px 14px;
+  font: inherit;
+  font-size: 14px;
   line-height: 1.6;
   resize: vertical;
   outline: none;
-  transition: border-color 0.2s ease, background 0.2s ease;
 }
 
-.brief-input:focus {
-  border-color: var(--orange);
-  background: #FFFDFB;
+.field textarea:focus {
+  border-color: var(--mc-accent);
+  box-shadow: var(--mc-focus-ring);
+}
+
+.field.missing textarea {
+  border-color: var(--mc-status-warning);
+  background: var(--mc-status-warning-bg);
+}
+
+.field-hint {
+  margin: 0;
+  color: var(--mc-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.optional-section {
+  padding: 0;
+  overflow: hidden;
+}
+
+.advanced-toggle {
+  width: 100%;
+  border: none;
+  background: var(--mc-surface);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px 22px;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--mc-text-primary);
+  cursor: pointer;
+}
+
+.advanced-content {
+  border-top: 1px solid var(--mc-border);
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.pack-options,
+.segmented {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.mode-btn,
+.segmented button {
+  border: 1px solid var(--mc-border);
+  background: var(--mc-surface);
+  color: var(--mc-text-secondary);
+  padding: 9px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mode-btn.active,
+.segmented button.active {
+  background: var(--mc-accent);
+  border-color: var(--mc-accent);
+  color: #fffdfa;
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.setting-card {
+  border: 1px solid var(--mc-border);
+  background: var(--mc-surface-muted);
+  border-radius: var(--mc-radius-card);
+  padding: 14px;
+}
+
+.setting-title {
+  display: block;
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+
+.setting-card p {
+  margin: 0 0 12px;
+  color: var(--mc-text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .upload-zone {
-  border: 1px dashed #CCC;
-  height: 200px;
-  overflow-y: auto;
+  border: 1px dashed var(--mc-border-strong);
+  background: var(--mc-bg-subtle);
+  border-radius: var(--mc-radius-card);
+  min-height: 130px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.3s;
-  background: #FAFAFA;
+  padding: 16px;
+  outline: none;
 }
 
-.upload-zone.has-files {
-  align-items: flex-start;
-}
-
+.upload-zone.drag-over,
 .upload-zone:hover {
-  background: #F0F0F0;
-  border-color: #999;
+  border-color: var(--mc-accent);
+  background: var(--mc-surface);
+}
+
+.upload-zone:focus {
+  border-color: var(--mc-accent);
+  box-shadow: var(--mc-focus-ring);
+}
+
+.field.missing .upload-zone {
+  border-color: var(--mc-status-warning);
+  background: var(--mc-status-warning-bg);
+}
+
+.packaging-tray {
+  min-height: 148px;
+  background:
+    linear-gradient(135deg, rgba(34, 92, 75, 0.08), transparent 34%),
+    var(--mc-bg-subtle);
+  border-style: solid;
+}
+
+.packaging-tray.has-files {
+  align-items: stretch;
 }
 
 .upload-placeholder {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   text-align: center;
 }
 
-.upload-icon {
-  width: 40px;
-  height: 40px;
-  border: 1px solid #DDD;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0 auto 15px;
-  color: #999;
-}
-
 .upload-title {
-  font-weight: 500;
-  font-size: 0.9rem;
-  margin-bottom: 5px;
+  font-weight: 800;
 }
 
 .upload-hint {
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  color: #999;
+  color: var(--mc-text-secondary);
+  font-size: 13px;
 }
 
 .file-list {
   width: 100%;
-  padding: 15px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .file-item {
+  background: var(--mc-surface);
+  border: 1px solid var(--mc-border);
+  border-radius: var(--mc-radius-control);
+  padding: 9px 10px;
   display: flex;
   align-items: center;
-  background: var(--white);
-  padding: 8px 12px;
-  border: 1px solid #EEE;
-  font-family: var(--font-mono);
-  font-size: 0.85rem;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .file-name {
-  flex: 1;
-  margin: 0 10px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .remove-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 1.2rem;
-  color: #999;
-}
-
-.console-divider {
-  display: flex;
-  align-items: center;
-  margin: 10px 0;
-}
-
-.console-divider::before,
-.console-divider::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: #EEE;
-}
-
-.console-divider span {
-  padding: 0 15px;
-  font-family: var(--font-mono);
-  font-size: 0.7rem;
-  color: #BBB;
-  letter-spacing: 1px;
-}
-
-.input-wrapper {
-  position: relative;
-  border: 1px solid #DDD;
-  background: #FAFAFA;
-}
-
-.code-input {
-  width: 100%;
   border: none;
   background: transparent;
-  padding: 20px;
-  font-family: var(--font-mono);
-  font-size: 0.9rem;
-  line-height: 1.6;
-  resize: vertical;
-  outline: none;
-  min-height: 150px;
-}
-
-.model-badge {
-  position: absolute;
-  bottom: 10px;
-  right: 15px;
-  font-family: var(--font-mono);
-  font-size: 0.7rem;
-  color: #AAA;
-}
-
-.start-engine-btn {
-  width: 100%;
-  background: var(--black);
-  color: var(--white);
-  border: none;
-  padding: 20px;
-  font-family: var(--font-mono);
+  color: var(--mc-status-error);
   font-weight: 700;
-  font-size: 1.1rem;
+  cursor: pointer;
+}
+
+.error-message {
+  border: 1px solid rgba(180, 35, 24, 0.22);
+  background: var(--mc-status-error-bg);
+  color: var(--mc-status-error);
+  border-radius: var(--mc-radius-card);
+  padding: 12px 14px;
+}
+
+.submit-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  background: rgba(255, 253, 250, 0.94);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--mc-border);
+  border-radius: var(--mc-radius-card);
+  padding: 14px;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 16px;
+  box-shadow: 0 -12px 30px rgba(24, 45, 35, 0.08);
+}
+
+.submit-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.submit-copy span {
+  color: var(--mc-text-secondary);
+  font-size: 13px;
+}
+
+.start-btn {
+  border: none;
+  background: var(--mc-accent);
+  color: #fffdfa;
+  border-radius: var(--mc-radius-control);
+  padding: 13px 18px;
+  font-size: 15px;
+  font-weight: 800;
   cursor: pointer;
-  transition: all 0.3s ease;
-  letter-spacing: 1px;
-  position: relative;
-  overflow: hidden;
+  white-space: nowrap;
 }
 
-/* 可点击状态（非禁用） */
-.start-engine-btn:not(:disabled) {
-  background: var(--black);
-  border: 1px solid var(--black);
-  animation: pulse-border 2s infinite;
-}
-
-.start-engine-btn:hover:not(:disabled) {
-  background: var(--orange);
-  border-color: var(--orange);
-  transform: translateY(-2px);
-}
-
-.start-engine-btn:active:not(:disabled) {
-  transform: translateY(0);
-}
-
-.start-engine-btn:disabled {
-  background: #E5E5E5;
-  color: #999;
+.start-btn:disabled {
+  background: var(--mc-border);
+  color: var(--mc-text-tertiary);
   cursor: not-allowed;
-  transform: none;
-  border: 1px solid #E5E5E5;
 }
 
-/* 引导动画：微妙的边框脉冲 */
-@keyframes pulse-border {
-  0% { box-shadow: 0 0 0 0 rgba(0, 0, 0, 0.2); }
-  70% { box-shadow: 0 0 0 6px rgba(0, 0, 0, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(0, 0, 0, 0); }
+.side-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  position: sticky;
+  top: 84px;
 }
 
-/* 响应式适配 */
-@media (max-width: 1024px) {
-  .dashboard-section {
-    flex-direction: column;
-  }
-  
-  .hero-section {
-    flex-direction: column;
-  }
-  
-  .hero-left {
-    padding-right: 0;
-    margin-bottom: 40px;
-  }
-  
-  .hero-logo {
-    max-width: 200px;
-    margin-bottom: 20px;
-  }
+.flow-card {
+  padding: 18px;
+}
 
-  .mode-switch,
-  .brief-grid {
+.flow-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.flow-item {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  gap: 10px;
+}
+
+.flow-item > span {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: var(--mc-surface-muted);
+  color: var(--mc-text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mc-font-mono);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.flow-item strong {
+  font-size: 14px;
+}
+
+.flow-item p {
+  font-size: 12px;
+}
+
+.history-section {
+  margin-top: 28px;
+  padding: 22px;
+}
+
+.history-heading {
+  margin-bottom: 16px;
+}
+
+@media (max-width: 1180px) {
+  .workspace-grid {
     grid-template-columns: 1fr;
   }
-}
-</style>
 
-<style>
-/* English locale adjustments (unscoped to target html[lang]) */
-html[lang="en"] .main-title {
-  font-size: 3.5rem;
-  font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  letter-spacing: -1px;
-}
+  .side-panel {
+    position: static;
+  }
 
-html[lang="en"] .hero-desc {
-  text-align: left;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  letter-spacing: 0;
+  .task-type-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
-html[lang="en"] .slogan-text {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  letter-spacing: 0;
-}
+@media (max-width: 720px) {
+  .navbar {
+    padding: 0 18px;
+  }
 
-html[lang="en"] .tag-row {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-}
+  .business-workspace {
+    padding: 20px 14px 28px;
+  }
 
-html[lang="en"] .navbar .nav-links {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-}
+  .field-grid,
+  .settings-grid,
+  .task-type-grid {
+    grid-template-columns: 1fr;
+  }
 
-/* Left pane: system status + workflow */
-html[lang="en"] .status-section {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-}
+  .submit-bar {
+    position: static;
+    flex-direction: column;
+    align-items: stretch;
+  }
 
-html[lang="en"] .status-section .status-ready {
-  font-size: 1.6rem;
-}
-
-html[lang="en"] .status-section .metric-value {
-  font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  font-size: 1.4rem;
-}
-
-html[lang="en"] .workflow-list .step-title {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-}
-
-html[lang="en"] .workflow-list .step-desc {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
-  font-size: 0.72rem !important;
-  line-height: 1.4 !important;
-}
-
-html[lang="en"] .workflow-list {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  .start-btn {
+    width: 100%;
+  }
 }
 </style>

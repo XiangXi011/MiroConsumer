@@ -130,6 +130,14 @@ class ConsumerGraphBuilder:
                 created_at=created_at,
                 extra_attributes={"source": "consumer_brief", "round0_visible": True},
             )
+            self._add_packaging_visual_context(
+                nodes=nodes,
+                edges=edges,
+                node_index=node_index,
+                root_node_id=brief_node_id,
+                background_text=background_text,
+                created_at=created_at,
+            )
         elif brief.task_type == ConsumerTaskType.ABTest:
             variant_labels = [v.label for v in brief.test_variants]
             self._add_items(
@@ -341,6 +349,47 @@ class ConsumerGraphBuilder:
                     created_at=created_at,
                     attributes={"source": "background_material"},
                 )
+
+    def _add_packaging_visual_context(
+        self,
+        nodes: List[Dict[str, Any]],
+        edges: List[Dict[str, Any]],
+        node_index: Dict[tuple[str, str], str],
+        root_node_id: str,
+        background_text: Optional[str],
+        created_at: str,
+    ) -> None:
+        if not background_text:
+            return
+
+        seen = set()
+        for sentence in self._split_sentences(background_text):
+            if "视觉摘要" not in sentence:
+                continue
+            key = sentence.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            node_id = self._add_node(
+                nodes,
+                node_index,
+                label="PackagingCue",
+                name=sentence,
+                summary=f"Packaging visual context extracted from uploaded image: {sentence}",
+                visibility=GraphVisibility.Initial,
+                attributes={"source": "uploaded_packaging_image", "round0_visible": True},
+                created_at=created_at,
+            )
+            self._add_edge(
+                edges,
+                root_node_id,
+                node_id,
+                fact_type="HAS_PACKAGING_CUE",
+                fact=sentence,
+                visibility=GraphVisibility.Initial,
+                created_at=created_at,
+                attributes={"source": "uploaded_packaging_image"},
+            )
 
     def _add_research_findings(
         self,

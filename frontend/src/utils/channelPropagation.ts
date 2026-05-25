@@ -44,9 +44,9 @@ export function buildChannelFitItems(context = {}) {
   const channelEntries = Object.entries(metrics.channels || {})
   const channels = channelEntries.map(([channelId, values]) => {
     const riskCandidates = [
-      ['Misread', values.misread_risk || 0],
-      ['Evidence', values.evidence_demand || 0],
-      ['Price', values.price_resistance || 0],
+      ['误读', values.misread_risk || 0],
+      ['证据需求', values.evidence_demand || 0],
+      ['价格阻力', values.price_resistance || 0],
     ].sort((a, b) => b[1] - a[1])
     return {
       channelId,
@@ -75,10 +75,10 @@ export function buildChannelHeatmapRows(channelMetrics = {}) {
   const metrics = resolveChannelMetrics(channelMetrics)
   const channels = Object.entries(metrics.channels || {})
   const dimensions = [
-    ['claim', 'Channel x Claim', 'resonance'],
-    ['segment', 'Channel x Persona Segment', 'fit_score'],
-    ['risk', 'Channel x Risk Type', 'misread_risk'],
-    ['purchaseIntent', 'Channel x Purchase Intent', 'purchase_intent_delta'],
+    ['claim', '核心卖点共鸣', 'resonance'],
+    ['segment', '目标人群适配', 'fit_score'],
+    ['risk', '误读风险', 'misread_risk'],
+    ['purchaseIntent', '购买意向变化', 'purchase_intent_delta'],
   ]
   return dimensions.map(([key, label, metricKey]) => ({
     key,
@@ -99,11 +99,11 @@ export function buildPropagationTimelineItems(context = {}) {
     Math.floor(toNumber(context.society_rounds_completed ?? context.current_round ?? 10)),
   )
   const phases = [
-    ['Initial reaction', 0, 0],
-    ['Claim amplification', 1, 3],
-    ['Objection emergence', 4, 6],
-    ['Misread spread', 7, 9],
-    ['Evidence repair', 10, 10],
+    ['初见反应', 0, 0],
+    ['卖点扩散', 1, 3],
+    ['疑虑出现', 4, 6],
+    ['误读扩散', 7, 9],
+    ['证据修复', 10, 10],
   ]
   const items = []
   for (const [phase, start, end] of phases) {
@@ -120,19 +120,19 @@ export function buildPropagationTimelineItems(context = {}) {
 
 function timelineSummaryForPhase(phase, context) {
   const metrics = resolveChannelMetrics(context)
-  if (phase === 'Claim amplification') {
-    return `Strongest channel: ${getChannelLabel(metrics.best_launch_channel)}`
+  if (phase === '卖点扩散') {
+    return `最容易放大的渠道：${getChannelLabel(metrics.best_launch_channel)}`
   }
-  if (phase === 'Objection emergence') {
-    return `Evidence demand: ${getChannelLabel(metrics.highest_evidence_demand_channel)}`
+  if (phase === '疑虑出现') {
+    return `最需要补充证据的渠道：${getChannelLabel(metrics.highest_evidence_demand_channel)}`
   }
-  if (phase === 'Misread spread') {
-    return `Misread risk: ${getChannelLabel(metrics.highest_misread_channel)}`
+  if (phase === '误读扩散') {
+    return `误读风险最高的渠道：${getChannelLabel(metrics.highest_misread_channel)}`
   }
-  if (phase === 'Evidence repair') {
-    return 'Repair depends on proof and expert signals'
+  if (phase === '证据修复') {
+    return '修复效果依赖明确证据、专家背书和真实使用场景'
   }
-  return 'First consumer impressions entered the channel runtime'
+  return '消费者形成第一印象，并开始在不同触点中表达态度'
 }
 
 export function buildPropagationPathRows(context = {}) {

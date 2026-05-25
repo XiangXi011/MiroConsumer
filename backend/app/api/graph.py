@@ -287,7 +287,7 @@ def generate_ontology():
     请求方式：multipart/form-data
     
     参数：
-        files: 上传的文件（PDF/MD/TXT），可多个
+        files: 上传的文件（PDF/MD/TXT/包装图片），可多个
         simulation_requirement: 模拟需求描述（必填）
         project_name: 项目名称（可选）
         additional_context: 额外说明（可选）

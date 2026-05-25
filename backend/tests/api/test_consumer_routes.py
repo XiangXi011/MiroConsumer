@@ -99,6 +99,26 @@ def _consumer_brief_payload_auto_enrich():
     }
 
 
+def _consumer_packaging_brief_payload():
+    return {
+        "task_type": "packaging_test",
+        "packaging_assets": ["包装素材文件：舒客酵素亮白牙膏-绿色包装.png"],
+        "copy_material": ["舒客酵素亮白牙膏｜温和去黄不刺激"],
+        "target_audience": ["咖啡茶饮高频用户"],
+        "usage_scene": ["早晚刷牙"],
+        "research_goal": "判断包装是否传达温和去黄和清新口气",
+    }
+
+
+def _solid_png_bytes(color=(35, 166, 90), size=(4, 2)):
+    from PIL import Image
+
+    stream = BytesIO()
+    Image.new("RGB", size, color).save(stream, format="PNG")
+    stream.seek(0)
+    return stream
+
+
 def _write_consumer_rounds(simulations_dir, simulation_id):
     simulation_dir = simulations_dir / simulation_id
     simulation_dir.mkdir(parents=True, exist_ok=True)
@@ -249,6 +269,95 @@ def test_generate_ontology_ingests_uploaded_files_into_research_workspace(tmp_pa
     chunks = ingest.load_chunks()
     assert len(chunks) > 0
     assert any("safety concerns" in c.text for c in chunks)
+
+
+def test_packaging_image_upload_reaches_graph_and_simulation_config(tmp_path, monkeypatch):
+    uploads_dir = tmp_path / "uploads"
+    projects_dir = uploads_dir / "projects"
+    simulations_dir = _configure_simulation_storage(tmp_path, monkeypatch)
+    monkeypatch.setattr(graph_api.Config, "UPLOAD_FOLDER", str(uploads_dir))
+    monkeypatch.setattr(graph_api.Config, "ZEP_API_KEY", None)
+    monkeypatch.setattr(ProjectManager, "PROJECTS_DIR", str(projects_dir))
+    _reset_task_manager()
+
+    class FakeOntologyGenerator:
+        def generate(self, document_texts, simulation_requirement, additional_context=None):
+            assert any("视觉摘要" in text for text in document_texts)
+            assert any("#23a65a" in text for text in document_texts)
+            return {
+                "entity_types": [{"name": "AudienceSegment", "attributes": []}],
+                "edge_types": [],
+                "analysis_summary": "packaging image consumed",
+            }
+
+    class ImmediateThread:
+        def __init__(self, target=None, daemon=None):
+            self._target = target
+            self.daemon = daemon
+
+        def start(self):
+            self._target()
+
+    monkeypatch.setattr(graph_api, "OntologyGenerator", FakeOntologyGenerator)
+    monkeypatch.setattr(threading, "Thread", ImmediateThread)
+
+    app = _create_test_app()
+    client = app.test_client()
+
+    generate_response = client.post(
+        "/api/graph/ontology/generate",
+        data={
+            "simulation_requirement": "Run packaging test for Shuke toothpaste",
+            "project_name": "舒客包装测试",
+            "project_type": "consumer_test",
+            "consumer_brief": json.dumps(_consumer_packaging_brief_payload(), ensure_ascii=False),
+            "files": (_solid_png_bytes(), "舒客酵素亮白牙膏-绿色包装.png"),
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert generate_response.status_code == 200
+    project_id = generate_response.get_json()["data"]["project_id"]
+
+    project = ProjectManager.get_project(project_id)
+    extracted_text = ProjectManager.get_extracted_text(project_id)
+    assert project is not None
+    assert project.files[0]["filename"] == "舒客酵素亮白牙膏-绿色包装.png"
+    assert project.consumer_brief["task_type"] == "packaging_test"
+    assert project.consumer_brief["packaging_assets"] == ["包装素材文件：舒客酵素亮白牙膏-绿色包装.png"]
+    assert "视觉摘要" in extracted_text
+    assert "#23a65a" in extracted_text
+
+    build_response = client.post("/api/graph/build", json={"project_id": project_id})
+    assert build_response.status_code == 200
+    graph_payload = ProjectManager.load_consumer_graph_payload(project_id)
+    assert graph_payload is not None
+    packaging_nodes = [
+        node for node in graph_payload["nodes"]
+        if "PackagingCue" in node.get("labels", [])
+    ]
+    assert any("舒客酵素亮白牙膏-绿色包装.png" in node["name"] for node in packaging_nodes)
+    assert any(
+        "#23a65a" in node["name"] or "#23a65a" in node.get("summary", "")
+        for node in graph_payload["nodes"]
+    )
+
+    create_response = client.post("/api/simulation/create", json={"project_id": project_id})
+    assert create_response.status_code == 200
+    simulation_id = create_response.get_json()["data"]["simulation_id"]
+
+    prepare_response = client.post("/api/simulation/prepare", json={"simulation_id": simulation_id})
+    assert prepare_response.status_code == 200
+
+    consumer_config = json.loads(
+        (simulations_dir / simulation_id / "consumer_config.json").read_text(encoding="utf-8")
+    )
+    assert consumer_config["consumer_brief"]["task_type"] == "packaging_test"
+    assert consumer_config["consumer_brief"]["packaging_assets"] == [
+        "包装素材文件：舒客酵素亮白牙膏-绿色包装.png"
+    ]
+    assert "视觉摘要" in consumer_config["document_summary"]
+    assert "#23a65a" in consumer_config["document_summary"]
 
 
 def test_consumer_build_with_uploaded_material_produces_workspace_findings(tmp_path, monkeypatch):

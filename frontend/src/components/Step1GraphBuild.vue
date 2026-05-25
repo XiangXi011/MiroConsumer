@@ -6,7 +6,7 @@
         <div class="card-header">
           <div class="step-info">
             <span class="step-num">01</span>
-            <span class="step-title">{{ $t('step1.ontologyGeneration') }}</span>
+            <span class="step-title">整理测试素材</span>
           </div>
           <div class="step-status">
             <span v-if="currentPhase > 0" class="badge success">{{ $t('step1.ontologyCompleted') }}</span>
@@ -16,10 +16,8 @@
         </div>
         
         <div class="card-content">
-          <p class="api-note">POST /api/graph/ontology/generate</p>
-          <p class="description">
-            {{ $t('step1.ontologyDesc') }}
-          </p>
+          <p v-if="showTechnical" class="api-note">POST /api/graph/ontology/generate</p>
+          <p class="description">系统正在把 brief、上传材料和背景信息整理成后续测试可使用的研究上下文。</p>
 
           <!-- Loading / Progress -->
           <div v-if="currentPhase === 0 && ontologyProgress" class="progress-section">
@@ -74,7 +72,7 @@
           </div>
 
           <!-- Generated Entity Tags -->
-          <div v-if="projectData?.ontology?.entity_types" class="tags-container" :class="{ 'dimmed': selectedOntologyItem }">
+          <div v-if="showTechnical && projectData?.ontology?.entity_types" class="tags-container" :class="{ 'dimmed': selectedOntologyItem }">
             <span class="tag-label">GENERATED ENTITY TYPES</span>
             <div class="tags-list">
               <span 
@@ -89,7 +87,7 @@
           </div>
 
           <!-- Generated Relation Tags -->
-          <div v-if="projectData?.ontology?.edge_types" class="tags-container" :class="{ 'dimmed': selectedOntologyItem }">
+          <div v-if="showTechnical && projectData?.ontology?.edge_types" class="tags-container" :class="{ 'dimmed': selectedOntologyItem }">
             <span class="tag-label">GENERATED RELATION TYPES</span>
             <div class="tags-list">
               <span 
@@ -110,7 +108,7 @@
         <div class="card-header">
           <div class="step-info">
             <span class="step-num">02</span>
-            <span class="step-title">{{ $t('step1.graphRagBuild') }}</span>
+            <span class="step-title">构建研究上下文</span>
           </div>
           <div class="step-status">
             <span v-if="currentPhase > 1" class="badge success">{{ $t('step1.ontologyCompleted') }}</span>
@@ -120,24 +118,22 @@
         </div>
 
         <div class="card-content">
-          <p class="api-note">POST /api/graph/build</p>
-          <p class="description">
-            {{ $t('step1.graphRagDesc') }}
-          </p>
+          <p v-if="showTechnical" class="api-note">POST /api/graph/build</p>
+          <p class="description">系统会提炼素材中的人群、场景、卖点、风险和证据，用于后续消费者传播测试。</p>
           
           <!-- Stats Cards -->
           <div class="stats-grid">
             <div class="stat-card">
               <span class="stat-value">{{ graphStats.nodes }}</span>
-              <span class="stat-label">{{ $t('step1.entityNodes') }}</span>
+              <span class="stat-label">业务要点</span>
             </div>
             <div class="stat-card">
               <span class="stat-value">{{ graphStats.edges }}</span>
-              <span class="stat-label">{{ $t('step1.relationEdges') }}</span>
+              <span class="stat-label">关联线索</span>
             </div>
             <div class="stat-card">
               <span class="stat-value">{{ graphStats.types }}</span>
-              <span class="stat-label">{{ $t('step1.schemaTypes') }}</span>
+              <span class="stat-label">信息类别</span>
             </div>
           </div>
         </div>
@@ -148,7 +144,7 @@
         <div class="card-header">
           <div class="step-info">
             <span class="step-num">03</span>
-            <span class="step-title">{{ $t('step1.buildComplete') }}</span>
+            <span class="step-title">进入消费者画像准备</span>
           </div>
           <div class="step-status">
             <span v-if="currentPhase >= 2" class="badge accent">{{ $t('step1.inProgress') }}</span>
@@ -156,15 +152,15 @@
         </div>
         
         <div class="card-content">
-          <p class="api-note">POST /api/simulation/create</p>
-          <p class="description">{{ $t('step1.buildCompleteDesc') }}</p>
+          <p v-if="showTechnical" class="api-note">POST /api/simulation/create</p>
+          <p class="description">测试素材已准备完成后，下一步会生成消费者画像、场景和初始讨论线索。</p>
           <button 
             class="action-btn" 
             :disabled="currentPhase < 2 || creatingSimulation"
             @click="handleEnterEnvSetup"
           >
             <span v-if="creatingSimulation" class="spinner-sm"></span>
-            {{ creatingSimulation ? $t('step1.creating') : $t('step1.enterEnvSetup') + ' ➝' }}
+            {{ creatingSimulation ? '正在创建测试...' : '继续生成消费者画像' }}
           </button>
           <div v-if="createError" class="create-error" role="alert">
             {{ createError }}
@@ -174,7 +170,7 @@
     </div>
 
     <!-- Bottom Info / Logs -->
-    <div class="system-logs">
+    <div v-if="showTechnical" class="system-logs">
       <div class="log-header">
         <span class="log-title">SYSTEM DASHBOARD</span>
         <span class="log-id">{{ projectData?.project_id || 'NO_PROJECT' }}</span>
@@ -205,7 +201,8 @@ const props = defineProps({
   ontologyProgress: Object,
   buildProgress: Object,
   graphData: Object,
-  systemLogs: { type: Array, default: () => [] }
+  systemLogs: { type: Array, default: () => [] },
+  showTechnical: { type: Boolean, default: false }
 })
 
 defineEmits(['next-step'])
@@ -283,7 +280,7 @@ watch(() => props.systemLogs.length, () => {
 <style scoped>
 .workbench-panel {
   height: 100%;
-  background-color: #FAFAFA;
+  background-color: var(--mc-bg-canvas);
   display: flex;
   flex-direction: column;
   position: relative;
@@ -300,18 +297,18 @@ watch(() => props.systemLogs.length, () => {
 }
 
 .step-card {
-  background: #FFF;
-  border-radius: 8px;
+  background: var(--mc-surface);
+  border-radius: var(--mc-radius-card);
   padding: 20px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-  border: 1px solid #EAEAEA;
+  box-shadow: var(--mc-shadow-subtle);
+  border: 1px solid var(--mc-border);
   transition: all 0.3s ease;
   position: relative; /* For absolute overlay */
 }
 
 .step-card.active {
-  border-color: #FF5722;
-  box-shadow: 0 4px 12px rgba(255, 87, 34, 0.08);
+  border-color: var(--mc-accent);
+  box-shadow: var(--mc-shadow-card);
 }
 
 .card-header {
@@ -328,15 +325,15 @@ watch(() => props.systemLogs.length, () => {
 }
 
 .step-num {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--mc-font-mono);
   font-size: 20px;
   font-weight: 700;
-  color: #E0E0E0;
+  color: var(--mc-border-strong);
 }
 
 .step-card.active .step-num,
 .step-card.completed .step-num {
-  color: #000;
+  color: var(--mc-accent);
 }
 
 .step-title {
@@ -353,21 +350,21 @@ watch(() => props.systemLogs.length, () => {
   text-transform: uppercase;
 }
 
-.badge.success { background: #E8F5E9; color: #2E7D32; }
-.badge.processing { background: #FF5722; color: #FFF; }
-.badge.accent { background: #FF5722; color: #FFF; }
-.badge.pending { background: #F5F5F5; color: #999; }
+.badge.success { background: var(--mc-status-success-bg); color: var(--mc-status-success); }
+.badge.processing { background: var(--mc-accent); color: #fffdfa; }
+.badge.accent { background: var(--mc-accent); color: #fffdfa; }
+.badge.pending { background: var(--mc-surface-muted); color: var(--mc-text-tertiary); }
 
 .api-note {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--mc-font-mono);
   font-size: 10px;
-  color: #999;
+  color: var(--mc-text-tertiary);
   margin-bottom: 8px;
 }
 
 .description {
   font-size: 12px;
-  color: #666;
+  color: var(--mc-text-secondary);
   line-height: 1.5;
   margin-bottom: 16px;
 }
@@ -386,7 +383,7 @@ watch(() => props.systemLogs.length, () => {
 .tag-label {
   display: block;
   font-size: 10px;
-  color: #AAA;
+  color: var(--mc-text-tertiary);
   margin-bottom: 8px;
   font-weight: 600;
 }
@@ -398,13 +395,13 @@ watch(() => props.systemLogs.length, () => {
 }
 
 .entity-tag {
-  background: #F5F5F5;
-  border: 1px solid #EEE;
+  background: var(--mc-surface-muted);
+  border: 1px solid var(--mc-border);
   padding: 4px 10px;
   border-radius: 4px;
   font-size: 11px;
-  color: #333;
-  font-family: 'JetBrains Mono', monospace;
+  color: var(--mc-text-primary);
+  font-family: var(--mc-font-mono);
   transition: all 0.2s;
 }
 
@@ -413,8 +410,8 @@ watch(() => props.systemLogs.length, () => {
 }
 
 .entity-tag.clickable:hover {
-    background: #E0E0E0;
-    border-color: #CCC;
+    background: var(--mc-accent-wash);
+    border-color: var(--mc-accent);
 }
 
 /* Ontology Detail Overlay */
@@ -424,12 +421,12 @@ watch(() => props.systemLogs.length, () => {
     left: 20px;
     right: 20px;
     bottom: 20px;
-    background: rgba(255, 255, 255, 0.98);
+    background: rgba(255, 253, 250, 0.98);
     backdrop-filter: blur(4px);
     z-index: 10;
-    border: 1px solid #EAEAEA;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.05);
-    border-radius: 6px;
+    border: 1px solid var(--mc-border);
+    box-shadow: var(--mc-shadow-card);
+    border-radius: var(--mc-radius-card);
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -443,8 +440,8 @@ watch(() => props.systemLogs.length, () => {
     justify-content: space-between;
     align-items: center;
     padding: 12px 16px;
-    border-bottom: 1px solid #EAEAEA;
-    background: #FAFAFA;
+    border-bottom: 1px solid var(--mc-border);
+    background: var(--mc-surface-muted);
 }
 
 .detail-title-group {
@@ -456,8 +453,8 @@ watch(() => props.systemLogs.length, () => {
 .detail-type-badge {
     font-size: 9px;
     font-weight: 700;
-    color: #FFF;
-    background: #000;
+    color: #fffdfa;
+    background: var(--mc-accent);
     padding: 2px 6px;
     border-radius: 2px;
     text-transform: uppercase;
@@ -466,20 +463,20 @@ watch(() => props.systemLogs.length, () => {
 .detail-name {
     font-size: 14px;
     font-weight: 700;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--mc-font-mono);
 }
 
 .close-btn {
     background: none;
     border: none;
     font-size: 18px;
-    color: #999;
+    color: var(--mc-text-tertiary);
     cursor: pointer;
     line-height: 1;
 }
 
 .close-btn:hover {
-    color: #333;
+    color: var(--mc-text-primary);
 }
 
 .detail-body {
@@ -490,11 +487,11 @@ watch(() => props.systemLogs.length, () => {
 
 .detail-desc {
     font-size: 12px;
-    color: #444;
+    color: var(--mc-text-secondary);
     line-height: 1.5;
     margin-bottom: 16px;
     padding-bottom: 12px;
-    border-bottom: 1px dashed #EAEAEA;
+    border-bottom: 1px dashed var(--mc-border);
 }
 
 .detail-section {
@@ -505,7 +502,7 @@ watch(() => props.systemLogs.length, () => {
     display: block;
     font-size: 10px;
     font-weight: 600;
-    color: #AAA;
+    color: var(--mc-text-tertiary);
     margin-bottom: 8px;
 }
 
@@ -522,23 +519,23 @@ watch(() => props.systemLogs.length, () => {
     gap: 6px;
     align-items: baseline;
     padding: 4px;
-    background: #F9F9F9;
+    background: var(--mc-surface-muted);
     border-radius: 4px;
 }
 
 .attr-name {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--mc-font-mono);
     font-weight: 600;
-    color: #000;
+    color: var(--mc-text-primary);
 }
 
 .attr-type {
-    color: #999;
+    color: var(--mc-text-tertiary);
     font-size: 10px;
 }
 
 .attr-desc {
-    color: #555;
+    color: var(--mc-text-secondary);
     flex: 1;
     min-width: 150px;
 }
@@ -551,11 +548,11 @@ watch(() => props.systemLogs.length, () => {
 
 .example-tag {
     font-size: 11px;
-    background: #FFF;
-    border: 1px solid #E0E0E0;
+    background: var(--mc-surface);
+    border: 1px solid var(--mc-border);
     padding: 3px 8px;
     border-radius: 12px;
-    color: #555;
+    color: var(--mc-text-secondary);
 }
 
 .conn-item {
@@ -564,18 +561,18 @@ watch(() => props.systemLogs.length, () => {
     gap: 8px;
     font-size: 11px;
     padding: 6px;
-    background: #F5F5F5;
+    background: var(--mc-surface-muted);
     border-radius: 4px;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--mc-font-mono);
 }
 
 .conn-node {
     font-weight: 600;
-    color: #333;
+    color: var(--mc-text-primary);
 }
 
 .conn-arrow {
-    color: #BBB;
+    color: var(--mc-text-tertiary);
 }
 
 /* Step 02 Stats */
@@ -583,7 +580,7 @@ watch(() => props.systemLogs.length, () => {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
   gap: 12px;
-  background: #F9F9F9;
+  background: var(--mc-surface-muted);
   padding: 16px;
   border-radius: 6px;
 }
@@ -596,13 +593,13 @@ watch(() => props.systemLogs.length, () => {
   display: block;
   font-size: 20px;
   font-weight: 700;
-  color: #000;
-  font-family: 'JetBrains Mono', monospace;
+  color: var(--mc-text-primary);
+  font-family: var(--mc-font-mono);
 }
 
 .stat-label {
   font-size: 9px;
-  color: #999;
+  color: var(--mc-text-tertiary);
   text-transform: uppercase;
   margin-top: 4px;
   display: block;
@@ -611,8 +608,8 @@ watch(() => props.systemLogs.length, () => {
 /* Step 03 Button */
 .action-btn {
   width: 100%;
-  background: #000;
-  color: #FFF;
+  background: var(--mc-accent);
+  color: #fffdfa;
   border: none;
   padding: 14px;
   border-radius: 4px;
@@ -627,17 +624,17 @@ watch(() => props.systemLogs.length, () => {
 }
 
 .action-btn:disabled {
-  background: #CCC;
+  background: var(--mc-border);
   cursor: not-allowed;
 }
 
 .create-error {
   margin-top: 10px;
   padding: 10px 12px;
-  border: 1px solid #F5C2C7;
+  border: 1px solid rgba(180, 35, 24, 0.22);
   border-radius: 4px;
-  background: #FFF5F5;
-  color: #B42318;
+  background: var(--mc-status-error-bg);
+  color: var(--mc-status-error);
   font-size: 12px;
   line-height: 1.4;
 }
@@ -647,15 +644,15 @@ watch(() => props.systemLogs.length, () => {
   align-items: center;
   gap: 10px;
   font-size: 12px;
-  color: #FF5722;
+  color: var(--mc-accent);
   margin-bottom: 12px;
 }
 
 .spinner-sm {
   width: 14px;
   height: 14px;
-  border: 2px solid #FFCCBC;
-  border-top-color: #FF5722;
+  border: 2px solid var(--mc-accent-soft);
+  border-top-color: var(--mc-accent);
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
@@ -664,22 +661,22 @@ watch(() => props.systemLogs.length, () => {
 
 /* System Logs */
 .system-logs {
-  background: #000;
-  color: #DDD;
+  background: #211f1a;
+  color: #eee9dd;
   padding: 16px;
-  font-family: 'JetBrains Mono', monospace;
-  border-top: 1px solid #222;
+  font-family: var(--mc-font-mono);
+  border-top: 1px solid #39352c;
   flex-shrink: 0;
 }
 
 .log-header {
   display: flex;
   justify-content: space-between;
-  border-bottom: 1px solid #333;
+  border-bottom: 1px solid #39352c;
   padding-bottom: 8px;
   margin-bottom: 8px;
   font-size: 10px;
-  color: #888;
+  color: #b9b19f;
 }
 
 .log-content {
@@ -696,7 +693,7 @@ watch(() => props.systemLogs.length, () => {
 }
 
 .log-content::-webkit-scrollbar-thumb {
-  background: #333;
+  background: #5a5143;
   border-radius: 2px;
 }
 
@@ -708,12 +705,12 @@ watch(() => props.systemLogs.length, () => {
 }
 
 .log-time {
-  color: #666;
+  color: #b9b19f;
   min-width: 75px;
 }
 
 .log-msg {
-  color: #CCC;
+  color: #eee9dd;
   word-break: break-all;
 }
 </style>

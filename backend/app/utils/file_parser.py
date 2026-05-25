@@ -1,6 +1,6 @@
 """
 文件解析工具
-支持PDF、Markdown、TXT文件的文本提取
+支持PDF、Markdown、TXT文件的文本提取，以及包装图片素材的元信息提取
 """
 
 import os
@@ -61,7 +61,8 @@ def _read_text_with_fallback(file_path: str) -> str:
 class FileParser:
     """文件解析器"""
     
-    SUPPORTED_EXTENSIONS = {'.pdf', '.md', '.markdown', '.txt'}
+    IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.webp'}
+    SUPPORTED_EXTENSIONS = {'.pdf', '.md', '.markdown', '.txt', *IMAGE_EXTENSIONS}
     
     @classmethod
     def extract_text(cls, file_path: str) -> str:
@@ -90,6 +91,8 @@ class FileParser:
             return cls._extract_from_md(file_path)
         elif suffix == '.txt':
             return cls._extract_from_txt(file_path)
+        elif suffix in cls.IMAGE_EXTENSIONS:
+            return cls._extract_from_image(file_path)
         
         raise ValueError(f"无法处理的文件格式: {suffix}")
     
@@ -119,6 +122,53 @@ class FileParser:
     def _extract_from_txt(file_path: str) -> str:
         """从TXT提取文本，支持自动编码检测"""
         return _read_text_with_fallback(file_path)
+
+    @staticmethod
+    def _extract_from_image(file_path: str) -> str:
+        """为包装图片生成可进入研究上下文的素材说明。"""
+        path = Path(file_path)
+        try:
+            from PIL import Image
+        except ImportError:
+            Image = None
+
+        image_meta = []
+        visual_summary = []
+        if Image is not None:
+            try:
+                with Image.open(file_path) as image:
+                    width, height = image.size
+                    orientation = "方形包装图"
+                    if width > height:
+                        orientation = "横版包装图"
+                    elif height > width:
+                        orientation = "竖版包装图"
+                    dominant_colors = _dominant_hex_colors(image)
+                    if dominant_colors:
+                        visual_summary.append(
+                            f"视觉摘要：{orientation}，主色 {dominant_colors[0]}，主要配色 {', '.join(dominant_colors)}"
+                        )
+                    else:
+                        visual_summary.append(f"视觉摘要：{orientation}")
+                    image_meta = [
+                        f"格式：{image.format or path.suffix.lstrip('.').upper()}",
+                        f"尺寸：{width}x{height}",
+                        f"色彩模式：{image.mode}",
+                    ]
+            except Exception:
+                image_meta = [f"格式：{path.suffix.lstrip('.').upper()}"]
+        else:
+            image_meta = [f"格式：{path.suffix.lstrip('.').upper()}"]
+
+        size_kb = max(1, round(path.stat().st_size / 1024)) if path.exists() else 0
+        return "\n".join([
+            "包装/图片素材",
+            f"文件名：{path.name}",
+            *image_meta,
+            *visual_summary,
+            f"文件大小：{size_kb} KB",
+            "说明：该文件为消费者测试中的包装视觉素材，重点关注版面、颜色、主视觉、声明和信息层级。",
+        ])
     
     @classmethod
     def extract_from_multiple(cls, file_paths: List[str]) -> str:
@@ -186,4 +236,20 @@ def split_text_into_chunks(
         start = end - overlap if end < len(text) else len(text)
     
     return chunks
+
+
+def _dominant_hex_colors(image, max_colors: int = 3) -> List[str]:
+    """Extract a tiny deterministic dominant-color summary for packaging images."""
+    rgb_image = image.convert("RGB")
+    rgb_image.thumbnail((64, 64))
+    colors = rgb_image.getcolors(maxcolors=64 * 64) or []
+    colors.sort(reverse=True, key=lambda item: item[0])
+    result: List[str] = []
+    for _count, (red, green, blue) in colors:
+        hex_color = f"#{red:02x}{green:02x}{blue:02x}"
+        if hex_color not in result:
+            result.append(hex_color)
+        if len(result) >= max_colors:
+            break
+    return result
 

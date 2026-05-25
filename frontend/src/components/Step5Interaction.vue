@@ -1,7 +1,7 @@
 <template>
   <div class="interaction-panel">
     <!-- Main Split Layout -->
-    <div class="main-split-layout">
+    <div class="main-split-layout" :class="{ 'technical-open': showTechnical }">
       <!-- LEFT PANEL: Report Style -->
       <div class="left-panel report-style" ref="leftPanel">
         <div v-if="reportOutline" class="report-content-wrapper">
@@ -9,7 +9,7 @@
           <div class="report-header-block">
             <div class="report-meta">
               <span class="report-tag">{{ isConsumerMode ? $t('consumer.reportTag') : 'Prediction Report' }}</span>
-              <span class="report-id">ID: {{ reportId || 'REF-2024-X92' }}</span>
+              <span v-if="showTechnical" class="report-id">ID: {{ reportId || 'REF-2024-X92' }}</span>
             </div>
             <h1 class="main-title">{{ reportOutline.title }}</h1>
             <p class="sub-title">{{ reportOutline.summary }}</p>
@@ -65,9 +65,9 @@
           </div>
 
           <!-- Consumer Interview Handoff Panel -->
-          <div v-if="interviewHandoffContext" class="handoff-panel">
+          <div v-if="showTechnical && interviewHandoffContext" class="handoff-panel">
             <div class="handoff-panel-header">
-              <span class="handoff-panel-title">Consumer Interview Context</span>
+              <span class="handoff-panel-title">{{ $t('step5.technicalInterviewContext') }}</span>
               <button class="handoff-panel-clear" @click="clearInterviewHandoff">
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
                   <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -107,7 +107,7 @@
             <div class="waiting-ring"></div>
             <div class="waiting-ring"></div>
           </div>
-          <span class="waiting-text">Waiting for Report Agent...</span>
+          <span class="waiting-text">{{ $t('step5.loadingInteraction') }}</span>
         </div>
       </div>
 
@@ -120,8 +120,8 @@
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
           </svg>
           <div class="action-bar-text">
-            <span class="action-bar-title">{{ $t('step5.interactiveTools') }}</span>
-            <span class="action-bar-subtitle mono">{{ $t('step5.agentsAvailable', { count: profiles.length }) }}</span>
+            <span class="action-bar-title">{{ $t('step5.businessTitle') }}</span>
+            <span class="action-bar-subtitle">{{ $t('step5.businessSubtitle', { count: profiles.length }) }}</span>
           </div>
         </div>
           <div class="action-bar-tabs">
@@ -185,7 +185,7 @@
         <div v-if="activeTab === 'chat'" class="chat-container">
 
           <!-- Report Agent Tools Card -->
-          <div v-if="chatTarget === 'report_agent'" class="report-agent-tools-card">
+          <div v-if="showTechnical && chatTarget === 'report_agent'" class="report-agent-tools-card">
             <div class="tools-card-header">
               <div class="tools-card-avatar">R</div>
               <div class="tools-card-info">
@@ -252,7 +252,7 @@
           </div>
 
           <ComparisonSnapshotWorkspace
-            v-if="chatTarget === 'report_agent' && isConsumerMode"
+            v-if="showTechnical && chatTarget === 'report_agent' && isConsumerMode"
             :simulation-id="simulationId"
             :is-consumer-mode="isConsumerMode"
             :comparison-snapshot="comparisonSnapshot"
@@ -261,7 +261,7 @@
           />
 
           <PropagationPathGraph
-            v-if="chatTarget === 'report_agent' && isConsumerMode"
+            v-if="showTechnical && chatTarget === 'report_agent' && isConsumerMode"
             :context="reportContext"
           />
 
@@ -293,7 +293,7 @@
               </div>
             </div>
 
-            <div v-if="consumerSourceCatalog.length > 0 || consumerEnrichedFindings.length > 0" class="consumer-chat-section">
+            <div v-if="showTechnical && (consumerSourceCatalog.length > 0 || consumerEnrichedFindings.length > 0)" class="consumer-chat-section">
               <div class="consumer-chat-label">{{ $t('consumer.sourcesUsed') }}</div>
               <div class="consumer-source-strip">
                 <div v-for="source in consumerSourceCatalog.slice(0, 4)" :key="source.source_id" class="consumer-source-mini">
@@ -357,7 +357,7 @@
               <div class="message-content">
                 <div class="message-header">
                   <span class="sender-name">
-                    {{ msg.role === 'user' ? 'You' : (chatTarget === 'report_agent' ? 'Report Agent' : (selectedAgent?.username || 'Agent')) }}
+                    {{ msg.role === 'user' ? $t('step5.senderUser') : (chatTarget === 'report_agent' ? $t('step5.reportInsightAssistantName') : (selectedAgent?.username || $t('step5.consumerPersonaFallback'))) }}
                   </span>
                   <span class="message-time">{{ formatTime(msg.timestamp) }}</span>
                 </div>
@@ -403,7 +403,7 @@
         </div>
 
         <!-- Consumer Interview Workspace -->
-        <div v-if="isConsumerMode" class="consumer-interview-workspace">
+        <div v-if="showTechnical && isConsumerMode" class="consumer-interview-workspace">
           <RepresentativeConsumerInterview
             :simulation-id="simulationId"
             :target-context="interviewHandoffContext"
@@ -551,6 +551,7 @@ const props = defineProps({
   reportData: Object,
   projectData: Object,
   comparisonSnapshot: Object,
+  showTechnical: { type: Boolean, default: false },
 })
 
 const emit = defineEmits(['add-log', 'update-status'])
@@ -562,7 +563,7 @@ const showAgentDropdown = ref(false)
 const selectedAgent = ref(null)
 const selectedAgentIndex = ref(null)
 const showFullProfile = ref(true)
-const showToolsDetail = ref(true)
+const showToolsDetail = ref(false)
 
 // Chat State
 const chatInput = ref('')
@@ -1208,14 +1209,14 @@ watch(() => props.simulationId, (newId) => {
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: #F8F9FA;
-  font-family: 'Inter', 'Noto Sans SC', system-ui, sans-serif;
+  background: var(--mc-bg-canvas);
+  font-family: var(--mc-font-body);
   overflow: hidden;
 }
 
 /* Utility Classes */
 .mono {
-  font-family: 'JetBrains Mono', 'SF Mono', 'Monaco', 'Consolas', monospace;
+  font-family: var(--mc-font-mono);
 }
 
 /* Main Split Layout */
@@ -1225,12 +1226,27 @@ watch(() => props.simulationId, (newId) => {
   overflow: hidden;
 }
 
+.main-split-layout:not(.technical-open) .left-panel.report-style {
+  width: 42%;
+  min-width: 360px;
+  padding: 28px 34px 56px;
+  background: var(--mc-bg-subtle);
+}
+
+.main-split-layout:not(.technical-open) .report-content-wrapper {
+  max-width: 620px;
+}
+
+.main-split-layout:not(.technical-open) .right-panel {
+  flex: 1.2;
+}
+
 /* Left Panel - Report Style (与 Step4Report.vue 完全一致) */
 .left-panel.report-style {
   width: 45%;
   min-width: 450px;
-  background: #FFFFFF;
-  border-right: 1px solid #E5E7EB;
+  background: var(--mc-bg-subtle);
+  border-right: 1px solid var(--mc-border);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -1252,11 +1268,11 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .left-panel:hover::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.15);
+  background: rgba(34, 92, 75, 0.18);
 }
 
 .left-panel::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.25);
+  background: rgba(34, 92, 75, 0.28);
 }
 
 /* Report Header */
@@ -1278,8 +1294,8 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .report-tag {
-  background: #000000;
-  color: #FFFFFF;
+  background: var(--mc-accent);
+  color: #fffdfa;
   font-size: 11px;
   font-weight: 700;
   padding: 4px 8px;
@@ -1289,26 +1305,26 @@ watch(() => props.simulationId, (newId) => {
 
 .report-id {
   font-size: 11px;
-  color: #9CA3AF;
+  color: var(--mc-text-tertiary);
   font-weight: 500;
   letter-spacing: 0.02em;
 }
 
 .main-title {
-  font-family: 'Times New Roman', Times, serif;
+  font-family: var(--mc-font-display);
   font-size: 36px;
   font-weight: 700;
-  color: #111827;
+  color: var(--mc-text-primary);
   line-height: 1.2;
   margin: 0 0 16px 0;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
 }
 
 .sub-title {
-  font-family: 'Times New Roman', Times, serif;
+  font-family: var(--mc-font-body);
   font-size: 16px;
-  color: #6B7280;
-  font-style: italic;
+  color: var(--mc-text-secondary);
+  font-style: normal;
   line-height: 1.6;
   margin: 0 0 30px 0;
   font-weight: 400;
@@ -1316,7 +1332,7 @@ watch(() => props.simulationId, (newId) => {
 
 .header-divider {
   height: 1px;
-  background: #E5E7EB;
+  background: var(--mc-border);
   width: 100%;
 }
 
@@ -1348,12 +1364,12 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .section-header-row.clickable:hover {
-  background-color: #F9FAFB;
+  background-color: var(--mc-surface-muted);
 }
 
 .collapse-icon {
   margin-left: auto;
-  color: #9CA3AF;
+  color: var(--mc-text-tertiary);
   transition: transform 0.3s ease;
   flex-shrink: 0;
   align-self: center;
@@ -1364,18 +1380,18 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .section-number {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--mc-font-mono);
   font-size: 16px;
-  color: #E5E7EB;
+  color: var(--mc-border);
   font-weight: 500;
   transition: color 0.3s ease;
 }
 
 .section-title {
-  font-family: 'Times New Roman', Times, serif;
+  font-family: var(--mc-font-display);
   font-size: 24px;
   font-weight: 600;
-  color: #111827;
+  color: var(--mc-text-primary);
   margin: 0;
   transition: color 0.3s ease;
 }
@@ -1385,17 +1401,17 @@ watch(() => props.simulationId, (newId) => {
   color: #E5E7EB;
 }
 .report-section-item.is-pending .section-title {
-  color: #D1D5DB;
+  color: var(--mc-border-strong);
 }
 
 .report-section-item.is-active .section-number,
 .report-section-item.is-completed .section-number {
-  color: #9CA3AF;
+  color: var(--mc-text-tertiary);
 }
 
 .report-section-item.is-active .section-title,
 .report-section-item.is-completed .section-title {
-  color: #111827;
+  color: var(--mc-text-primary);
 }
 
 .section-body {
@@ -1405,10 +1421,10 @@ watch(() => props.simulationId, (newId) => {
 
 /* Generated Content */
 .generated-content {
-  font-family: 'Inter', 'Noto Sans SC', system-ui, sans-serif;
+  font-family: var(--mc-font-body);
   font-size: 14px;
   line-height: 1.8;
-  color: #374151;
+  color: var(--mc-text-secondary);
 }
 
 .generated-content :deep(p) {
@@ -1418,14 +1434,14 @@ watch(() => props.simulationId, (newId) => {
 .generated-content :deep(.md-h2),
 .generated-content :deep(.md-h3),
 .generated-content :deep(.md-h4) {
-  font-family: 'Times New Roman', Times, serif;
-  color: #111827;
+  font-family: var(--mc-font-display);
+  color: var(--mc-text-primary);
   margin-top: 1.5em;
   margin-bottom: 0.8em;
   font-weight: 700;
 }
 
-.generated-content :deep(.md-h2) { font-size: 20px; border-bottom: 1px solid #F3F4F6; padding-bottom: 8px; }
+.generated-content :deep(.md-h2) { font-size: 20px; border-bottom: 1px solid var(--mc-border); padding-bottom: 8px; }
 .generated-content :deep(.md-h3) { font-size: 18px; }
 .generated-content :deep(.md-h4) { font-size: 16px; }
 
@@ -1440,28 +1456,28 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .generated-content :deep(.md-quote) {
-  border-left: 3px solid #E5E7EB;
+  border-left: 3px solid var(--mc-accent-soft);
   padding-left: 16px;
   margin: 1.5em 0;
-  color: #6B7280;
+  color: var(--mc-text-secondary);
   font-style: italic;
-  font-family: 'Times New Roman', Times, serif;
+  font-family: var(--mc-font-body);
 }
 
 .generated-content :deep(.code-block) {
-  background: #F9FAFB;
+  background: var(--mc-surface-muted);
   padding: 12px;
   border-radius: 6px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--mc-font-mono);
   font-size: 12px;
   overflow-x: auto;
   margin: 1em 0;
-  border: 1px solid #E5E7EB;
+  border: 1px solid var(--mc-border);
 }
 
 .generated-content :deep(strong) {
   font-weight: 600;
-  color: #111827;
+  color: var(--mc-text-primary);
 }
 
 /* Loading State */
@@ -1469,7 +1485,7 @@ watch(() => props.simulationId, (newId) => {
   display: flex;
   align-items: center;
   gap: 10px;
-  color: #6B7280;
+  color: var(--mc-text-secondary);
   font-size: 14px;
   margin-top: 4px;
 }
@@ -1484,9 +1500,9 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .loading-text {
-  font-family: 'Times New Roman', Times, serif;
+  font-family: var(--mc-font-body);
   font-size: 15px;
-  color: #4B5563;
+  color: var(--mc-text-secondary);
 }
 
 @keyframes spin {
@@ -1495,7 +1511,7 @@ watch(() => props.simulationId, (newId) => {
 
 /* Content Styles Override */
 .generated-content :deep(.md-h2) {
-  font-family: 'Times New Roman', Times, serif;
+  font-family: var(--mc-font-display);
   font-size: 18px;
   margin-top: 0;
 }
@@ -1509,7 +1525,7 @@ watch(() => props.simulationId, (newId) => {
   justify-content: center;
   gap: 20px;
   padding: 40px;
-  color: #9CA3AF;
+  color: var(--mc-text-tertiary);
 }
 
 .waiting-animation {
@@ -1549,7 +1565,7 @@ watch(() => props.simulationId, (newId) => {
   flex: 1;
   display: flex;
   flex-direction: column;
-  background: #FFFFFF;
+  background: var(--mc-bg-subtle);
   overflow: hidden;
 }
 
@@ -1559,8 +1575,8 @@ watch(() => props.simulationId, (newId) => {
   align-items: center;
   justify-content: space-between;
   padding: 14px 20px;
-  border-bottom: 1px solid #E5E7EB;
-  background: linear-gradient(180deg, #FFFFFF 0%, #FAFBFC 100%);
+  border-bottom: 1px solid var(--mc-border);
+  background: linear-gradient(180deg, var(--mc-surface) 0%, var(--mc-bg-subtle) 100%);
   gap: 16px;
 }
 
@@ -1572,7 +1588,7 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .action-bar-icon {
-  color: #1F2937;
+  color: var(--mc-accent);
   flex-shrink: 0;
 }
 
@@ -1585,17 +1601,17 @@ watch(() => props.simulationId, (newId) => {
 .action-bar-title {
   font-size: 13px;
   font-weight: 600;
-  color: #1F2937;
+  color: var(--mc-text-primary);
   letter-spacing: -0.01em;
 }
 
 .action-bar-subtitle {
   font-size: 11px;
-  color: #9CA3AF;
+  color: var(--mc-text-secondary);
 }
 
 .action-bar-subtitle.mono {
-  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-family: var(--mc-font-mono);
 }
 
 .action-bar-tabs {
@@ -1613,24 +1629,24 @@ watch(() => props.simulationId, (newId) => {
   padding: 8px 14px;
   font-size: 12px;
   font-weight: 500;
-  color: #6B7280;
-  background: #F3F4F6;
-  border: 1px solid transparent;
-  border-radius: 20px;
+  color: var(--mc-text-secondary);
+  background: var(--mc-surface);
+  border: 1px solid var(--mc-border);
+  border-radius: var(--mc-radius-pill);
   cursor: pointer;
   transition: all 0.2s ease;
   white-space: nowrap;
 }
 
 .tab-pill:hover {
-  background: #E5E7EB;
-  color: #374151;
+  background: var(--mc-accent-wash);
+  color: var(--mc-accent);
 }
 
 .tab-pill.active {
-  background: #1F2937;
-  color: #FFFFFF;
-  box-shadow: 0 2px 8px rgba(31, 41, 55, 0.15);
+  background: var(--mc-accent);
+  color: #fffdfa;
+  box-shadow: 0 8px 18px rgba(34, 92, 75, 0.16);
 }
 
 .tab-pill svg {
@@ -1797,11 +1813,11 @@ watch(() => props.simulationId, (newId) => {
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: #FF4500;
+  color: var(--mc-accent);
 }
 
 .consumer-chat-text {
-  color: #374151;
+  color: var(--mc-text-primary);
   line-height: 1.6;
 }
 
@@ -1952,13 +1968,13 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .tool-purple .tool-icon-wrapper {
-  background: rgba(139, 92, 246, 0.1);
-  color: #8B5CF6;
+  background: var(--mc-accent-wash);
+  color: var(--mc-accent);
 }
 
 .tool-blue .tool-icon-wrapper {
-  background: rgba(59, 130, 246, 0.1);
-  color: #3B82F6;
+  background: var(--mc-status-info-bg);
+  color: var(--mc-status-info);
 }
 
 .tool-orange .tool-icon-wrapper {
@@ -2996,6 +3012,49 @@ watch(() => props.simulationId, (newId) => {
   color: #334155;
   font-weight: 500;
   word-break: break-word;
+}
+
+@media (max-width: 980px) {
+  .main-split-layout,
+  .main-split-layout:not(.technical-open) {
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .left-panel.report-style,
+  .main-split-layout:not(.technical-open) .left-panel.report-style {
+    width: 100%;
+    min-width: 0;
+    max-height: 44vh;
+    border-right: none;
+    border-bottom: 1px solid #E5E7EB;
+    padding: 22px 18px 28px;
+  }
+
+  .right-panel {
+    min-height: 56vh;
+  }
+
+  .action-bar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .action-bar-tabs {
+    justify-content: flex-start;
+    width: 100%;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
+  .agent-pill {
+    width: auto;
+    max-width: 220px;
+  }
+
+  .message-content {
+    max-width: 84%;
+  }
 }
 </style>
 

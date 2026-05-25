@@ -4,10 +4,28 @@
       <div v-if="isConsumerMode" class="consumer-step-banner">
         <span class="consumer-step-badge">{{ $t('consumer.badge') }}</span>
         <div class="consumer-step-copy">
-          <strong>{{ $t('consumer.step2.bannerTitle') }}</strong>
+          <strong>正在根据 brief 准备消费者画像和测试场景</strong>
           <span v-if="personaPackMeta"> · {{ personaPackMeta.label }}
             <span v-if="personaPackMeta.personaCount > 0">({{ personaPackMeta.personaCount }} personas)</span>
           </span>
+        </div>
+      </div>
+      <div v-if="isConsumerMode" class="business-setup-summary">
+        <div class="business-summary-card">
+          <span class="summary-label">已生成画像</span>
+          <strong>{{ profiles.length }}</strong>
+        </div>
+        <div class="business-summary-card">
+          <span class="summary-label">目标画像数</span>
+          <strong>{{ expectedTotal || personaPackMeta?.personaCount || '-' }}</strong>
+        </div>
+        <div class="business-summary-card">
+          <span class="summary-label">画像包</span>
+          <strong>{{ personaPackMeta?.label || '默认画像包' }}</strong>
+        </div>
+        <div class="business-summary-card">
+          <span class="summary-label">当前进度</span>
+          <strong>{{ progressMessage || currentStage || '准备中' }}</strong>
         </div>
       </div>
       <!-- Step 01: 模拟实例 -->
@@ -15,7 +33,7 @@
         <div class="card-header">
           <div class="step-info">
             <span class="step-num">01</span>
-            <span class="step-title">{{ $t('step2.simInstanceInit') }}</span>
+            <span class="step-title">创建测试任务</span>
           </div>
           <div class="step-status">
             <span v-if="phase > 0" class="badge success">{{ $t('common.completed') }}</span>
@@ -24,12 +42,10 @@
         </div>
         
         <div class="card-content">
-          <p class="api-note">POST /api/simulation/create</p>
-          <p class="description">
-            {{ $t('step2.simInstanceDesc') }}
-          </p>
+          <p v-if="showTechnical" class="api-note">POST /api/simulation/create</p>
+          <p class="description">系统正在建立这次测试任务，并关联前一步整理好的业务素材。</p>
 
-          <div v-if="simulationId" class="info-card">
+          <div v-if="showTechnical && simulationId" class="info-card">
             <div class="info-row">
               <span class="info-label">Project ID</span>
               <span class="info-value mono">{{ projectData?.project_id }}</span>
@@ -68,7 +84,7 @@
         <div class="card-header">
           <div class="step-info">
             <span class="step-num">02</span>
-            <span class="step-title">{{ $t('step2.generateAgentPersona') }}</span>
+            <span class="step-title">生成消费者画像</span>
           </div>
           <div class="step-status">
             <span v-if="phase > 1" class="badge success">{{ $t('common.completed') }}</span>
@@ -78,17 +94,15 @@
         </div>
 
         <div class="card-content">
-          <p class="api-note">POST /api/simulation/prepare</p>
-          <p class="description">
-            {{ $t('step2.generateAgentPersonaDesc') }}
-          </p>
+          <p v-if="showTechnical" class="api-note">POST /api/simulation/prepare</p>
+          <p class="description">系统会生成一组有不同动机、顾虑、场景和表达方式的代表性消费者。</p>
 
           <!-- [UX-IMPROVE] P2-1: Prepare 失败错误面板 —— 当 prepare 失败时显示错误原因和降级操作 -->
           <div v-if="prepareStatus === 'failed' || prepareStatus === 'error'" class="error-panel">
             <div class="error-icon">⚠️</div>
             <div class="error-content">
               <h4 class="error-title">{{ $t('step2.prepareFailedTitle') || 'Prepare Failed' }}</h4>
-              <p class="error-message">{{ prepareErrorMessage || $t('step2.prepareFailedDesc') || 'Agent persona generation encountered an error.' }}</p>
+              <p class="error-message">{{ prepareErrorMessage || $t('step2.prepareFailedDesc') || '消费者画像生成遇到问题。' }}</p>
               <div class="error-actions">
                 <button class="btn btn-primary" @click="retryPrepare" :disabled="isRetrying">
                   <span v-if="isRetrying">{{ $t('step2.retrying') || 'Retrying...' }}</span>
@@ -105,22 +119,22 @@
           <div v-if="profiles.length > 0" class="stats-grid">
             <div class="stat-card">
               <span class="stat-value">{{ profiles.length }}</span>
-              <span class="stat-label">{{ $t('step2.currentAgentCount') }}</span>
+              <span class="stat-label">已生成消费者</span>
             </div>
             <div class="stat-card">
               <span class="stat-value">{{ expectedTotal || '-' }}</span>
-              <span class="stat-label">{{ $t('step2.expectedAgentTotal') }}</span>
+              <span class="stat-label">目标数量</span>
             </div>
             <div class="stat-card">
               <span class="stat-value">{{ totalTopicsCount }}</span>
-              <span class="stat-label">{{ $t('step2.relatedTopicsCount') }}</span>
+              <span class="stat-label">兴趣/顾虑线索</span>
             </div>
           </div>
 
           <!-- Profiles List Preview -->
           <div v-if="profiles.length > 0" class="profiles-preview">
             <div class="preview-header">
-              <span class="preview-title">{{ $t('step2.generatedAgentPersonas') }}</span>
+              <span class="preview-title">代表性消费者预览</span>
             </div>
             <div class="profiles-list">
               <div 
@@ -158,7 +172,7 @@
         <div class="card-header">
           <div class="step-info">
             <span class="step-num">03</span>
-            <span class="step-title">{{ $t('step2.dualPlatformConfig') }}</span>
+            <span class="step-title">准备测试场景</span>
           </div>
           <div class="step-status">
             <span v-if="phase > 2" class="badge success">{{ $t('common.completed') }}</span>
@@ -168,10 +182,8 @@
         </div>
 
         <div class="card-content">
-          <p class="api-note">POST /api/simulation/prepare</p>
-          <p class="description">
-            {{ $t('step2.dualPlatformConfigDesc') }}
-          </p>
+          <p v-if="showTechnical" class="api-note">POST /api/simulation/prepare</p>
+          <p class="description">系统正在把消费者画像、素材和研究目标组合成可运行的传播测试场景。</p>
           
           <!-- Config Preview -->
           <div v-if="simulationConfig" class="config-detail-panel">
@@ -194,7 +206,7 @@
               </div>
               <p class="research-access-hint">{{ $t('consumer.accessPolicy.round0Hint') }} · {{ $t('consumer.accessPolicy.propagationHint') }}</p>
             </div>
-            <div v-if="isConsumerMode && Object.keys(consumerResearchSnapshot).length > 0" class="consumer-research-panel">
+            <div v-if="showTechnical && isConsumerMode && Object.keys(consumerResearchSnapshot).length > 0" class="consumer-research-panel">
               <div class="consumer-research-label">{{ $t('consumer.researchSnapshot') }}</div>
               <div class="snapshot-grid">
                 <div class="snapshot-item">
@@ -275,7 +287,7 @@
             </div>
 
             <!-- Agent 配置 -->
-            <div class="config-block">
+            <div v-if="showTechnical" class="config-block">
               <div class="config-block-header">
                 <span class="config-block-title">{{ $t('step2.agentConfig') }}</span>
                 <span class="config-block-badge">{{ simulationConfig.agent_configs?.length || 0 }} {{ $t('common.items') }}</span>
@@ -360,7 +372,7 @@
             </div>
 
             <!-- 平台配置 -->
-            <div class="config-block">
+            <div v-if="showTechnical" class="config-block">
               <div class="config-block-header">
                 <span class="config-block-title">{{ $t('step2.recommendAlgoConfig') }}</span>
               </div>
@@ -423,7 +435,7 @@
             </div>
 
             <!-- LLM 配置推理 -->
-            <div v-if="simulationConfig.generation_reasoning" class="config-block">
+            <div v-if="showTechnical && simulationConfig.generation_reasoning" class="config-block">
               <div class="config-block-header">
                 <span class="config-block-title">{{ $t('step2.llmConfigReasoning') }}</span>
               </div>
@@ -446,7 +458,7 @@
         <div class="card-header">
           <div class="step-info">
             <span class="step-num">04</span>
-            <span class="step-title">{{ $t('step2.initialActivation') }}</span>
+            <span class="step-title">准备初始讨论</span>
           </div>
           <div class="step-status">
             <span v-if="phase > 3" class="badge success">{{ $t('common.completed') }}</span>
@@ -456,10 +468,8 @@
         </div>
 
         <div class="card-content">
-          <p class="api-note">POST /api/simulation/prepare</p>
-          <p class="description">
-            {{ $t('step2.initialActivationDesc') }}
-          </p>
+          <p v-if="showTechnical" class="api-note">POST /api/simulation/prepare</p>
+          <p class="description">系统会准备第一批讨论触发点，让消费者测试从真实的初见反应开始。</p>
 
           <div v-if="simulationConfig?.event_config" class="orchestration-content">
             <!-- 叙事方向 -->
@@ -518,7 +528,7 @@
         <div class="card-header">
           <div class="step-info">
             <span class="step-num">05</span>
-            <span class="step-title">{{ $t('step2.setupComplete') }}</span>
+            <span class="step-title">开始传播测试</span>
           </div>
           <div class="step-status">
             <span v-if="phase >= 4" class="badge processing">{{ $t('step1.inProgress') }}</span>
@@ -527,8 +537,8 @@
         </div>
 
         <div class="card-content">
-          <p class="api-note">POST /api/simulation/start</p>
-          <p class="description">{{ $t('step2.setupCompleteDesc') }}</p>
+          <p v-if="showTechnical" class="api-note">POST /api/simulation/start</p>
+          <p class="description">消费者画像和测试场景已准备好，可以开始观察传播、共鸣、质疑和误读。</p>
           
           <!-- 模拟轮数配置 - 只有在配置生成完成且轮数计算出来后才显示 -->
           <div v-if="simulationConfig && autoGeneratedRounds" class="rounds-config-section">
@@ -711,7 +721,7 @@
     </Transition>
 
     <!-- Bottom Info / Logs -->
-    <div class="system-logs">
+    <div v-if="showTechnical" class="system-logs">
       <div class="log-header">
         <span class="log-title">SYSTEM DASHBOARD</span>
         <span class="log-id">{{ simulationId || 'NO_SIMULATION' }}</span>
@@ -745,7 +755,8 @@ const props = defineProps({
   simulationId: String,  // 从父组件传入
   projectData: Object,
   graphData: Object,
-  systemLogs: Array
+  systemLogs: Array,
+  showTechnical: { type: Boolean, default: false }
 })
 
 // [UX-IMPROVE] P2-1: 新增 'mode-change' 事件用于降级操作
@@ -1313,8 +1324,8 @@ onUnmounted(() => {
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: #FAFAFA;
-  font-family: 'Space Grotesk', 'Noto Sans SC', system-ui, sans-serif;
+  background: var(--mc-bg-canvas);
+  font-family: var(--mc-font-body);
 }
 
 .scroll-container {
@@ -1327,8 +1338,9 @@ onUnmounted(() => {
 }
 
 .consumer-step-banner {
-  border: 1px solid #FED7AA;
-  background: linear-gradient(135deg, #FFF7ED 0%, #FFFFFF 100%);
+  border: 1px solid var(--mc-border);
+  background: linear-gradient(135deg, var(--mc-accent-wash) 0%, var(--mc-surface) 100%);
+  border-radius: var(--mc-radius-card);
   padding: 16px 18px;
   display: flex;
   gap: 14px;
@@ -1336,8 +1348,8 @@ onUnmounted(() => {
 }
 
 .consumer-step-badge {
-  background: #FF4500;
-  color: #FFF;
+  background: var(--mc-accent);
+  color: #fffdfa;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -1346,24 +1358,56 @@ onUnmounted(() => {
 }
 
 .consumer-step-copy {
-  color: #7C2D12;
+  color: var(--mc-accent-strong);
   line-height: 1.6;
+}
+
+.business-setup-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.business-summary-card {
+  background: var(--mc-surface);
+  border: 1px solid var(--mc-border);
+  border-radius: var(--mc-radius-card);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.summary-label {
+  color: var(--mc-text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.business-summary-card strong {
+  color: var(--mc-text-primary);
+  font-size: 20px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Step Card */
 .step-card {
-  background: #FFF;
-  border-radius: 8px;
+  background: var(--mc-surface);
+  border-radius: var(--mc-radius-card);
   padding: 20px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-  border: 1px solid #EAEAEA;
+  box-shadow: var(--mc-shadow-subtle);
+  border: 1px solid var(--mc-border);
   transition: all 0.3s ease;
   position: relative;
 }
 
 .step-card.active {
-  border-color: #FF5722;
-  box-shadow: 0 4px 12px rgba(255, 87, 34, 0.08);
+  border-color: var(--mc-accent);
+  box-shadow: var(--mc-shadow-card);
 }
 
 .card-header {
@@ -1380,15 +1424,15 @@ onUnmounted(() => {
 }
 
 .step-num {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--mc-font-mono);
   font-size: 20px;
   font-weight: 700;
-  color: #E0E0E0;
+  color: var(--mc-border-strong);
 }
 
 .step-card.active .step-num,
 .step-card.completed .step-num {
-  color: #000;
+  color: var(--mc-accent);
 }
 
 .step-title {
@@ -1405,25 +1449,25 @@ onUnmounted(() => {
   text-transform: uppercase;
 }
 
-.badge.success { background: #E8F5E9; color: #2E7D32; }
-.badge.processing { background: #FF5722; color: #FFF; }
-.badge.pending { background: #F5F5F5; color: #999; }
-.badge.accent { background: #E3F2FD; color: #1565C0; }
+.badge.success { background: var(--mc-status-success-bg); color: var(--mc-status-success); }
+.badge.processing { background: var(--mc-accent); color: #fffdfa; }
+.badge.pending { background: var(--mc-surface-muted); color: var(--mc-text-tertiary); }
+.badge.accent { background: var(--mc-status-info-bg); color: var(--mc-status-info); }
 
 .card-content {
   /* No extra padding - uses step-card's padding */
 }
 
 .api-note {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--mc-font-mono);
   font-size: 10px;
-  color: #999;
+  color: var(--mc-text-tertiary);
   margin-bottom: 8px;
 }
 
 .description {
   font-size: 12px;
-  color: #666;
+  color: var(--mc-text-secondary);
   line-height: 1.5;
   margin-bottom: 16px;
 }
@@ -1447,8 +1491,8 @@ onUnmounted(() => {
 }
 
 .action-btn.primary {
-  background: #000;
-  color: #FFF;
+  background: var(--mc-accent);
+  color: #fffdfa;
 }
 
 .action-btn.primary:hover:not(:disabled) {
@@ -1456,12 +1500,12 @@ onUnmounted(() => {
 }
 
 .action-btn.secondary {
-  background: #F5F5F5;
-  color: #333;
+  background: var(--mc-surface-muted);
+  color: var(--mc-text-secondary);
 }
 
 .action-btn.secondary:hover:not(:disabled) {
-  background: #E5E5E5;
+  background: var(--mc-accent-wash);
 }
 
 .action-btn:disabled {
@@ -2324,11 +2368,11 @@ onUnmounted(() => {
 
 /* System Logs */
 .system-logs {
-  background: #000;
-  color: #DDD;
+  background: #211b14;
+  color: #eadfcd;
   padding: 16px;
   font-family: 'JetBrains Mono', monospace;
-  border-top: 1px solid #222;
+  border-top: 1px solid rgba(255, 253, 250, 0.12);
   flex-shrink: 0;
 }
 
@@ -2594,7 +2638,7 @@ onUnmounted(() => {
   gap: 8px;
   cursor: pointer;
   padding: 4px 8px 4px 4px;
-  border-radius: 20px;
+  border-radius: var(--mc-radius-pill);
   transition: background 0.2s;
 }
 
@@ -2629,7 +2673,7 @@ onUnmounted(() => {
 }
 
 .switch-control input:checked + .switch-track {
-  background: #000;
+  background: var(--mc-accent);
 }
 
 .switch-control input:checked + .switch-track::after {
@@ -3025,7 +3069,7 @@ onUnmounted(() => {
 }
 
 .btn-primary {
-  background: #3182ce;
+  background: var(--mc-accent);
   color: white;
 }
 

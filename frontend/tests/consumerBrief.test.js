@@ -2,6 +2,7 @@ import { test } from 'vitest'
 import assert from 'node:assert/strict'
 
 import {
+  buildPackagingAssetSummary,
   buildConsumerBrief,
   isConsumerBriefComplete,
   resolveSimulationRequirement,
@@ -141,6 +142,26 @@ test('buildConsumerBrief emits packaging_test task type and packaging_assets', (
   assert.deepEqual(brief.packaging_assets, ['Eco-friendly glass jar', 'Recyclable label'])
   assert.deepEqual(brief.copy_material, ['Sustainable packaging', 'Zero waste'])
   assert.deepEqual(brief.target_audience, ['eco-conscious millennials'])
+})
+
+test('buildPackagingAssetSummary turns uploaded packaging files into brief assets', () => {
+  const summary = buildPackagingAssetSummary([
+    { name: '舒客酵素亮白牙膏-包装正面.png' },
+    { name: '舒客酵素亮白牙膏-外盒.pdf' },
+  ])
+
+  assert.equal(summary, '包装素材文件：舒客酵素亮白牙膏-包装正面.png、舒客酵素亮白牙膏-外盒.pdf')
+
+  const brief = buildConsumerBrief({
+    consumerTaskType: 'packaging_test',
+    consumerPackagingAssets: summary,
+    consumerAudience: '咖啡茶饮高频用户',
+    consumerResearchGoal: '判断包装是否传达温和去黄',
+  })
+
+  assert.deepEqual(brief.packaging_assets, [
+    '包装素材文件：舒客酵素亮白牙膏-包装正面.png、舒客酵素亮白牙膏-外盒.pdf',
+  ])
 })
 
 test('buildConsumerBrief emits ab_test task type and test_variants', () => {

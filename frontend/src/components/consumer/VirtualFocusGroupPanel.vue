@@ -275,8 +275,8 @@ async function runFocusGroup() {
 
 <style scoped>
 .focus-group-panel {
-  border-bottom: 1px solid #E5E7EB;
-  background: #FFFFFF;
+  border-bottom: 1px solid var(--mc-border);
+  background: var(--mc-surface);
   padding: 16px 20px;
   display: flex;
   flex-direction: column;
@@ -294,13 +294,13 @@ async function runFocusGroup() {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #6B7280;
+  color: var(--mc-text-secondary);
 }
 
 .focus-head strong {
   font-size: 14px;
   font-weight: 600;
-  color: #111827;
+  color: var(--mc-text-primary);
 }
 
 .focus-section {
@@ -318,28 +318,29 @@ async function runFocusGroup() {
 .role-chip {
   padding: 5px 10px;
   font-size: 12px;
-  border: 1px solid #E5E7EB;
-  background: #FFFFFF;
-  color: #374151;
+  border: 1px solid var(--mc-border);
+  background: var(--mc-surface);
+  color: var(--mc-text-secondary);
   border-radius: 999px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .role-chip:hover {
-  border-color: #D1D5DB;
+  border-color: var(--mc-border-strong);
+  color: var(--mc-text-primary);
 }
 
 .role-chip.active {
-  background: #1F2937;
-  color: #FFFFFF;
-  border-color: #1F2937;
+  background: var(--mc-accent);
+  color: #fffdfa;
+  border-color: var(--mc-accent);
 }
 
 .focus-input {
   padding: 10px 12px;
   font-size: 13px;
-  border: 1px solid #E5E7EB;
+  border: 1px solid var(--mc-border);
   border-radius: 6px;
   font-family: inherit;
   transition: border-color 0.2s ease;
@@ -347,7 +348,8 @@ async function runFocusGroup() {
 
 .focus-input:focus {
   outline: none;
-  border-color: #1F2937;
+  border-color: var(--mc-accent);
+  box-shadow: var(--mc-focus-ring);
 }
 
 .focus-actions {
@@ -359,8 +361,8 @@ async function runFocusGroup() {
   padding: 10px 18px;
   font-size: 13px;
   font-weight: 500;
-  background: #1F2937;
-  color: #FFFFFF;
+  background: var(--mc-accent);
+  color: #fffdfa;
   border: none;
   border-radius: 6px;
   cursor: pointer;
@@ -368,12 +370,12 @@ async function runFocusGroup() {
 }
 
 .focus-run-btn:hover:not(:disabled) {
-  background: #374151;
+  background: var(--mc-accent-strong);
 }
 
 .focus-run-btn:disabled {
-  background: #E5E7EB;
-  color: #9CA3AF;
+  background: var(--mc-border);
+  color: var(--mc-text-tertiary);
   cursor: not-allowed;
 }
 
@@ -384,8 +386,8 @@ async function runFocusGroup() {
 }
 
 .turn-card {
-  border: 1px solid #E5E7EB;
-  background: #FAFAFA;
+  border: 1px solid var(--mc-border);
+  background: var(--mc-bg-subtle);
   padding: 10px 12px;
   display: flex;
   flex-direction: column;

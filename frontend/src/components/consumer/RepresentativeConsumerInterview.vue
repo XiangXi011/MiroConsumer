@@ -276,8 +276,8 @@ watch(() => props.simulationId, (id) => {
 
 <style scoped>
 .interview-workspace {
-  border-bottom: 1px solid #E5E7EB;
-  background: #FFFFFF;
+  border-bottom: 1px solid var(--mc-border);
+  background: var(--mc-surface);
   padding: 16px 20px;
   display: flex;
   flex-direction: column;
@@ -295,13 +295,13 @@ watch(() => props.simulationId, (id) => {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #6B7280;
+  color: var(--mc-text-secondary);
 }
 
 .interview-head strong {
   font-size: 14px;
   font-weight: 600;
-  color: #111827;
+  color: var(--mc-text-primary);
 }
 
 .interview-section {
@@ -321,9 +321,9 @@ watch(() => props.simulationId, (id) => {
 .prompt-chip {
   padding: 5px 10px;
   font-size: 12px;
-  border: 1px solid #E5E7EB;
-  background: #FFFFFF;
-  color: #374151;
+  border: 1px solid var(--mc-border);
+  background: var(--mc-surface);
+  color: var(--mc-text-secondary);
   border-radius: 999px;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -331,13 +331,14 @@ watch(() => props.simulationId, (id) => {
 
 .role-chip:hover,
 .prompt-chip:hover {
-  border-color: #D1D5DB;
+  border-color: var(--mc-border-strong);
+  color: var(--mc-text-primary);
 }
 
 .role-chip.active {
-  background: #1F2937;
-  color: #FFFFFF;
-  border-color: #1F2937;
+  background: var(--mc-accent);
+  color: #fffdfa;
+  border-color: var(--mc-accent);
 }
 
 .agent-list {
@@ -350,7 +351,7 @@ watch(() => props.simulationId, (id) => {
 .interview-textarea {
   padding: 10px 12px;
   font-size: 13px;
-  border: 1px solid #E5E7EB;
+  border: 1px solid var(--mc-border);
   border-radius: 6px;
   font-family: inherit;
   transition: border-color 0.2s ease;
@@ -359,7 +360,8 @@ watch(() => props.simulationId, (id) => {
 .interview-input:focus,
 .interview-textarea:focus {
   outline: none;
-  border-color: #1F2937;
+  border-color: var(--mc-accent);
+  box-shadow: var(--mc-focus-ring);
 }
 
 .interview-actions {
@@ -379,17 +381,17 @@ watch(() => props.simulationId, (id) => {
 }
 
 .interview-run-btn {
-  background: #1F2937;
-  color: #FFFFFF;
+  background: var(--mc-accent);
+  color: #fffdfa;
 }
 
 .interview-run-btn:hover:not(:disabled) {
-  background: #374151;
+  background: var(--mc-accent-strong);
 }
 
 .interview-run-btn:disabled {
-  background: #E5E7EB;
-  color: #9CA3AF;
+  background: var(--mc-border);
+  color: var(--mc-text-tertiary);
   cursor: not-allowed;
 }
 
@@ -400,17 +402,17 @@ watch(() => props.simulationId, (id) => {
 }
 
 .interview-load-btn {
-  background: #F3F4F6;
-  color: #374151;
+  background: var(--mc-surface-muted);
+  color: var(--mc-text-secondary);
 }
 
 .interview-load-btn:hover:not(:disabled) {
-  background: #E5E7EB;
+  background: var(--mc-accent-wash);
 }
 
 .result-card {
-  border: 1px solid #E5E7EB;
-  background: #FAFAFA;
+  border: 1px solid var(--mc-border);
+  background: var(--mc-bg-subtle);
   padding: 12px;
   display: flex;
   flex-direction: column;
@@ -420,7 +422,7 @@ watch(() => props.simulationId, (id) => {
 .result-topic {
   font-size: 13px;
   font-weight: 600;
-  color: #111827;
+  color: var(--mc-text-primary);
 }
 
 .result-responses {
@@ -434,14 +436,14 @@ watch(() => props.simulationId, (id) => {
   flex-direction: column;
   gap: 4px;
   padding: 8px;
-  background: #FFFFFF;
-  border: 1px solid #E5E7EB;
+  background: var(--mc-surface);
+  border: 1px solid var(--mc-border);
 }
 
 .response-agent {
   font-size: 11px;
   font-weight: 600;
-  color: #6B7280;
+  color: var(--mc-text-secondary);
 }
 
 .response-text {
