@@ -613,17 +613,19 @@ def register_request_hooks(app, config_class):
 
 def register_blueprints(app):
     """Register public API, versioned API, auth, and metrics blueprints."""
-    from .api import graph_bp, simulation_bp, report_bp, consumer_bp
+    from .api import graph_bp, simulation_bp, report_bp, consumer_bp, openclaw_bp
     from .auth.routes import auth_bp
     app.register_blueprint(auth_bp)
     app.register_blueprint(graph_bp, url_prefix="/api/graph")
     app.register_blueprint(simulation_bp, url_prefix="/api/simulation")
     app.register_blueprint(report_bp, url_prefix="/api/report")
     app.register_blueprint(consumer_bp, url_prefix="/api/consumer")
+    app.register_blueprint(openclaw_bp, url_prefix="/api/openclaw")
     app.register_blueprint(graph_bp, url_prefix="/api/v1/graph", name="graph_v1")
     app.register_blueprint(simulation_bp, url_prefix="/api/v1/simulation", name="simulation_v1")
     app.register_blueprint(report_bp, url_prefix="/api/v1/report", name="report_v1")
     app.register_blueprint(consumer_bp, url_prefix="/api/v1/consumer", name="consumer_v1")
+    app.register_blueprint(openclaw_bp, url_prefix="/api/v1/openclaw", name="openclaw_v1")
     app.register_blueprint(auth_bp, url_prefix="/api/v1/auth", name="auth_v1")
     from .utils.metrics import metrics_bp
     app.register_blueprint(metrics_bp)

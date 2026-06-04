@@ -8,7 +8,6 @@ import json
 import threading
 import traceback
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
 
 from ...config import Config
 from ...models.project import ProjectStatus
@@ -93,6 +92,8 @@ def _build_consumer_graph(project, text: str, project_repo: ProjectRepository):
         raise ValueError("consumer_brief is required for consumer_test graph builds")
 
     brief = ConsumerBriefAdapter.from_payload(project.consumer_brief)
+    source_evidence_spans = getattr(brief, "source_evidence_spans", []) or []
+    has_openclaw_evidence = bool(source_evidence_spans)
 
     # Ingest any URL entries from optional_background_materials into Lane A
     ingest_background_url_sources(
@@ -101,18 +102,24 @@ def _build_consumer_graph(project, text: str, project_repo: ProjectRepository):
         upload_root=Config.UPLOAD_FOLDER,
     )
 
-    lane_b_provider = build_lane_b_provider(project.project_id, upload_root=Config.UPLOAD_FOLDER)
-    auto_research_provider = (
-        llm_auto_research_provider
-        if brief.research_mode == "auto_enrich"
-        else default_auto_research_provider
+    use_live_lane_b = bool(brief.enable_lane_b and not has_openclaw_evidence)
+    lane_b_provider = (
+        build_lane_b_provider(project.project_id, upload_root=Config.UPLOAD_FOLDER)
+        if use_live_lane_b
+        else None
     )
+    if has_openclaw_evidence:
+        auto_research_provider = None
+    elif brief.research_mode == "auto_enrich":
+        auto_research_provider = llm_auto_research_provider
+    else:
+        auto_research_provider = default_auto_research_provider
     research_findings = resolve_research_findings(
         brief,
         provider=auto_research_provider,
         project_id=project.project_id,
         upload_root=Config.UPLOAD_FOLDER,
-        enable_lane_b=brief.enable_lane_b,
+        enable_lane_b=use_live_lane_b,
         lane_b_provider=lane_b_provider,
     )
 
@@ -138,8 +145,9 @@ def _build_consumer_graph(project, text: str, project_repo: ProjectRepository):
         brief=brief,
         upload_root=Config.UPLOAD_FOLDER,
         provider=auto_research_provider,
-        enable_lane_b=brief.enable_lane_b,
+        enable_lane_b=use_live_lane_b,
         lane_b_provider=lane_b_provider,
+        precomputed_findings=research_findings,
     )
 
     # Persist formal project-level research artifacts
@@ -156,6 +164,8 @@ def _build_consumer_graph(project, text: str, project_repo: ProjectRepository):
     project.consumer_context = {
         "research_mode": brief.research_mode,
         "enable_lane_b": brief.enable_lane_b,
+        "live_lane_b_used": use_live_lane_b,
+        "source_evidence_span_count": len(source_evidence_spans),
         "research_summary": build_research_summary(research_findings),
         "research_findings_count": len(research_findings),
         "auto_enrich_count": sum(
@@ -163,6 +173,9 @@ def _build_consumer_graph(project, text: str, project_repo: ProjectRepository):
         ),
         "manual_background_count": sum(
             1 for f in research_findings if f.source_label == "brief_background"
+        ),
+        "source_evidence_count": sum(
+            1 for f in research_findings if f.source_label == "source_evidence"
         ),
         "ingested_document_count": sum(
             1 for f in research_findings if f.source_label == "ingested_document"

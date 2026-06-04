@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
+from typing import Callable, Dict, List, Mapping, Optional, Tuple
 
 from .models import (
     ConsumerBusinessBrief,
@@ -26,6 +26,9 @@ from .source_quality import (
 from .source_registry import SourceRegistry
 
 logger = logging.getLogger(__name__)
+
+MAX_LANE_B_QUERIES_PER_BUILD = 6
+LLM_AUTO_RESEARCH_TIMEOUT_SECONDS = 30
 
 
 def _deterministic_finding_id(text: str, prefix: str = "mf") -> str:
@@ -125,6 +128,40 @@ def _classify_visibility(text: str) -> GraphVisibility:
     return GraphVisibility.Propagation_Only
 
 
+def _append_unique_query(queries: List[str], seen: set[str], value: str, max_queries: int) -> None:
+    text = value.strip()
+    if not text or len(queries) >= max_queries:
+        return
+    key = text.casefold()
+    if key in seen:
+        return
+    queries.append(text)
+    seen.add(key)
+
+
+def _build_lane_b_queries(
+    brief: ConsumerBusinessBrief,
+    max_queries: int = MAX_LANE_B_QUERIES_PER_BUILD,
+) -> List[str]:
+    """Select a small, representative query set for public-web gap filling."""
+    queries: List[str] = []
+    seen: set[str] = set()
+
+    if brief.research_goal:
+        _append_unique_query(queries, seen, brief.research_goal, max_queries)
+
+    for concept in brief.product_concept_assets[:2]:
+        _append_unique_query(queries, seen, concept, max_queries)
+
+    for claim in brief.claims[:3]:
+        _append_unique_query(queries, seen, claim, max_queries)
+
+    for value in list(brief.claims[3:]) + list(brief.product_concept_assets[2:]):
+        _append_unique_query(queries, seen, value, max_queries)
+
+    return queries
+
+
 def build_research_findings(brief: ConsumerBusinessBrief) -> List[ResearchFinding]:
     """Convert manual background materials into typed ResearchFinding objects."""
     findings: List[ResearchFinding] = []
@@ -157,6 +194,60 @@ def build_research_findings(brief: ConsumerBusinessBrief) -> List[ResearchFindin
             )
         )
 
+    return findings
+
+
+def _finding_type_from_evidence_type(evidence_type: str) -> str:
+    normalized = evidence_type.strip().casefold()
+    if normalized in {"claim_risk", "regulatory", "safety", "category_safety"}:
+        return "risk_signal"
+    if normalized in {"competitor", "competitor_signal"}:
+        return "competitor_signal"
+    if normalized in {"trend", "trend_signal", "social"}:
+        return "trend_signal"
+    return "category_context"
+
+
+def build_source_evidence_findings(brief: ConsumerBusinessBrief) -> List[ResearchFinding]:
+    """Convert curated source evidence spans into research findings."""
+    findings: List[ResearchFinding] = []
+    seen: set[str] = set()
+    for span in getattr(brief, "source_evidence_spans", []) or []:
+        if not isinstance(span, Mapping):
+            continue
+        snippet = str(span.get("snippet", "") or "").strip()
+        if not snippet:
+            continue
+        title = str(span.get("title", "") or "").strip()
+        url = str(span.get("url", "") or "").strip()
+        key = f"{title}|{url}|{snippet}".casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        evidence_type = str(span.get("evidence_type", "") or "").strip()
+        finding_type = _finding_type_from_evidence_type(evidence_type)
+        try:
+            confidence = float(span.get("confidence", 0.6))
+        except (TypeError, ValueError):
+            confidence = 0.6
+        confidence = max(0.0, min(1.0, confidence))
+        visibility = (
+            GraphVisibility.Restricted
+            if finding_type == "risk_signal"
+            else GraphVisibility.Initial
+        )
+        findings.append(
+            ResearchFinding(
+                finding_id=_deterministic_finding_id(key, prefix="se"),
+                finding_type=finding_type,  # type: ignore[arg-type]
+                summary=snippet,
+                evidence_snippets=[snippet],
+                source_label="source_evidence",
+                visibility=visibility,
+                confidence=confidence,
+                support_summary=title or url,
+            )
+        )
     return findings
 
 
@@ -368,6 +459,8 @@ def llm_auto_research_provider(brief: ConsumerBusinessBrief) -> List[ResearchFin
             ],
             temperature=0.5,
             max_tokens=2048,
+            fallback_on_failure=False,
+            timeout=LLM_AUTO_RESEARCH_TIMEOUT_SECONDS,
         )
     except Exception as exc:
         logger.warning("LLM auto-research call failed, falling back: %s", exc)
@@ -492,17 +585,7 @@ def build_lane_b_findings(
     """
     retrieval = RetrievalService(project_id, upload_root=upload_root)
 
-    queries: List[str] = []
-    if brief.research_goal:
-        queries.append(brief.research_goal)
-    for claim in brief.claims:
-        claim = claim.strip()
-        if claim:
-            queries.append(claim)
-    for concept in brief.product_concept_assets:
-        concept = concept.strip()
-        if concept:
-            queries.append(concept)
+    queries = _build_lane_b_queries(brief)
 
     findings: List[ResearchFinding] = []
     traces: List[RetrievalTrace] = []
@@ -555,6 +638,12 @@ def resolve_research_findings(
     seen_ids = {f.finding_id for f in manual}
     result: List[ResearchFinding] = list(manual)
 
+    source_evidence = build_source_evidence_findings(brief)
+    for finding in source_evidence:
+        if finding.finding_id not in seen_ids:
+            result.append(finding)
+            seen_ids.add(finding.finding_id)
+
     if project_id is not None:
         workspace = build_workspace_findings(project_id, upload_root=upload_root)
         for finding in workspace:
@@ -601,6 +690,7 @@ def build_research_snapshot(
     provider: Optional[Callable[[ConsumerBusinessBrief], List[ResearchFinding]]] = None,
     enable_lane_b: bool = False,
     lane_b_provider: Optional[PublicWebSearchProvider] = None,
+    precomputed_findings: Optional[List[ResearchFinding]] = None,
 ) -> ResearchSnapshot:
     """Build a research snapshot for a project from its research workspace.
 
@@ -617,7 +707,9 @@ def build_research_snapshot(
 
     findings: List[ResearchFinding] = []
     retrieval_traces: List[RetrievalTrace] = []
-    if brief is not None:
+    if precomputed_findings is not None:
+        findings = list(precomputed_findings)
+    elif brief is not None:
         findings = resolve_research_findings(
             brief=brief,
             provider=provider,
