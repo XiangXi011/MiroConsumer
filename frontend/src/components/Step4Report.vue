@@ -530,6 +530,8 @@ import {
   getToolIcon,
 } from '../utils/reportToolMetadata'
 import {
+  applyAgentLogToReportState,
+  applyReportStatePatch,
   buildReportWorkflowSummary,
   formatElapsedTime as formatWorkflowElapsedTime,
   formatParams,
@@ -799,6 +801,17 @@ const getTimelineItemClass = (log, idx, total) => getWorkflowTimelineItemClass(l
 
 const getConnectorClass = (log, idx, total) => getWorkflowConnectorClass(log, idx, total, isComplete.value)
 
+const applyAgentLogStatePatch = (patch) => applyReportStatePatch(patch, {
+  reportOutline,
+  currentSectionIndex,
+  generatedSections,
+  expandedContent,
+  isComplete,
+  startTime,
+  emitUpdateStatus: status => emit('update-status', status),
+  stopPolling,
+})
+
 // Polling
 let agentLogTimer = null
 let consoleLogTimer = null
@@ -816,35 +829,7 @@ const fetchAgentLog = async () => {
         newLogs.forEach(log => {
           agentLogs.value.push(log)
 
-          if (log.action === 'planning_complete' && log.details?.outline) {
-            reportOutline.value = log.details.outline
-          }
-
-          if (log.action === 'section_start') {
-            currentSectionIndex.value = log.section_index
-          }
-
-          // section_complete - 章节生成完成
-          if (log.action === 'section_complete') {
-            if (log.details?.content) {
-              generatedSections.value[log.section_index] = log.details.content
-              // 自动展开刚生成的章节
-              expandedContent.value.add(log.section_index - 1)
-              currentSectionIndex.value = null
-            }
-          }
-
-          if (log.action === 'report_complete') {
-            isComplete.value = true
-            currentSectionIndex.value = null  // 确保清除 loading 状态
-            emit('update-status', 'completed')
-            stopPolling()
-            // 滚动逻辑统一在循环结束后的 nextTick 中处理
-          }
-
-          if (log.action === 'report_start') {
-            startTime.value = new Date(log.timestamp)
-          }
+          applyAgentLogStatePatch(applyAgentLogToReportState(log))
         })
 
         agentLogLine.value = res.data.from_line + newLogs.length
