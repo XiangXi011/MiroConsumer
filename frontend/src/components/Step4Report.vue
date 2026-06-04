@@ -11,38 +11,38 @@
             :title="reportOutline.title"
             :summary="reportOutline.summary"
             :is-consumer-mode="isConsumerMode"
-            :consumer-report-tag="consumerReportTag"
-            :consumer-metric-cards="consumerMetricCards"
-            :consumer-report-confidence="consumerReportConfidence"
-            :consumer-replay-alignment="consumerReplayAlignment"
-            :consumer-evidence-validation-summary="consumerEvidenceValidationSummary"
-            :consumer-source-quality-summary="consumerSourceQualitySummary"
-            :consumer-voc-highlights="consumerVocHighlights"
-            :consumer-event-counts="consumerEventCounts"
-            :consumer-risk-findings="consumerRiskFindings"
-            :consumer-clarification-opportunities="consumerClarificationOpportunities"
-            :consumer-causal-chains="consumerCausalChains"
-            :consumer-cascade-metrics="consumerCascadeMetrics"
-            :consumer-persona-group-signals="consumerPersonaGroupSignals"
-            :consumer-research-snapshot="consumerResearchSnapshot"
-            :consumer-source-catalog="consumerSourceCatalog"
-            :consumer-enriched-findings="consumerEnrichedFindings"
-            :consumer-enriched-traces="consumerEnrichedTraces"
-            :consumer-task-type="consumerTaskType"
-            :consumer-packaging-hooks="consumerPackagingHooks"
-            :consumer-packaging-trust-objections="consumerPackagingTrustObjections"
-            :consumer-packaging-confusion-triggers="consumerPackagingConfusionTriggers"
-            :consumer-a-b-winning-variant="consumerABWinningVariant"
-            :consumer-a-b-variant-deltas="consumerABVariantDeltas"
-            :consumer-a-b-persona-divergences="consumerABPersonaDivergences"
-            :consumer-price-acceptable-points="consumerPriceAcceptablePoints"
-            :consumer-price-resisted-points="consumerPriceResistedPoints"
-            :consumer-price-objections="consumerPriceObjections"
-            :consumer-price-context="consumerPriceContext"
+            :consumer-report-tag="consumerContextState.consumerReportTag"
+            :consumer-metric-cards="consumerContextState.consumerMetricCards"
+            :consumer-report-confidence="consumerContextState.consumerReportConfidence"
+            :consumer-replay-alignment="consumerContextState.consumerReplayAlignment"
+            :consumer-evidence-validation-summary="consumerContextState.consumerEvidenceValidationSummary"
+            :consumer-source-quality-summary="consumerContextState.consumerSourceQualitySummary"
+            :consumer-voc-highlights="consumerContextState.consumerVocHighlights"
+            :consumer-event-counts="consumerContextState.consumerEventCounts"
+            :consumer-risk-findings="consumerContextState.consumerRiskFindings"
+            :consumer-clarification-opportunities="consumerContextState.consumerClarificationOpportunities"
+            :consumer-causal-chains="consumerContextState.consumerCausalChains"
+            :consumer-cascade-metrics="consumerContextState.consumerCascadeMetrics"
+            :consumer-persona-group-signals="consumerContextState.consumerPersonaGroupSignals"
+            :consumer-research-snapshot="consumerContextState.consumerResearchSnapshot"
+            :consumer-source-catalog="consumerContextState.consumerSourceCatalog"
+            :consumer-enriched-findings="consumerContextState.consumerEnrichedFindings"
+            :consumer-enriched-traces="consumerContextState.consumerEnrichedTraces"
+            :consumer-task-type="consumerContextState.consumerTaskType"
+            :consumer-packaging-hooks="consumerContextState.consumerPackagingHooks"
+            :consumer-packaging-trust-objections="consumerContextState.consumerPackagingTrustObjections"
+            :consumer-packaging-confusion-triggers="consumerContextState.consumerPackagingConfusionTriggers"
+            :consumer-a-b-winning-variant="consumerContextState.consumerABWinningVariant"
+            :consumer-a-b-variant-deltas="consumerContextState.consumerABVariantDeltas"
+            :consumer-a-b-persona-divergences="consumerContextState.consumerABPersonaDivergences"
+            :consumer-price-acceptable-points="consumerContextState.consumerPriceAcceptablePoints"
+            :consumer-price-resisted-points="consumerContextState.consumerPriceResistedPoints"
+            :consumer-price-objections="consumerContextState.consumerPriceObjections"
+            :consumer-price-context="consumerContextState.consumerPriceContext"
             :branch-comparison-formatted="branchComparisonFormatted"
-            :consumer-low-confidence-risk-findings="consumerLowConfidenceRiskFindings"
-            :consumer-findings-requiring-more-evidence="consumerFindingsRequiringMoreEvidence"
-            :consumer-causal-voc-quotes="consumerCausalVocQuotes"
+            :consumer-low-confidence-risk-findings="consumerContextState.consumerLowConfidenceRiskFindings"
+            :consumer-findings-requiring-more-evidence="consumerContextState.consumerFindingsRequiringMoreEvidence"
+            :consumer-causal-voc-quotes="consumerContextState.consumerCausalVocQuotes"
             :show-technical="showTechnical"
           />
 
@@ -490,21 +490,11 @@ import {
   getReportEvidenceGraph,
 } from '../api/consumer'
 import {
-  buildConsumerMetricCards,
-  formatCascadeMetrics,
-  getConsumerEventLabel,
-  isConsumerProject,
-  getConsumerTaskType,
-  getConsumerTaskTypeLabel,
-  pickTopVocQuotes,
-  translate,
   loadSelectedBranch,
   formatBranchComparison,
   clearSelectedBranch,
-  mergeFindingConfidence,
-  formatSourceQualitySummary,
-  resolveSourceQualitySummary,
 } from '../utils/consumerMode'
+import { deriveReportConsumerContext } from '../utils/reportConsumerContext'
 import ConsumerReportHeader from './consumer/ConsumerReportHeader.vue'
 import ResearchAssetWorkspace from './consumer/ResearchAssetWorkspace.vue'
 import ComparisonWorkspace from './consumer/ComparisonWorkspace.vue'
@@ -671,239 +661,13 @@ const loadEvidenceGraph = async () => {
 
 const projectId = computed(() => props.projectData?.project_id || props.projectData?.projectId || null)
 
-const isConsumerMode = computed(() => (
-  isConsumerProject(props.reportData) || isConsumerProject(props.projectData)
-))
-
-// Consumer header derivations for ConsumerReportHeader props
-const reportContext = computed(() => props.reportData?.report_context || {})
-
-const consumerReportTag = computed(() => {
-  if (!isConsumerMode.value) return ''
-  const taskType = reportContext.value.task_type || getConsumerTaskType(props.projectData) || 'concept_test'
-  return getConsumerTaskTypeLabel(taskType, t)
-})
-
-const consumerMetricCards = computed(() => (
-  isConsumerMode.value ? buildConsumerMetricCards(reportContext.value, t) : []
-))
-
-const consumerReportConfidence = computed(() => (
-  isConsumerMode.value ? (reportContext.value.report_confidence || null) : null
-))
-
-const consumerReplayAlignment = computed(() => (
-  isConsumerMode.value ? (reportContext.value.replay_alignment || null) : null
-))
-
-const consumerEvidenceValidationSummary = computed(() => (
-  isConsumerMode.value ? (reportContext.value.evidence_validation_summary || null) : null
-))
-
-const consumerSourceQualitySummary = computed(() => {
-  if (!isConsumerMode.value) return []
-  const summary = resolveSourceQualitySummary(reportContext.value)
-  return formatSourceQualitySummary(summary, t)
-})
-
-const consumerVocHighlights = computed(() => (
-  isConsumerMode.value ? pickTopVocQuotes(reportContext.value, t) : []
-))
-
-const consumerEventCounts = computed(() => {
-  if (!isConsumerMode.value) return []
-  const counts = reportContext.value.event_counts || {}
-  return Object.entries(counts)
-    .filter(([, count]) => count > 0)
-    .map(([type, count]) => ({
-      type,
-      count,
-      label: getConsumerEventLabel(type, t),
-    }))
-})
-
-const consumerRiskFindings = computed(() => {
-  if (!isConsumerMode.value) return []
-  return (reportContext.value.top_risk_findings || []).map(f => ({
-    typeLabel: f.finding_type || '',
-    text: f.summary || '',
-    source: f.source || null,
-    sourceId: f.source_id || '',
-    sourceLabel: f.source_label || '',
-    evidence: f.evidence || null,
-    support: f.support || null,
-    supportLevel: f.support_level || f.evidence?.support_level || '',
-    explainability: f.explainability || null,
-    audit: f.audit || null,
-    reasoningMetadata: f.reasoning_metadata || null,
-  }))
-})
-
-const consumerLowConfidenceRiskFindings = computed(() => {
-  if (!isConsumerMode.value) return []
-  return (reportContext.value.low_confidence_risk_findings || []).map(f => ({
-    typeLabel: f.finding_type || '',
-    text: f.summary || '',
-    source: f.source || null,
-    sourceId: f.source_id || '',
-    sourceLabel: f.source_label || '',
-    evidence: f.evidence || null,
-    support: f.support || null,
-    supportLevel: f.support_level || f.evidence?.support_level || '',
-    explainability: f.explainability || null,
-    audit: f.audit || null,
-    reasoningMetadata: f.reasoning_metadata || null,
-  }))
-})
-
-const consumerFindingsRequiringMoreEvidence = computed(() => {
-  if (!isConsumerMode.value) return []
-  return (reportContext.value.findings_requiring_more_evidence || []).map(f => ({
-    typeLabel: f.finding_type || '',
-    text: f.summary || '',
-    source: f.source || null,
-    sourceId: f.source_id || '',
-    sourceLabel: f.source_label || '',
-    evidence: f.evidence || null,
-    support: f.support || null,
-    supportLevel: f.support_level || f.evidence?.support_level || '',
-    explainability: f.explainability || null,
-    audit: f.audit || null,
-    reasoningMetadata: f.reasoning_metadata || null,
-  }))
-})
-
-const consumerCausalVocQuotes = computed(() => {
-  if (!isConsumerMode.value) return []
-  return (reportContext.value.causal_voc_quotes || []).map(q => ({
-    quote: q.quote || '',
-    bucket: q.bucket || '',
-    source: q.source || null,
-    sourceId: q.source_id || '',
-    sourceLabel: q.source_label || '',
-    explainability: q.explainability || null,
-    audit: q.audit || null,
-    reasoningMetadata: q.reasoning_metadata || null,
-  }))
-})
-
-const consumerClarificationOpportunities = computed(() => {
-  if (!isConsumerMode.value) return []
-  return (reportContext.value.top_clarification_opportunities || []).map(c => ({
-    text: c.summary || '',
-  }))
-})
-
-const consumerCausalChains = computed(() => {
-  if (!isConsumerMode.value) return []
-  return (reportContext.value.causal_chains || []).map(chain => ({
-    description: chain.finding_summary || '',
-  }))
-})
-
-const consumerCascadeMetrics = computed(() => {
-  if (!isConsumerMode.value) return []
-  return formatCascadeMetrics(reportContext.value.cascade_metrics, t)
-})
-
-const consumerPersonaGroupSignals = computed(() => {
-  if (!isConsumerMode.value) return []
-  const signals = reportContext.value.persona_group_signals || {}
-  return Object.entries(signals).map(([persona, data]) => ({
-    persona,
-    amplifiedCount: (data.amplified || []).length,
-    blockedCount: (data.blocked || []).length,
-  }))
-})
-
-const consumerResearchSnapshot = computed(() => (
-  isConsumerMode.value ? (reportContext.value.research_snapshot || null) : null
-))
-
-const consumerSourceCatalog = computed(() => (
-  isConsumerMode.value ? (reportContext.value.source_catalog || []) : []
-))
-
-const consumerEnrichedFindings = computed(() => {
-  if (!isConsumerMode.value) return []
-  return (reportContext.value.enriched_findings || []).map(f => ({
-    findingType: f.finding_type || '',
-    confidenceLabel: f.confidence_label || '',
-    summary: f.summary || '',
-    sourceTitle: f.source_title || '',
-    sourceUri: f.source_uri || '',
-    sourceLane: f.source_lane || '',
-    trustTier: f.trust_tier || '',
-    evidencePreview: f.evidence_preview || '',
-    sourceLabel: f.source_label || '',
-    sourceId: f.source_id || '',
-    snippetId: f.snippet_id || '',
-    retrievalTraceId: f.retrieval_trace_id || '',
-  }))
-})
-
-const consumerEnrichedTraces = computed(() => {
-  if (!isConsumerMode.value) return []
-  return (reportContext.value.enriched_traces || []).map(trace => ({
-    query: trace.query || '',
-    sourceTitle: trace.source_title || '',
-    sourceType: trace.source_type || '',
-    trustTier: trace.trust_tier || '',
-    chunkPreviews: trace.chunk_previews || [],
-    lane: trace.lane || '',
-    chunkCount: trace.chunk_count || 0,
-  }))
-})
-
-const consumerTaskType = computed(() => (
-  isConsumerMode.value ? (reportContext.value.task_type || '') : ''
-))
-
-const consumerPackagingHooks = computed(() => {
-  if (!isConsumerMode.value) return []
-  return (reportContext.value.top_packaging_hooks || []).map(h => ({ text: h }))
-})
-
-const consumerPackagingTrustObjections = computed(() => {
-  if (!isConsumerMode.value) return []
-  return (reportContext.value.top_trust_objections || []).map(o => ({ text: o }))
-})
-
-const consumerPackagingConfusionTriggers = computed(() => {
-  if (!isConsumerMode.value) return []
-  return (reportContext.value.top_confusion_triggers || []).map(c => ({ text: c }))
-})
-
-const consumerABWinningVariant = computed(() => (
-  isConsumerMode.value ? (reportContext.value.winning_variant || '') : ''
-))
-
-const consumerABVariantDeltas = computed(() => (
-  isConsumerMode.value ? (reportContext.value.top_variant_deltas || []) : []
-))
-
-const consumerABPersonaDivergences = computed(() => (
-  isConsumerMode.value ? (reportContext.value.top_persona_divergences || []) : []
-))
-
-const consumerPriceAcceptablePoints = computed(() => {
-  if (!isConsumerMode.value) return []
-  return (reportContext.value.acceptable_price_points || []).map(p => ({ text: p }))
-})
-
-const consumerPriceResistedPoints = computed(() => {
-  if (!isConsumerMode.value) return []
-  return (reportContext.value.resisted_price_points || []).map(p => ({ text: p }))
-})
-
-const consumerPriceObjections = computed(() => {
-  if (!isConsumerMode.value) return []
-  return (reportContext.value.top_price_objections || []).map(o => ({ text: o }))
-})
-
-const consumerPriceContext = computed(() => (
-  isConsumerMode.value ? (reportContext.value.price_context || '') : ''
-))
+const consumerContextState = computed(() => deriveReportConsumerContext({
+  reportData: props.reportData,
+  projectData: props.projectData,
+  t,
+}))
+const isConsumerMode = computed(() => consumerContextState.value.isConsumerMode)
+const reportContext = computed(() => consumerContextState.value.reportContext)
 
 const loadBranchComparison = async () => {
   if (!props.simulationId || !isConsumerMode.value) {
