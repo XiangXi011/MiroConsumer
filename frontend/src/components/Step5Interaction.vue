@@ -60,14 +60,15 @@
 
 <script setup lang="ts">
 // @ts-nocheck
-import { ref, watch, onMounted, onUnmounted } from 'vue'
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { chatWithReport, getReport, getAgentLog } from '../api/report'
-import { interviewAgents, getSimulationProfilesRealtime } from '../api/simulation'
+import { chatWithReport } from '../api/report'
+import { interviewAgents } from '../api/simulation'
 import { useStep5ChatState } from '../composables/useStep5ChatState'
 import { useStep5ConsumerContextState } from '../composables/useStep5ConsumerContextState'
 import { useStep5InterviewHandoffState } from '../composables/useStep5InterviewHandoffState'
 import { useStep5ReportDataState } from '../composables/useStep5ReportDataState'
+import { useStep5ReportLoaders } from '../composables/useStep5ReportLoaders'
 import { useStep5SurveyState } from '../composables/useStep5SurveyState'
 import {
   buildSurveyInterviewRequests,
@@ -148,6 +149,19 @@ const {
   consumerSourceCatalog,
   consumerEnrichedFindings,
 } = useStep5ConsumerContextState({ props, t })
+
+const {
+  loadReportData,
+  loadProfiles,
+} = useStep5ReportLoaders({
+  reportId: computed(() => props.reportId),
+  simulationId: computed(() => props.simulationId),
+  profiles,
+  addLog,
+  t,
+  applyReportLogs,
+  setProfiles,
+})
 
 const {
   interviewHandoffContext,
@@ -306,55 +320,6 @@ const submitSurvey = async () => {
     addLog(t('log.surveySendFailed', { error: err.message }))
   } finally {
     isSurveying.value = false
-  }
-}
-
-// Load Report Data
-const loadReportData = async () => {
-  if (!props.reportId) return
-  
-  try {
-    addLog(t('log.loadReportData', { id: props.reportId }))
-    
-    // Get report info
-    const reportRes = await getReport(props.reportId)
-    if (reportRes.success && reportRes.data) {
-      // Load agent logs to get report outline and sections
-      await loadAgentLogs()
-    }
-  } catch (err) {
-    addLog(t('log.loadReportFailed', { error: err.message }))
-  }
-}
-
-const loadAgentLogs = async () => {
-  if (!props.reportId) return
-  
-  try {
-    const res = await getAgentLog(props.reportId, 0)
-    if (res.success && res.data) {
-      const logs = res.data.logs || []
-      
-      applyReportLogs(logs)
-      
-      addLog(t('log.reportDataLoaded'))
-    }
-  } catch (err) {
-    addLog(t('log.loadReportLogFailed', { error: err.message }))
-  }
-}
-
-const loadProfiles = async () => {
-  if (!props.simulationId) return
-  
-  try {
-    const res = await getSimulationProfilesRealtime(props.simulationId, 'reddit')
-    if (res.success && res.data) {
-      setProfiles(res.data.profiles || [])
-      addLog(t('log.loadedProfiles', { count: profiles.value.length }))
-    }
-  } catch (err) {
-    addLog(t('log.loadProfilesFailed', { error: err.message }))
   }
 }
 

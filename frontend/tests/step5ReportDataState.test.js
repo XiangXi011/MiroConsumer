@@ -58,8 +58,8 @@ test('Step5Interaction delegates report data state to useStep5ReportDataState', 
   const step5Content = readFileSync(step5Path, 'utf-8')
   assert.ok(step5Content.includes("import { useStep5ReportDataState } from '../composables/useStep5ReportDataState'"), 'Step5 must import useStep5ReportDataState')
   assert.ok(step5Content.includes('useStep5ReportDataState()'), 'Step5 must initialize report data state via composable')
-  assert.ok(step5Content.includes('applyReportLogs(logs)'), 'Step5 must delegate agent log application')
-  assert.ok(step5Content.includes('setProfiles(res.data.profiles || [])'), 'Step5 must delegate profile updates')
+  assert.ok(step5Content.includes('applyReportLogs,'), 'Step5 must pass report log application into loaders')
+  assert.ok(step5Content.includes('setProfiles,'), 'Step5 must pass profile updates into loaders')
 
   for (const token of [
     'const reportOutline = ref(null)',
