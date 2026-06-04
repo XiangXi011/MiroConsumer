@@ -535,6 +535,11 @@ import {
 } from '../utils/reportToolResults'
 import { renderReportMarkdown as renderMarkdown } from '../utils/reportMarkdown'
 import {
+  getToolColor,
+  getToolDisplayName,
+  getToolIcon,
+} from '../utils/reportToolMetadata'
+import {
   buildReportWorkflowSummary,
   formatElapsedTime as formatWorkflowElapsedTime,
   formatParams,
@@ -994,52 +999,6 @@ const isLogCollapsed = (log) => {
     return !expandedLogs.value.has(log.timestamp)
   }
   return false
-}
-
-// Tool configurations with display names and colors
-const toolConfig = {
-  'insight_forge': {
-    name: 'Deep Insight',
-    color: 'purple',
-    icon: 'lightbulb' // 灯泡图标 - 代表洞察
-  },
-  'panorama_search': {
-    name: 'Panorama Search',
-    color: 'blue',
-    icon: 'globe' // 地球图标 - 代表全景搜索
-  },
-  'interview_agents': {
-    name: 'Agent Interview',
-    color: 'green',
-    icon: 'users' // 用户图标 - 代表对话
-  },
-  'quick_search': {
-    name: 'Quick Search',
-    color: 'orange',
-    icon: 'zap' // 闪电图标 - 代表快速
-  },
-  'get_graph_statistics': {
-    name: 'Graph Stats',
-    color: 'cyan',
-    icon: 'chart' // 图表图标 - 代表统计
-  },
-  'get_entities_by_type': {
-    name: 'Entity Query',
-    color: 'pink',
-    icon: 'database' // 数据库图标 - 代表实体
-  }
-}
-
-const getToolDisplayName = (toolName) => {
-  return toolConfig[toolName]?.name || toolName
-}
-
-const getToolColor = (toolName) => {
-  return toolConfig[toolName]?.color || 'gray'
-}
-
-const getToolIcon = (toolName) => {
-  return toolConfig[toolName]?.icon || 'tool'
 }
 
 // Computed
