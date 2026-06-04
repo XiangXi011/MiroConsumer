@@ -45,3 +45,20 @@ export function normalizeSurveyResults({
     }
   })
 }
+
+export function extractAgentChatResponse({ resultData, agentId }) {
+  const rawResults = resultData?.results || resultData
+
+  if (rawResults && typeof rawResults === 'object' && !Array.isArray(rawResults)) {
+    const redditKey = `reddit_${agentId}`
+    const twitterKey = `twitter_${agentId}`
+    const agentResult = rawResults[redditKey] || rawResults[twitterKey] || Object.values(rawResults)[0]
+    return agentResult?.response || agentResult?.answer || ''
+  }
+
+  if (Array.isArray(rawResults) && rawResults.length > 0) {
+    return rawResults[0].response || rawResults[0].answer || ''
+  }
+
+  return ''
+}

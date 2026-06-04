@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs'
 import { normalizeInterviewHistoryItems } from '../src/utils/consumerInterview.ts'
 import {
   buildSurveyInterviewRequests,
+  extractAgentChatResponse,
   normalizeSurveyResults,
 } from '../src/utils/step5Survey.ts'
 
@@ -99,6 +100,53 @@ test('normalizeSurveyResults supports array-shaped backend results and missing r
       answer: 'No response',
     },
   ])
+})
+
+test('extractAgentChatResponse prefers reddit and twitter result for the selected agent', () => {
+  assert.equal(
+    extractAgentChatResponse({
+      resultData: {
+        results: {
+          twitter_2: { response: 'Twitter reply' },
+          reddit_2: { answer: 'Reddit reply' },
+          reddit_3: { response: 'Other reply' },
+        },
+      },
+      agentId: 2,
+    }),
+    'Reddit reply',
+  )
+})
+
+test('extractAgentChatResponse falls back to first object result when selected agent is absent', () => {
+  assert.equal(
+    extractAgentChatResponse({
+      resultData: {
+        results: {
+          reddit_7: { response: 'Fallback reply' },
+        },
+      },
+      agentId: 2,
+    }),
+    'Fallback reply',
+  )
+})
+
+test('extractAgentChatResponse supports array-shaped backend results', () => {
+  assert.equal(
+    extractAgentChatResponse({
+      resultData: [
+        { agent_id: 2, answer: 'Array reply' },
+      ],
+      agentId: 2,
+    }),
+    'Array reply',
+  )
+})
+
+test('extractAgentChatResponse returns empty string when no response is available', () => {
+  assert.equal(extractAgentChatResponse({ resultData: null, agentId: 2 }), '')
+  assert.equal(extractAgentChatResponse({ resultData: { results: {} }, agentId: 2 }), '')
 })
 
 test('InterviewHistoryPanel.vue shows interview history, focus group history, topic, roles, created time, summary, and reopen action', () => {

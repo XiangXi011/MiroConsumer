@@ -541,6 +541,7 @@ import {
 import { renderReportMarkdown as renderMarkdown } from '../utils/reportMarkdown'
 import {
   buildSurveyInterviewRequests,
+  extractAgentChatResponse,
   normalizeSurveyResults,
 } from '../utils/step5Survey'
 import ComparisonSnapshotWorkspace from './consumer/ComparisonSnapshotWorkspace.vue'
@@ -852,27 +853,11 @@ const sendToAgent = async (message) => {
   })
   
   if (res.success && res.data) {
-    // 正确的数据路径: res.data.result.results 是一个对象字典
-    // 格式: {"twitter_0": {...}, "reddit_0": {...}} 或单平台 {"reddit_0": {...}}
     const resultData = res.data.result || res.data
-    const resultsDict = resultData.results || resultData
-    
-    // 将对象字典转换为数组，优先获取 reddit 平台的回复
-    let responseContent = null
-    const agentId = selectedAgentIndex.value
-    
-    if (typeof resultsDict === 'object' && !Array.isArray(resultsDict)) {
-      // 优先使用 reddit 平台回复，其次 twitter
-      const redditKey = `reddit_${agentId}`
-      const twitterKey = `twitter_${agentId}`
-      const agentResult = resultsDict[redditKey] || resultsDict[twitterKey] || Object.values(resultsDict)[0]
-      if (agentResult) {
-        responseContent = agentResult.response || agentResult.answer
-      }
-    } else if (Array.isArray(resultsDict) && resultsDict.length > 0) {
-      // 兼容数组格式
-      responseContent = resultsDict[0].response || resultsDict[0].answer
-    }
+    const responseContent = extractAgentChatResponse({
+      resultData,
+      agentId: selectedAgentIndex.value,
+    })
     
     if (responseContent) {
       chatHistory.value.push({
