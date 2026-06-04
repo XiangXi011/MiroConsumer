@@ -25,40 +25,11 @@
             @toggle-section-collapse="toggleSectionCollapse"
           />
 
-          <!-- Consumer Interview Handoff Panel -->
-          <div v-if="showTechnical && interviewHandoffContext" class="handoff-panel">
-            <div class="handoff-panel-header">
-              <span class="handoff-panel-title">{{ $t('step5.technicalInterviewContext') }}</span>
-              <button class="handoff-panel-clear" @click="clearInterviewHandoff">
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="18" y1="6" x2="6" y2="18"></line>
-                  <line x1="6" y1="6" x2="18" y2="18"></line>
-                </svg>
-              </button>
-            </div>
-            <div class="handoff-panel-body">
-              <div v-if="interviewHandoffContext.report_id" class="handoff-row">
-                <span class="handoff-key">Report</span>
-                <span class="handoff-value mono">{{ interviewHandoffContext.report_id }}</span>
-              </div>
-              <div v-if="interviewHandoffContext.section_index !== undefined && interviewHandoffContext.section_index !== null" class="handoff-row">
-                <span class="handoff-key">Section</span>
-                <span class="handoff-value mono">{{ interviewHandoffContext.section_index }}</span>
-              </div>
-              <div v-if="interviewHandoffContext.finding_id" class="handoff-row">
-                <span class="handoff-key">Finding</span>
-                <span class="handoff-value mono">{{ interviewHandoffContext.finding_id }}</span>
-              </div>
-              <div v-if="interviewHandoffContext.claim" class="handoff-row">
-                <span class="handoff-key">Claim</span>
-                <span class="handoff-value">{{ interviewHandoffContext.claim }}</span>
-              </div>
-              <div v-if="interviewHandoffContext.branch_id" class="handoff-row">
-                <span class="handoff-key">Branch</span>
-                <span class="handoff-value mono">{{ interviewHandoffContext.branch_id }}</span>
-              </div>
-            </div>
-          </div>
+          <InteractionHandoffPanel
+            v-if="showTechnical && interviewHandoffContext"
+            :handoff-context="interviewHandoffContext"
+            @clear-handoff="clearInterviewHandoff"
+          />
         </div>
 
         <!-- Waiting State -->
@@ -196,6 +167,7 @@ import AgentProfileCard from './report/AgentProfileCard.vue'
 import ConsumerChatBrief from './report/ConsumerChatBrief.vue'
 import InteractionActionBar from './report/InteractionActionBar.vue'
 import InteractionChatPanel from './report/InteractionChatPanel.vue'
+import InteractionHandoffPanel from './report/InteractionHandoffPanel.vue'
 import InteractionSurveyPanel from './report/InteractionSurveyPanel.vue'
 import ReportAgentToolsCard from './report/ReportAgentToolsCard.vue'
 import ReportSectionsList from './report/ReportSectionsList.vue'
@@ -1027,74 +999,6 @@ watch(() => props.simulationId, (newId) => {
   border: none;
   border-top: 1px solid #E5E7EB;
   margin: 24px 0;
-}
-
-/* Consumer Interview Handoff Panel */
-.handoff-panel {
-  margin-top: 24px;
-  padding: 16px;
-  background: #F8FAFC;
-  border: 1px solid #E2E8F0;
-  border-radius: 8px;
-}
-
-.handoff-panel-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
-}
-
-.handoff-panel-title {
-  font-size: 12px;
-  font-weight: 600;
-  color: #475569;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.handoff-panel-clear {
-  width: 24px;
-  height: 24px;
-  background: #E2E8F0;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #64748B;
-  transition: all 0.2s ease;
-}
-
-.handoff-panel-clear:hover {
-  background: #CBD5E1;
-  color: #334155;
-}
-
-.handoff-panel-body {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.handoff-row {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  font-size: 12px;
-}
-
-.handoff-key {
-  color: #94A3B8;
-  min-width: 60px;
-  font-weight: 500;
-}
-
-.handoff-value {
-  color: #334155;
-  font-weight: 500;
-  word-break: break-word;
 }
 
 @media (max-width: 980px) {
