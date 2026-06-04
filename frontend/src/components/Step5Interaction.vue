@@ -65,6 +65,7 @@ import { useI18n } from 'vue-i18n'
 import { chatWithReport, getReport, getAgentLog } from '../api/report'
 import { interviewAgents, getSimulationProfilesRealtime } from '../api/simulation'
 import { useStep5ChatState } from '../composables/useStep5ChatState'
+import { useStep5SurveyState } from '../composables/useStep5SurveyState'
 import {
   buildConsumerQuickPrompts,
   buildBranchAwarePrompts,
@@ -126,12 +127,6 @@ const {
   formatSelectChatTargetLog: agent => t('log.selectChatTarget', { name: agent.username }),
 })
 
-// Survey State
-const selectedAgents = ref(new Set())
-const surveyQuestion = ref('')
-const surveyResults = ref([])
-const isSurveying = ref(false)
-
 // Consumer interview handoff state
 const interviewHandoffContext = ref(null)
 
@@ -141,6 +136,16 @@ const generatedSections = ref({})
 const collapsedSections = ref(new Set())
 const currentSectionIndex = ref(null)
 const profiles = ref([])
+
+const {
+  selectedAgents,
+  surveyQuestion,
+  surveyResults,
+  isSurveying,
+  toggleAgentSelection,
+  selectAllAgents,
+  clearAgentSelection,
+} = useStep5SurveyState({ profiles })
 
 const isConsumerMode = computed(() => (
   isConsumerProject(props.reportData) || isConsumerProject(props.projectData)
@@ -323,27 +328,6 @@ const sendToAgent = async (message) => {
   } else {
     throw new Error(res.error || t('step5.requestFailed'))
   }
-}
-
-// Survey Methods
-const toggleAgentSelection = (idx) => {
-  const newSet = new Set(selectedAgents.value)
-  if (newSet.has(idx)) {
-    newSet.delete(idx)
-  } else {
-    newSet.add(idx)
-  }
-  selectedAgents.value = newSet
-}
-
-const selectAllAgents = () => {
-  const newSet = new Set()
-  profiles.value.forEach((_, idx) => newSet.add(idx))
-  selectedAgents.value = newSet
-}
-
-const clearAgentSelection = () => {
-  selectedAgents.value = new Set()
 }
 
 const submitSurvey = async () => {
