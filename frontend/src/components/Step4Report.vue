@@ -534,6 +534,18 @@ import {
   parseQuickSearch,
 } from '../utils/reportToolResults'
 import { renderReportMarkdown as renderMarkdown } from '../utils/reportMarkdown'
+import {
+  buildReportWorkflowSummary,
+  formatElapsedTime as formatWorkflowElapsedTime,
+  formatParams,
+  formatResultSize,
+  formatTime,
+  getActionLabel,
+  getConnectorClass as getWorkflowConnectorClass,
+  getLogLevelClass,
+  getTimelineItemClass as getWorkflowTimelineItemClass,
+  truncateText,
+} from '../utils/reportWorkflow'
 
 const router = useRouter()
 const { t } = useI18n()
@@ -1031,126 +1043,25 @@ const getToolIcon = (toolName) => {
 }
 
 // Computed
-const statusClass = computed(() => {
-  if (isComplete.value) return 'completed'
-  if (agentLogs.value.length > 0) return 'processing'
-  return 'pending'
-})
+const workflowSummary = computed(() => buildReportWorkflowSummary({
+  isComplete: isComplete.value,
+  reportOutline: reportOutline.value,
+  generatedSections: generatedSections.value,
+  currentSectionIndex: currentSectionIndex.value,
+  agentLogs: agentLogs.value,
+}))
 
-const statusText = computed(() => {
-  if (isComplete.value) return 'Completed'
-  if (agentLogs.value.length > 0) return 'Generating...'
-  return 'Waiting'
-})
-
-const totalSections = computed(() => {
-  return reportOutline.value?.sections?.length || 0
-})
-
-const completedSections = computed(() => {
-  return Object.keys(generatedSections.value).length
-})
-
-const progressPercent = computed(() => {
-  if (totalSections.value === 0) return 0
-  return Math.round((completedSections.value / totalSections.value) * 100)
-})
-
-const totalToolCalls = computed(() => {
-  return agentLogs.value.filter(l => l.action === 'tool_call').length
-})
-
-const formatElapsedTime = computed(() => {
-  if (!startTime.value) return '0s'
-  const lastLog = agentLogs.value[agentLogs.value.length - 1]
-  const elapsed = lastLog?.elapsed_seconds || 0
-  if (elapsed < 60) return `${Math.round(elapsed)}s`
-  const mins = Math.floor(elapsed / 60)
-  const secs = Math.round(elapsed % 60)
-  return `${mins}m ${secs}s`
-})
-
-const displayLogs = computed(() => {
-  return agentLogs.value
-})
-
-// Workflow steps overview (status-based, no nested cards)
-const activeSectionIndex = computed(() => {
-  if (isComplete.value) return null
-  if (currentSectionIndex.value) return currentSectionIndex.value
-  if (totalSections.value > 0 && completedSections.value < totalSections.value) return completedSections.value + 1
-  return null
-})
-
-const isPlanningDone = computed(() => {
-  return !!reportOutline.value?.sections?.length || agentLogs.value.some(l => l.action === 'planning_complete')
-})
-
-const isPlanningStarted = computed(() => {
-  return agentLogs.value.some(l => l.action === 'planning_start' || l.action === 'report_start')
-})
-
-const isFinalizing = computed(() => {
-  return !isComplete.value && isPlanningDone.value && totalSections.value > 0 && completedSections.value >= totalSections.value
-})
-
-// 当前活跃的步骤（用于顶部显示）
-const activeStep = computed(() => {
-  const steps = workflowSteps.value
-  // 找到当前 active 的步骤
-  const active = steps.find(s => s.status === 'active')
-  if (active) return active
-
-  // 如果没有 active，返回最后一个 done 的步骤
-  const doneSteps = steps.filter(s => s.status === 'done')
-  if (doneSteps.length > 0) return doneSteps[doneSteps.length - 1]
-
-  // 否则返回第一个步骤
-  return steps[0] || { noLabel: '--', title: '等待开始', status: 'todo', meta: '' }
-})
-
-const workflowSteps = computed(() => {
-  const steps = []
-
-  // Planning / Outline
-  const planningStatus = isPlanningDone.value ? 'done' : (isPlanningStarted.value ? 'active' : 'todo')
-  steps.push({
-    key: 'planning',
-    noLabel: 'PL',
-    title: 'Planning / Outline',
-    status: planningStatus,
-    meta: planningStatus === 'active' ? 'IN PROGRESS' : ''
-  })
-
-  // Sections (if outline exists)
-  const sections = reportOutline.value?.sections || []
-  sections.forEach((section, i) => {
-    const idx = i + 1
-    const status = (isComplete.value || !!generatedSections.value[idx])
-      ? 'done'
-      : (activeSectionIndex.value === idx ? 'active' : 'todo')
-
-    steps.push({
-      key: `section-${idx}`,
-      noLabel: String(idx).padStart(2, '0'),
-      title: section.title,
-      status,
-      meta: status === 'active' ? 'IN PROGRESS' : ''
-    })
-  })
-
-  // Complete
-  const completeStatus = isComplete.value ? 'done' : (isFinalizing.value ? 'active' : 'todo')
-  steps.push({
-    key: 'complete',
-    noLabel: 'OK',
-    title: 'Complete',
-    status: completeStatus,
-    meta: completeStatus === 'active' ? 'FINALIZING' : ''
-  })
-
-  return steps
-})
+const statusClass = computed(() => workflowSummary.value.statusClass)
+const statusText = computed(() => workflowSummary.value.statusText)
+const totalSections = computed(() => workflowSummary.value.totalSections)
+const completedSections = computed(() => workflowSummary.value.completedSections)
+const totalToolCalls = computed(() => workflowSummary.value.totalToolCalls)
+const formatElapsedTime = computed(() => formatWorkflowElapsedTime(startTime.value, agentLogs.value))
+const displayLogs = computed(() => agentLogs.value)
+const activeSectionIndex = computed(() => workflowSummary.value.activeSectionIndex)
+const isPlanningDone = computed(() => workflowSummary.value.isPlanningDone)
+const activeStep = computed(() => workflowSummary.value.activeStep)
+const workflowSteps = computed(() => workflowSummary.value.workflowSteps)
 
 // Methods
 const addLog = (msg) => {
@@ -1161,81 +1072,9 @@ const isSectionCompleted = (sectionIndex) => {
   return !!generatedSections.value[sectionIndex]
 }
 
-const formatTime = (timestamp) => {
-  if (!timestamp) return ''
-  try {
-    return new Date(timestamp).toLocaleTimeString('en-US', {
-      hour12: false,
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
-    })
-  } catch {
-    return ''
-  }
-}
+const getTimelineItemClass = (log, idx, total) => getWorkflowTimelineItemClass(log, idx, total, isComplete.value)
 
-const formatParams = (params) => {
-  if (!params) return ''
-  try {
-    return JSON.stringify(params, null, 2)
-  } catch {
-    return String(params)
-  }
-}
-
-const formatResultSize = (length) => {
-  if (!length) return ''
-  if (length < 1000) return `${length} chars`
-  return `${(length / 1000).toFixed(1)}k chars`
-}
-
-const truncateText = (text, maxLen) => {
-  if (!text) return ''
-  if (text.length <= maxLen) return text
-  return text.substring(0, maxLen) + '...'
-}
-
-const getTimelineItemClass = (log, idx, total) => {
-  const isLatest = idx === total - 1 && !isComplete.value
-  const isMilestone = log.action === 'section_complete' || log.action === 'report_complete'
-  return {
-    'node--active': isLatest,
-    'node--done': !isLatest && isMilestone,
-    'node--muted': !isLatest && !isMilestone,
-    'node--tool': log.action === 'tool_call' || log.action === 'tool_result'
-  }
-}
-
-const getConnectorClass = (log, idx, total) => {
-  const isLatest = idx === total - 1 && !isComplete.value
-  if (isLatest) return 'dot-active'
-  if (log.action === 'section_complete' || log.action === 'report_complete') return 'dot-done'
-  return 'dot-muted'
-}
-
-const getActionLabel = (action) => {
-  const labels = {
-    'report_start': 'Report Started',
-    'planning_start': 'Planning',
-    'planning_complete': 'Plan Complete',
-    'section_start': 'Section Start',
-    'section_content': 'Content Ready',
-    'section_complete': 'Section Done',
-    'tool_call': 'Tool Call',
-    'tool_result': 'Tool Result',
-    'llm_response': 'LLM Response',
-    'report_complete': 'Complete'
-  }
-  return labels[action] || action
-}
-
-const getLogLevelClass = (log) => {
-  if (log.includes('ERROR') || log.includes('错误')) return 'error'
-  if (log.includes('WARNING') || log.includes('警告')) return 'warning'
-  // INFO 使用默认颜色，不标记为 success
-  return ''
-}
+const getConnectorClass = (log, idx, total) => getWorkflowConnectorClass(log, idx, total, isComplete.value)
 
 // Polling
 let agentLogTimer = null
@@ -1302,51 +1141,6 @@ const fetchAgentLog = async () => {
   } catch (err) {
     console.warn('Failed to fetch agent log:', err)
   }
-}
-
-// 提取最终答案内容 - 从 LLM response 中提取章节内容
-const extractFinalContent = (response) => {
-  if (!response) return null
-
-  // 尝试提取 <final_answer> 标签内的内容
-  const finalAnswerTagMatch = response.match(/<final_answer>([\s\S]*?)<\/final_answer>/)
-  if (finalAnswerTagMatch) {
-    return finalAnswerTagMatch[1].trim()
-  }
-
-  // 尝试找 Final Answer: 后面的内容（支持多种格式）
-  // 格式1: Final Answer:\n\n内容
-  // 格式2: Final Answer: 内容
-  const finalAnswerMatch = response.match(/Final\s*Answer:\s*\n*([\s\S]*)$/i)
-  if (finalAnswerMatch) {
-    return finalAnswerMatch[1].trim()
-  }
-
-  // 尝试找 最终答案: 后面的内容
-  const chineseFinalMatch = response.match(/最终答案[:：]\s*\n*([\s\S]*)$/i)
-  if (chineseFinalMatch) {
-    return chineseFinalMatch[1].trim()
-  }
-
-  // 如果以 ## 或 # 或 > 开头，可能是直接的 markdown 内容
-  const trimmedResponse = response.trim()
-  if (trimmedResponse.match(/^[#>]/)) {
-    return trimmedResponse
-  }
-
-  // 如果内容较长且包含markdown格式，尝试移除思考过程后返回
-  if (response.length > 300 && (response.includes('**') || response.includes('>'))) {
-    // 移除 Thought: 开头的思考过程
-    const thoughtMatch = response.match(/^Thought:[\s\S]*?(?=\n\n[^T]|\n\n$)/i)
-    if (thoughtMatch) {
-      const afterThought = response.substring(thoughtMatch[0].length).trim()
-      if (afterThought.length > 100) {
-        return afterThought
-      }
-    }
-  }
-
-  return null
 }
 
 const fetchConsoleLog = async () => {
