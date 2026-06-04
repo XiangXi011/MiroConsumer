@@ -539,6 +539,10 @@ import {
   clearConsumerInterviewHandoff,
 } from '../utils/consumerResearchActions'
 import { renderReportMarkdown as renderMarkdown } from '../utils/reportMarkdown'
+import {
+  buildSurveyInterviewRequests,
+  normalizeSurveyResults,
+} from '../utils/step5Survey'
 import ComparisonSnapshotWorkspace from './consumer/ComparisonSnapshotWorkspace.vue'
 import PropagationPathGraph from './consumer/PropagationPathGraph.vue'
 import RepresentativeConsumerInterview from './consumer/RepresentativeConsumerInterview.vue'
@@ -921,10 +925,8 @@ const submitSurvey = async () => {
   addLog(t('log.sendSurvey', { count: selectedAgents.value.size }))
   
   try {
-    const interviews = Array.from(selectedAgents.value).map(idx => ({
-      agent_id: idx,
-      prompt: surveyQuestion.value.trim()
-    }))
+    const question = surveyQuestion.value.trim()
+    const interviews = buildSurveyInterviewRequests(selectedAgents.value, question)
     
     const res = await interviewAgents({
       simulation_id: props.simulationId,
@@ -932,46 +934,14 @@ const submitSurvey = async () => {
     })
     
     if (res.success && res.data) {
-      // 正确的数据路径: res.data.result.results 是一个对象字典
-      // 格式: {"twitter_0": {...}, "reddit_0": {...}, "twitter_1": {...}, ...}
       const resultData = res.data.result || res.data
-      const resultsDict = resultData.results || resultData
-      
-      // 将对象字典转换为数组格式
-      const surveyResultsList = []
-      
-      for (const interview of interviews) {
-        const agentIdx = interview.agent_id
-        const agent = profiles.value[agentIdx]
-        
-        // 优先使用 reddit 平台回复，其次 twitter
-        let responseContent = t('step5.noResponse')
-
-        if (typeof resultsDict === 'object' && !Array.isArray(resultsDict)) {
-          const redditKey = `reddit_${agentIdx}`
-          const twitterKey = `twitter_${agentIdx}`
-          const agentResult = resultsDict[redditKey] || resultsDict[twitterKey]
-          if (agentResult) {
-            responseContent = agentResult.response || agentResult.answer || t('step5.noResponse')
-          }
-        } else if (Array.isArray(resultsDict)) {
-          // 兼容数组格式
-          const matchedResult = resultsDict.find(r => r.agent_id === agentIdx)
-          if (matchedResult) {
-            responseContent = matchedResult.response || matchedResult.answer || t('step5.noResponse')
-          }
-        }
-        
-        surveyResultsList.push({
-          agent_id: agentIdx,
-          agent_name: agent?.username || `Agent ${agentIdx}`,
-          profession: agent?.profession,
-          question: surveyQuestion.value.trim(),
-          answer: responseContent
-        })
-      }
-      
-      surveyResults.value = surveyResultsList
+      surveyResults.value = normalizeSurveyResults({
+        interviews,
+        profiles: profiles.value,
+        resultData,
+        question,
+        noResponseText: t('step5.noResponse'),
+      })
       addLog(t('log.receivedReplies', { count: surveyResults.value.length }))
     } else {
       throw new Error(res.error || t('step5.requestFailed'))
