@@ -81,66 +81,19 @@
             />
           </ResearchAssetWorkspace>
 
-          <!-- Sections List -->
-          <div class="sections-list">
-            <div
-              v-for="(section, idx) in reportOutline.sections"
-              :key="idx"
-              class="report-section-item"
-              :class="{
-                'is-active': currentSectionIndex === idx + 1,
-                'is-completed': isSectionCompleted(idx + 1),
-                'is-pending': !isSectionCompleted(idx + 1) && currentSectionIndex !== idx + 1
-              }"
-            >
-              <div class="section-header-row" @click="toggleSectionCollapse(idx)" :class="{ 'clickable': isSectionCompleted(idx + 1) }">
-                <span class="section-number">{{ String(idx + 1).padStart(2, '0') }}</span>
-                <h3 class="section-title">{{ section.title }}</h3>
-                <svg
-                  v-if="isSectionCompleted(idx + 1)"
-                  class="collapse-icon"
-                  :class="{ 'is-collapsed': collapsedSections.has(idx) }"
-                  viewBox="0 0 24 24"
-                  width="20"
-                  height="20"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <polyline points="6 9 12 15 18 9"></polyline>
-                </svg>
-              </div>
-
-              <div class="section-body" v-show="!collapsedSections.has(idx)">
-                <!-- Completed Content -->
-                <div v-if="generatedSections[idx + 1]" class="generated-content" v-html="renderMarkdown(generatedSections[idx + 1])"></div>
-
-                <!-- Consumer Research Action Bar -->
-                <ConsumerResearchActionBar
-                  v-if="isConsumerMode && generatedSections[idx + 1]"
-                  :report-id="reportId"
-                  :simulation-id="simulationId"
-                  :section-index="idx + 1"
-                  :section-title="section.title"
-                  :section-content="generatedSections[idx + 1]"
-                  :branch-id="branchComparisonFormatted?.branchId || ''"
-                  :disabled="drawerLoading"
-                  @run-action="handleRunAction"
-                />
-
-                <!-- Loading State -->
-                <div v-else-if="currentSectionIndex === idx + 1" class="loading-state">
-                  <div class="loading-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                      <circle cx="12" cy="12" r="10" stroke-width="4" stroke="#E5E7EB"></circle>
-                      <path d="M12 2a10 10 0 0 1 10 10" stroke-width="4" stroke="#4B5563" stroke-linecap="round"></path>
-                    </svg>
-                  </div>
-                  <span class="loading-text">{{ $t('step4.generatingSection', { title: section.title }) }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
+          <ReportSectionsList
+            :sections="reportOutline.sections"
+            :generated-sections="generatedSections"
+            :collapsed-sections="collapsedSections"
+            :current-section-index="currentSectionIndex"
+            :is-consumer-mode="isConsumerMode"
+            :report-id="reportId"
+            :simulation-id="simulationId"
+            :branch-id="branchComparisonFormatted?.branchId || ''"
+            :disabled="drawerLoading"
+            @toggle-section-collapse="toggleSectionCollapse"
+            @run-action="handleRunAction"
+          />
         </div>
 
         <!-- Waiting State -->
@@ -224,13 +177,13 @@ import { deriveReportConsumerContext } from '../utils/reportConsumerContext'
 import ConsumerReportHeader from './consumer/ConsumerReportHeader.vue'
 import ResearchAssetWorkspace from './consumer/ResearchAssetWorkspace.vue'
 import ComparisonWorkspace from './consumer/ComparisonWorkspace.vue'
-import ConsumerResearchActionBar from './consumer/ConsumerResearchActionBar.vue'
 import ConsumerInsightDrawer from './consumer/ConsumerInsightDrawer.vue'
 import SocietyRunSummary from './consumer/SocietyRunSummary.vue'
 import ChannelFitPanel from './consumer/ChannelFitPanel.vue'
 import ChannelHeatmap from './consumer/ChannelHeatmap.vue'
 import PropagationTimeline from './consumer/PropagationTimeline.vue'
 import EvidenceGraphPanel from './consumer/EvidenceGraphPanel.vue'
+import ReportSectionsList from './report/ReportSectionsList.vue'
 import ReportWorkflowPanel from './report/ReportWorkflowPanel.vue'
 import { runConsumerResearchAction } from '../api/consumer'
 import {
@@ -238,7 +191,6 @@ import {
   saveConsumerInterviewHandoff,
 } from '../utils/consumerResearchActions'
 import { deriveReportRenderState } from '../utils/reportContent'
-import { renderReportMarkdown as renderMarkdown } from '../utils/reportMarkdown'
 import {
   applyAgentLogToReportState,
   applyReportStatePatch,
@@ -487,10 +439,6 @@ const addLog = (msg) => {
   emit('add-log', msg)
 }
 
-const isSectionCompleted = (sectionIndex) => {
-  return !!generatedSections.value[sectionIndex]
-}
-
 const applyAgentLogStatePatch = (patch) => applyReportStatePatch(patch, {
   reportOutline,
   currentSectionIndex,
@@ -687,191 +635,6 @@ watch(() => props.reportData, () => {
 
 .left-panel::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 0, 0, 0.25);
-}
-
-.sections-list {
-  display: flex;
-  flex-direction: column;
-  gap: 32px;
-}
-
-.report-section-item {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.section-header-row {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  transition: background-color 0.2s ease;
-  padding: 8px 12px;
-  margin: -8px -12px;
-  border-radius: 8px;
-}
-
-.section-header-row.clickable {
-  cursor: pointer;
-}
-
-.section-header-row.clickable:hover {
-  background-color: var(--mc-surface-muted);
-}
-
-.collapse-icon {
-  margin-left: auto;
-  color: var(--mc-text-tertiary);
-  transition: transform 0.3s ease;
-  flex-shrink: 0;
-  align-self: center;
-}
-
-.collapse-icon.is-collapsed {
-  transform: rotate(-90deg);
-}
-
-.section-number {
-  font-family: var(--mc-font-mono);
-  font-size: 16px;
-  color: var(--mc-text-tertiary);
-  font-weight: 500;
-}
-
-.section-title {
-  font-family: var(--mc-font-display);
-  font-size: 24px;
-  font-weight: 600;
-  color: var(--mc-text-primary);
-  margin: 0;
-  transition: color 0.3s ease;
-}
-
-/* States */
-.report-section-item.is-pending .section-title {
-  color: var(--mc-border-strong);
-}
-
-.report-section-item.is-active .section-title,
-.report-section-item.is-completed .section-title {
-  color: var(--mc-text-primary);
-}
-
-.section-body {
-  padding-left: 28px;
-  overflow: hidden;
-}
-
-/* Generated Content */
-.generated-content {
-  font-family: var(--mc-font-body);
-  font-size: 14px;
-  line-height: 1.8;
-  color: var(--mc-text-secondary);
-}
-
-.generated-content :deep(p) {
-  margin-bottom: 1em;
-}
-
-.generated-content :deep(.md-h2),
-.generated-content :deep(.md-h3),
-.generated-content :deep(.md-h4) {
-  font-family: var(--mc-font-display);
-  color: var(--mc-text-primary);
-  margin-top: 1.5em;
-  margin-bottom: 0.8em;
-  font-weight: 700;
-}
-
-.generated-content :deep(.md-h2) { font-size: 20px; border-bottom: 1px solid var(--mc-border); padding-bottom: 8px; }
-.generated-content :deep(.md-h3) { font-size: 18px; }
-.generated-content :deep(.md-h4) { font-size: 16px; }
-
-.generated-content :deep(.md-ul),
-.generated-content :deep(.md-ol) {
-  padding-left: 24px;
-  margin: 12px 0;
-}
-
-.generated-content :deep(.md-li),
-.generated-content :deep(.md-oli) {
-  margin: 6px 0;
-}
-
-.generated-content :deep(.md-quote) {
-  border-left: 3px solid var(--mc-accent-soft);
-  padding-left: 16px;
-  margin: 1.5em 0;
-  color: var(--mc-text-secondary);
-  font-style: italic;
-  font-family: var(--mc-font-body);
-}
-
-.generated-content :deep(.code-block) {
-  background: var(--mc-surface-muted);
-  padding: 12px;
-  border-radius: 6px;
-  font-family: var(--mc-font-mono);
-  font-size: 12px;
-  overflow-x: auto;
-  margin: 1em 0;
-  border: 1px solid var(--mc-border);
-}
-
-.generated-content :deep(strong) {
-  font-weight: 600;
-  color: var(--mc-text-primary);
-}
-
-/* Loading State */
-.loading-state {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--mc-text-secondary);
-  font-size: 14px;
-  margin-top: 4px;
-}
-
-.loading-icon {
-  width: 18px;
-  height: 18px;
-  animation: spin 1s linear infinite;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.loading-text {
-  font-family: var(--mc-font-body);
-  font-size: 15px;
-  color: var(--mc-text-secondary);
-}
-
-.cursor-blink {
-  display: inline-block;
-  width: 8px;
-  height: 14px;
-  background: var(--mc-accent);
-  opacity: 0.5;
-  animation: blink 1s step-end infinite;
-}
-
-@keyframes blink {
-  0%, 100% { opacity: 0.5; }
-  50% { opacity: 0; }
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-/* Content Styles Override for this view */
-.generated-content :deep(.md-h2) {
-  font-family: var(--mc-font-display);
-  font-size: 18px;
-  margin-top: 0;
 }
 
 /* Slide Content Transition */
