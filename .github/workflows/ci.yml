@@ -84,6 +84,10 @@ jobs:
         working-directory: backend
         run: uv run --python 3.12 --with interrogate interrogate app --config pyproject.toml
 
+      - name: Run Python lint
+        working-directory: backend
+        run: uv run --python 3.12 ruff check app tests
+
       - name: Run backend test suite
         working-directory: backend
         run: uv run --python 3.12 pytest --cov=app --cov-report=term-missing --cov-fail-under=80
