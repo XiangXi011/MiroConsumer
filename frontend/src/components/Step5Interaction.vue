@@ -66,12 +66,9 @@ import { chatWithReport, getReport, getAgentLog } from '../api/report'
 import { interviewAgents, getSimulationProfilesRealtime } from '../api/simulation'
 import { useStep5ChatState } from '../composables/useStep5ChatState'
 import { useStep5ConsumerContextState } from '../composables/useStep5ConsumerContextState'
+import { useStep5InterviewHandoffState } from '../composables/useStep5InterviewHandoffState'
 import { useStep5ReportDataState } from '../composables/useStep5ReportDataState'
 import { useStep5SurveyState } from '../composables/useStep5SurveyState'
-import {
-  loadConsumerInterviewHandoff,
-  clearConsumerInterviewHandoff,
-} from '../utils/consumerResearchActions'
 import {
   buildSurveyInterviewRequests,
   extractAgentChatResponse,
@@ -120,9 +117,6 @@ const {
   formatSelectChatTargetLog: agent => t('log.selectChatTarget', { name: agent.username }),
 })
 
-// Consumer interview handoff state
-const interviewHandoffContext = ref(null)
-
 const {
   reportOutline,
   generatedSections,
@@ -154,6 +148,12 @@ const {
   consumerSourceCatalog,
   consumerEnrichedFindings,
 } = useStep5ConsumerContextState({ props, t })
+
+const {
+  interviewHandoffContext,
+  loadInterviewHandoff,
+  clearInterviewHandoff: clearStoredInterviewHandoff,
+} = useStep5InterviewHandoffState()
 
 // Refs
 const leftPanel = ref(null)
@@ -366,18 +366,8 @@ const handleClickOutside = (e) => {
   }
 }
 
-const loadInterviewHandoff = () => {
-  if (!props.simulationId) {
-    interviewHandoffContext.value = null
-    return
-  }
-  interviewHandoffContext.value = loadConsumerInterviewHandoff(props.simulationId)
-}
-
 const clearInterviewHandoff = () => {
-  if (!props.simulationId) return
-  clearConsumerInterviewHandoff(props.simulationId)
-  interviewHandoffContext.value = null
+  clearStoredInterviewHandoff(props.simulationId)
 }
 
 // Lifecycle
@@ -385,7 +375,7 @@ onMounted(() => {
   addLog(t('log.step5Init'))
   loadReportData()
   loadProfiles()
-  loadInterviewHandoff()
+  loadInterviewHandoff(props.simulationId)
   document.addEventListener('click', handleClickOutside)
 })
 
@@ -402,7 +392,7 @@ watch(() => props.reportId, (newId) => {
 watch(() => props.simulationId, (newId) => {
   if (newId) {
     loadProfiles()
-    loadInterviewHandoff()
+    loadInterviewHandoff(newId)
   }
 }, { immediate: true })
 </script>
