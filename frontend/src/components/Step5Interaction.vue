@@ -60,10 +60,11 @@
 
 <script setup lang="ts">
 // @ts-nocheck
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { chatWithReport, getReport, getAgentLog } from '../api/report'
 import { interviewAgents, getSimulationProfilesRealtime } from '../api/simulation'
+import { useStep5ChatState } from '../composables/useStep5ChatState'
 import {
   buildConsumerQuickPrompts,
   buildBranchAwarePrompts,
@@ -98,19 +99,32 @@ const props = defineProps({
 
 const emit = defineEmits(['add-log', 'update-status'])
 
-// State
-const activeTab = ref('chat')
-const chatTarget = ref('report_agent')
-const showAgentDropdown = ref(false)
-const selectedAgent = ref(null)
-const selectedAgentIndex = ref(null)
+const addLog = (msg) => {
+  emit('add-log', msg)
+}
 
-// Chat State
-const chatInput = ref('')
-const chatHistory = ref([])
-const chatHistoryCache = ref({}) // 缓存所有对话记录: { 'report_agent': [], 'agent_0': [], 'agent_1': [], ... }
-const isSending = ref(false)
-const chatPanelRef = ref(null)
+const {
+  activeTab,
+  chatTarget,
+  showAgentDropdown,
+  selectedAgent,
+  selectedAgentIndex,
+  chatInput,
+  chatHistory,
+  isSending,
+  chatPanelRef,
+  applyQuickPrompt,
+  selectChatTarget,
+  saveChatHistory,
+  selectReportAgentChat,
+  selectSurveyTab,
+  toggleAgentDropdown,
+  selectAgent,
+  scrollToBottom,
+} = useStep5ChatState({
+  addLog,
+  formatSelectChatTargetLog: agent => t('log.selectChatTarget', { name: agent.username }),
+})
 
 // Survey State
 const selectedAgents = ref(new Set())
@@ -184,21 +198,6 @@ const consumerEnrichedFindings = computed(() => {
 // Refs
 const leftPanel = ref(null)
 
-// Methods
-const addLog = (msg) => {
-  emit('add-log', msg)
-}
-
-const applyQuickPrompt = (prompt) => {
-  chatInput.value = prompt
-  activeTab.value = 'chat'
-  chatTarget.value = 'report_agent'
-  nextTick(() => {
-    chatPanelRef.value?.chatPanelRef?.chatInputRef?.focus()
-  })
-}
-
-
 const toggleSectionCollapse = (idx) => {
   if (!generatedSections.value[idx + 1]) return
   const newSet = new Set(collapsedSections.value)
@@ -208,67 +207,6 @@ const toggleSectionCollapse = (idx) => {
     newSet.add(idx)
   }
   collapsedSections.value = newSet
-}
-
-const selectChatTarget = (target) => {
-  chatTarget.value = target
-  if (target === 'report_agent') {
-    showAgentDropdown.value = false
-  }
-}
-
-// 保存当前对话记录到缓存
-const saveChatHistory = () => {
-  if (chatHistory.value.length === 0) return
-  
-  if (chatTarget.value === 'report_agent') {
-    chatHistoryCache.value['report_agent'] = [...chatHistory.value]
-  } else if (selectedAgentIndex.value !== null) {
-    chatHistoryCache.value[`agent_${selectedAgentIndex.value}`] = [...chatHistory.value]
-  }
-}
-
-const selectReportAgentChat = () => {
-  // 保存当前对话记录
-  saveChatHistory()
-  
-  activeTab.value = 'chat'
-  chatTarget.value = 'report_agent'
-  selectedAgent.value = null
-  selectedAgentIndex.value = null
-  showAgentDropdown.value = false
-  
-  // 恢复 Report Agent 的对话记录
-  chatHistory.value = chatHistoryCache.value['report_agent'] || []
-}
-
-const selectSurveyTab = () => {
-  activeTab.value = 'survey'
-  selectedAgent.value = null
-  selectedAgentIndex.value = null
-  showAgentDropdown.value = false
-}
-
-const toggleAgentDropdown = () => {
-  showAgentDropdown.value = !showAgentDropdown.value
-  if (showAgentDropdown.value) {
-    activeTab.value = 'chat'
-    chatTarget.value = 'agent'
-  }
-}
-
-const selectAgent = (agent, idx) => {
-  // 保存当前对话记录
-  saveChatHistory()
-  
-  selectedAgent.value = agent
-  selectedAgentIndex.value = idx
-  chatTarget.value = 'agent'
-  showAgentDropdown.value = false
-  
-  // 恢复该 Agent 的对话记录
-  chatHistory.value = chatHistoryCache.value[`agent_${idx}`] || []
-  addLog(t('log.selectChatTarget', { name: agent.username }))
 }
 
 // Chat Methods
@@ -385,15 +323,6 @@ const sendToAgent = async (message) => {
   } else {
     throw new Error(res.error || t('step5.requestFailed'))
   }
-}
-
-const scrollToBottom = () => {
-  nextTick(() => {
-    const chatMessages = chatPanelRef.value?.chatPanelRef?.chatMessages
-    if (chatMessages) {
-      chatMessages.scrollTop = chatMessages.scrollHeight
-    }
-  })
 }
 
 // Survey Methods
