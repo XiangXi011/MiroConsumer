@@ -8,14 +8,18 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 
 const step5Path = join(__dirname, '../src/components/Step5Interaction.vue')
+const workspaceShellPath = join(__dirname, '../src/components/report/InteractionWorkspaceShell.vue')
 const actionBarPath = join(__dirname, '../src/components/report/InteractionActionBar.vue')
 
 const step5Content = readFileSync(step5Path, 'utf-8')
+const workspaceShellContent = readFileSync(workspaceShellPath, 'utf-8')
 
 test('Step5Interaction delegates interaction action bar rendering', () => {
   assert.ok(existsSync(actionBarPath), 'InteractionActionBar component must exist')
-  assert.ok(step5Content.includes("import InteractionActionBar from './report/InteractionActionBar.vue'"), 'Step5 must import InteractionActionBar')
-  assert.ok(step5Content.includes('<InteractionActionBar'), 'Step5 must render InteractionActionBar')
+  assert.ok(step5Content.includes("import InteractionWorkspaceShell from './report/InteractionWorkspaceShell.vue'"), 'Step5 must import InteractionWorkspaceShell')
+  assert.ok(step5Content.includes('<InteractionWorkspaceShell'), 'Step5 must render InteractionWorkspaceShell')
+  assert.ok(workspaceShellContent.includes("import InteractionActionBar from './InteractionActionBar.vue'"), 'InteractionWorkspaceShell must import InteractionActionBar')
+  assert.ok(workspaceShellContent.includes('<InteractionActionBar'), 'InteractionWorkspaceShell must render InteractionActionBar')
   assert.ok(step5Content.includes(':active-tab="activeTab"'), 'Step5 must pass active tab state')
   assert.ok(step5Content.includes(':chat-target="chatTarget"'), 'Step5 must pass chat target state')
   assert.ok(step5Content.includes(':profiles="profiles"'), 'Step5 must pass profiles')

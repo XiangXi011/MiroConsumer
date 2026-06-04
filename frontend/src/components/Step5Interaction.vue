@@ -16,93 +16,44 @@
         @clear-interview-handoff="clearInterviewHandoff"
       />
 
-      <!-- RIGHT PANEL: Interaction Interface -->
-      <div class="right-panel" ref="rightPanel">
-        <InteractionActionBar
-          :active-tab="activeTab"
-          :chat-target="chatTarget"
-          :profiles="profiles"
-          :selected-agent="selectedAgent"
-          :show-agent-dropdown="showAgentDropdown"
-          @select-report-agent-chat="selectReportAgentChat"
-          @toggle-agent-dropdown="toggleAgentDropdown"
-          @select-agent="selectAgent"
-          @select-survey-tab="selectSurveyTab"
-        />
-
-        <!-- Chat Mode -->
-        <div v-if="activeTab === 'chat'" class="chat-container">
-
-          <ReportAgentToolsCard v-if="showTechnical && chatTarget === 'report_agent'" />
-
-          <ComparisonSnapshotWorkspace
-            v-if="showTechnical && chatTarget === 'report_agent' && isConsumerMode"
-            :simulation-id="simulationId"
-            :is-consumer-mode="isConsumerMode"
-            :comparison-snapshot="comparisonSnapshot"
-            @update:branch-comparison="workspaceBranchComparison = $event"
-            @update:comparison-snapshot="workspaceComparisonSnapshot = $event"
-          />
-
-          <PropagationPathGraph
-            v-if="showTechnical && chatTarget === 'report_agent' && isConsumerMode"
-            :context="reportContext"
-          />
-
-          <ConsumerChatBrief
-            v-if="chatTarget === 'report_agent' && isConsumerMode && (consumerQuickPrompts.length > 0 || consumerVocHighlights.length > 0)"
-            :quick-prompts="consumerQuickPrompts"
-            :voc-highlights="consumerVocHighlights"
-            :source-catalog="consumerSourceCatalog"
-            :enriched-findings="consumerEnrichedFindings"
-            :show-technical="showTechnical"
-            @apply-prompt="applyQuickPrompt"
-          />
-
-          <AgentProfileCard v-if="chatTarget === 'agent' && selectedAgent" :agent="selectedAgent" />
-
-          <InteractionChatPanel
-            ref="chatPanelRef"
-            :chat-history="chatHistory"
-            v-model:chat-input="chatInput"
-            :is-sending="isSending"
-            :chat-target="chatTarget"
-            :selected-agent="selectedAgent"
-            @send-message="sendMessage"
-          />
-        </div>
-
-        <!-- Consumer Interview Workspace -->
-        <div v-if="showTechnical && isConsumerMode" class="consumer-interview-workspace">
-          <RepresentativeConsumerInterview
-            :simulation-id="simulationId"
-            :target-context="interviewHandoffContext"
-            @add-log="addLog"
-          />
-          <VirtualFocusGroupPanel
-            :simulation-id="simulationId"
-            :target-context="interviewHandoffContext"
-            @add-log="addLog"
-          />
-          <InterviewHistoryPanel
-            :simulation-id="simulationId"
-            @add-log="addLog"
-          />
-        </div>
-
-        <InteractionSurveyPanel
-          v-if="activeTab === 'survey'"
-          :profiles="profiles"
-          :selected-agents="selectedAgents"
-          v-model:survey-question="surveyQuestion"
-          :survey-results="surveyResults"
-          :is-surveying="isSurveying"
-          @toggle-agent-selection="toggleAgentSelection"
-          @select-all-agents="selectAllAgents"
-          @clear-agent-selection="clearAgentSelection"
-          @submit-survey="submitSurvey"
-        />
-      </div>
+      <InteractionWorkspaceShell
+        ref="chatPanelRef"
+        :active-tab="activeTab"
+        :chat-target="chatTarget"
+        :profiles="profiles"
+        :selected-agent="selectedAgent"
+        :show-agent-dropdown="showAgentDropdown"
+        :show-technical="showTechnical"
+        :is-consumer-mode="isConsumerMode"
+        :simulation-id="simulationId"
+        :comparison-snapshot="comparisonSnapshot"
+        :report-context="reportContext"
+        :consumer-quick-prompts="consumerQuickPrompts"
+        :consumer-voc-highlights="consumerVocHighlights"
+        :consumer-source-catalog="consumerSourceCatalog"
+        :consumer-enriched-findings="consumerEnrichedFindings"
+        :chat-history="chatHistory"
+        v-model:chat-input="chatInput"
+        :is-sending="isSending"
+        :interview-handoff-context="interviewHandoffContext"
+        :selected-agents="selectedAgents"
+        v-model:survey-question="surveyQuestion"
+        :survey-results="surveyResults"
+        :is-surveying="isSurveying"
+        @select-report-agent-chat="selectReportAgentChat"
+        @toggle-agent-dropdown="toggleAgentDropdown"
+        @select-agent="selectAgent"
+        @select-survey-tab="selectSurveyTab"
+        @update:branch-comparison="workspaceBranchComparison = $event"
+        @update:comparison-snapshot="workspaceComparisonSnapshot = $event"
+        @apply-prompt="applyQuickPrompt"
+        @send-message="sendMessage"
+        @add-log="addLog"
+        @toggle-agent-selection="toggleAgentSelection"
+        @select-all-agents="selectAllAgents"
+        @clear-agent-selection="clearAgentSelection"
+        @submit-survey="submitSurvey"
+      />
     </div>
   </div>
 </template>
@@ -131,18 +82,8 @@ import {
   extractAgentChatResponse,
   normalizeSurveyResults,
 } from '../utils/step5Survey'
-import ComparisonSnapshotWorkspace from './consumer/ComparisonSnapshotWorkspace.vue'
-import PropagationPathGraph from './consumer/PropagationPathGraph.vue'
-import RepresentativeConsumerInterview from './consumer/RepresentativeConsumerInterview.vue'
-import VirtualFocusGroupPanel from './consumer/VirtualFocusGroupPanel.vue'
-import InterviewHistoryPanel from './consumer/InterviewHistoryPanel.vue'
-import AgentProfileCard from './report/AgentProfileCard.vue'
-import ConsumerChatBrief from './report/ConsumerChatBrief.vue'
-import InteractionActionBar from './report/InteractionActionBar.vue'
-import InteractionChatPanel from './report/InteractionChatPanel.vue'
 import InteractionReportShell from './report/InteractionReportShell.vue'
-import InteractionSurveyPanel from './report/InteractionSurveyPanel.vue'
-import ReportAgentToolsCard from './report/ReportAgentToolsCard.vue'
+import InteractionWorkspaceShell from './report/InteractionWorkspaceShell.vue'
 
 const { t } = useI18n()
 
@@ -242,7 +183,6 @@ const consumerEnrichedFindings = computed(() => {
 
 // Refs
 const leftPanel = ref(null)
-const rightPanel = ref(null)
 
 // Methods
 const addLog = (msg) => {
@@ -254,7 +194,7 @@ const applyQuickPrompt = (prompt) => {
   activeTab.value = 'chat'
   chatTarget.value = 'report_agent'
   nextTick(() => {
-    chatPanelRef.value?.chatInputRef?.focus()
+    chatPanelRef.value?.chatPanelRef?.chatInputRef?.focus()
   })
 }
 
@@ -449,7 +389,7 @@ const sendToAgent = async (message) => {
 
 const scrollToBottom = () => {
   nextTick(() => {
-    const chatMessages = chatPanelRef.value?.chatMessages
+    const chatMessages = chatPanelRef.value?.chatPanelRef?.chatMessages
     if (chatMessages) {
       chatMessages.scrollTop = chatMessages.scrollHeight
     }
@@ -651,183 +591,8 @@ watch(() => props.simulationId, (newId) => {
   max-width: 620px;
 }
 
-.main-split-layout:not(.technical-open) .right-panel {
+.main-split-layout:not(.technical-open) :deep(.right-panel) {
   flex: 1.2;
-}
-
-/* Right Panel - Interaction */
-.right-panel {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  background: var(--mc-bg-subtle);
-  overflow: hidden;
-}
-
-/* Interaction Header */
-.interaction-header {
-  padding: 16px 24px;
-  border-bottom: 1px solid #E5E7EB;
-  background: #FAFAFA;
-}
-
-.tab-switcher {
-  display: flex;
-  gap: 8px;
-}
-
-.tab-btn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 20px;
-  font-size: 13px;
-  font-weight: 600;
-  color: #6B7280;
-  background: transparent;
-  border: 1px solid #E5E7EB;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.tab-btn:hover {
-  background: #F9FAFB;
-  border-color: #D1D5DB;
-}
-
-.tab-btn.active {
-  background: #1F2937;
-  color: #FFFFFF;
-  border-color: #1F2937;
-}
-
-.tab-btn svg {
-  flex-shrink: 0;
-}
-
-/* Chat Container */
-.chat-container {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-/* Target Selector */
-.target-selector {
-  padding: 16px 24px;
-  border-bottom: 1px solid #E5E7EB;
-}
-
-.selector-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: #9CA3AF;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-bottom: 10px;
-}
-
-.selector-options {
-  display: flex;
-  gap: 12px;
-}
-
-.target-option {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
-  font-size: 13px;
-  font-weight: 500;
-  color: #374151;
-  background: #F9FAFB;
-  border: 1px solid #E5E7EB;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.target-option:hover {
-  border-color: #D1D5DB;
-}
-
-.target-option.active {
-  background: #1F2937;
-  color: #FFFFFF;
-  border-color: #1F2937;
-}
-
-/* Markdown Styles */
-:deep(.md-p) {
-  margin: 0 0 12px 0;
-}
-
-:deep(.md-h2) {
-  font-size: 20px;
-  font-weight: 700;
-  color: #1F2937;
-  margin: 24px 0 12px 0;
-}
-
-:deep(.md-h3) {
-  font-size: 16px;
-  font-weight: 600;
-  color: #374151;
-  margin: 20px 0 10px 0;
-}
-
-:deep(.md-h4) {
-  font-size: 14px;
-  font-weight: 600;
-  color: #4B5563;
-  margin: 16px 0 8px 0;
-}
-
-:deep(.md-h5) {
-  font-size: 13px;
-  font-weight: 600;
-  color: #6B7280;
-  margin: 12px 0 6px 0;
-}
-
-:deep(.md-ul), :deep(.md-ol) {
-  margin: 12px 0;
-  padding-left: 24px;
-}
-
-:deep(.md-li), :deep(.md-oli) {
-  margin: 6px 0;
-}
-
-:deep(.code-block) {
-  margin: 12px 0;
-  padding: 12px 16px;
-  background: #1F2937;
-  border-radius: 6px;
-  overflow-x: auto;
-}
-
-:deep(.code-block code) {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 13px;
-  color: #E5E7EB;
-}
-
-:deep(.inline-code) {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 13px;
-  background: #F3F4F6;
-  padding: 2px 6px;
-  border-radius: 4px;
-  color: #1F2937;
-}
-
-:deep(.md-hr) {
-  border: none;
-  border-top: 1px solid #E5E7EB;
-  margin: 24px 0;
 }
 
 @media (max-width: 980px) {
@@ -847,7 +612,7 @@ watch(() => props.simulationId, (newId) => {
     padding: 22px 18px 28px;
   }
 
-  .right-panel {
+  :deep(.right-panel) {
     min-height: 56vh;
   }
 

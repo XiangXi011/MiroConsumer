@@ -8,14 +8,18 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 
 const step5Path = join(__dirname, '../src/components/Step5Interaction.vue')
+const workspaceShellPath = join(__dirname, '../src/components/report/InteractionWorkspaceShell.vue')
 const surveyPanelPath = join(__dirname, '../src/components/report/InteractionSurveyPanel.vue')
 
 const step5Content = readFileSync(step5Path, 'utf-8')
+const workspaceShellContent = readFileSync(workspaceShellPath, 'utf-8')
 
 test('Step5Interaction delegates survey setup and results rendering', () => {
   assert.ok(existsSync(surveyPanelPath), 'InteractionSurveyPanel component must exist')
-  assert.ok(step5Content.includes("import InteractionSurveyPanel from './report/InteractionSurveyPanel.vue'"), 'Step5 must import InteractionSurveyPanel')
-  assert.ok(step5Content.includes('<InteractionSurveyPanel'), 'Step5 must render InteractionSurveyPanel')
+  assert.ok(step5Content.includes("import InteractionWorkspaceShell from './report/InteractionWorkspaceShell.vue'"), 'Step5 must import InteractionWorkspaceShell')
+  assert.ok(step5Content.includes('<InteractionWorkspaceShell'), 'Step5 must render InteractionWorkspaceShell')
+  assert.ok(workspaceShellContent.includes("import InteractionSurveyPanel from './InteractionSurveyPanel.vue'"), 'InteractionWorkspaceShell must import InteractionSurveyPanel')
+  assert.ok(workspaceShellContent.includes('<InteractionSurveyPanel'), 'InteractionWorkspaceShell must render InteractionSurveyPanel')
   assert.ok(step5Content.includes(':profiles="profiles"'), 'Step5 must pass profiles')
   assert.ok(step5Content.includes(':selected-agents="selectedAgents"'), 'Step5 must pass selected agents')
   assert.ok(step5Content.includes('v-model:survey-question="surveyQuestion"'), 'Step5 must bind survey question')

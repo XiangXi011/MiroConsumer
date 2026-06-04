@@ -8,14 +8,18 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 
 const step5Path = join(__dirname, '../src/components/Step5Interaction.vue')
+const workspaceShellPath = join(__dirname, '../src/components/report/InteractionWorkspaceShell.vue')
 const cardPath = join(__dirname, '../src/components/report/ReportAgentToolsCard.vue')
 
 const step5Content = readFileSync(step5Path, 'utf-8')
+const workspaceShellContent = readFileSync(workspaceShellPath, 'utf-8')
 
 test('Step5Interaction delegates report agent tools card rendering', () => {
   assert.ok(existsSync(cardPath), 'ReportAgentToolsCard component must exist')
-  assert.ok(step5Content.includes("import ReportAgentToolsCard from './report/ReportAgentToolsCard.vue'"), 'Step5 must import ReportAgentToolsCard')
-  assert.ok(step5Content.includes('<ReportAgentToolsCard'), 'Step5 must render ReportAgentToolsCard')
+  assert.ok(step5Content.includes("import InteractionWorkspaceShell from './report/InteractionWorkspaceShell.vue'"), 'Step5 must import InteractionWorkspaceShell')
+  assert.ok(step5Content.includes('<InteractionWorkspaceShell'), 'Step5 must render InteractionWorkspaceShell')
+  assert.ok(workspaceShellContent.includes("import ReportAgentToolsCard from './ReportAgentToolsCard.vue'"), 'InteractionWorkspaceShell must import ReportAgentToolsCard')
+  assert.ok(workspaceShellContent.includes('<ReportAgentToolsCard'), 'InteractionWorkspaceShell must render ReportAgentToolsCard')
   assert.ok(!step5Content.includes('class="report-agent-tools-card"'), 'tools card markup should live outside Step5Interaction')
   assert.ok(!step5Content.includes('showToolsDetail'), 'tools detail state should live inside ReportAgentToolsCard')
 })

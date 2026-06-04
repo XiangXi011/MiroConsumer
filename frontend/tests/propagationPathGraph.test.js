@@ -59,6 +59,7 @@ test('buildPropagationPathRows carries node exploration playback and heatmap met
 test('PropagationPathGraph.vue is mounted by Step5Interaction', () => {
   const component = readFileSync(join(__dirname, '../src/components/consumer/PropagationPathGraph.vue'), 'utf-8')
   const step5 = readFileSync(join(__dirname, '../src/components/Step5Interaction.vue'), 'utf-8')
+  const workspaceShell = readFileSync(join(__dirname, '../src/components/report/InteractionWorkspaceShell.vue'), 'utf-8')
 
   for (const label of ['First Misreader', 'Propagation Target', 'Cross-Segment Depth', 'Cross-Channel Count', 'Blocked Nodes', 'Repair Nodes']) {
     assert.ok(component.includes(label), `missing ${label}`)
@@ -69,5 +70,6 @@ test('PropagationPathGraph.vue is mounted by Step5Interaction', () => {
   for (const stateName of ['selectedRound', 'selectedChannel', 'hoveredNode', 'playbackRows']) {
     assert.ok(component.includes(stateName), `missing ${stateName}`)
   }
-  assert.ok(step5.includes('PropagationPathGraph'), 'Step5Interaction must mount PropagationPathGraph')
+  assert.ok(step5.includes('InteractionWorkspaceShell'), 'Step5Interaction must mount InteractionWorkspaceShell')
+  assert.ok(workspaceShell.includes('PropagationPathGraph'), 'InteractionWorkspaceShell must mount PropagationPathGraph')
 })

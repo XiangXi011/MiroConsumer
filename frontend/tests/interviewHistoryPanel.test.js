@@ -155,6 +155,7 @@ test('InterviewHistoryPanel.vue shows interview history, focus group history, to
     'utf-8'
   )
   const step5 = readFileSync(new URL('../src/components/Step5Interaction.vue', import.meta.url), 'utf-8')
+  const workspaceShell = readFileSync(new URL('../src/components/report/InteractionWorkspaceShell.vue', import.meta.url), 'utf-8')
 
   for (const token of [
     'listInterviewHistory',
@@ -170,5 +171,6 @@ test('InterviewHistoryPanel.vue shows interview history, focus group history, to
   ]) {
     assert.ok(component.includes(token), `missing ${token}`)
   }
-  assert.ok(step5.includes('InterviewHistoryPanel'), 'Step5Interaction must mount InterviewHistoryPanel')
+  assert.ok(step5.includes('InteractionWorkspaceShell'), 'Step5Interaction must mount InteractionWorkspaceShell')
+  assert.ok(workspaceShell.includes('InterviewHistoryPanel'), 'InteractionWorkspaceShell must mount InterviewHistoryPanel')
 })
