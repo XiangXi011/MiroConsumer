@@ -2,46 +2,19 @@
   <div class="interaction-panel">
     <!-- Main Split Layout -->
     <div class="main-split-layout" :class="{ 'technical-open': showTechnical }">
-      <!-- LEFT PANEL: Report Style -->
-      <div class="left-panel report-style" ref="leftPanel">
-        <div v-if="reportOutline" class="report-content-wrapper">
-          <!-- Report Header -->
-          <div class="report-header-block">
-            <div class="report-meta">
-              <span class="report-tag">{{ isConsumerMode ? $t('consumer.reportTag') : 'Prediction Report' }}</span>
-              <span v-if="showTechnical" class="report-id">ID: {{ reportId || 'REF-2024-X92' }}</span>
-            </div>
-            <h1 class="main-title">{{ reportOutline.title }}</h1>
-            <p class="sub-title">{{ reportOutline.summary }}</p>
-            <div class="header-divider"></div>
-          </div>
-
-          <ReportSectionsList
-            :sections="reportOutline.sections"
-            :generated-sections="generatedSections"
-            :collapsed-sections="collapsedSections"
-            :current-section-index="currentSectionIndex"
-            :is-consumer-mode="false"
-            @toggle-section-collapse="toggleSectionCollapse"
-          />
-
-          <InteractionHandoffPanel
-            v-if="showTechnical && interviewHandoffContext"
-            :handoff-context="interviewHandoffContext"
-            @clear-handoff="clearInterviewHandoff"
-          />
-        </div>
-
-        <!-- Waiting State -->
-        <div v-if="!reportOutline" class="waiting-placeholder">
-          <div class="waiting-animation">
-            <div class="waiting-ring"></div>
-            <div class="waiting-ring"></div>
-            <div class="waiting-ring"></div>
-          </div>
-          <span class="waiting-text">{{ $t('step5.loadingInteraction') }}</span>
-        </div>
-      </div>
+      <InteractionReportShell
+        ref="leftPanel"
+        :report-outline="reportOutline"
+        :generated-sections="generatedSections"
+        :collapsed-sections="collapsedSections"
+        :current-section-index="currentSectionIndex"
+        :is-consumer-mode="isConsumerMode"
+        :show-technical="showTechnical"
+        :report-id="reportId"
+        :interview-handoff-context="interviewHandoffContext"
+        @toggle-section-collapse="toggleSectionCollapse"
+        @clear-interview-handoff="clearInterviewHandoff"
+      />
 
       <!-- RIGHT PANEL: Interaction Interface -->
       <div class="right-panel" ref="rightPanel">
@@ -167,10 +140,9 @@ import AgentProfileCard from './report/AgentProfileCard.vue'
 import ConsumerChatBrief from './report/ConsumerChatBrief.vue'
 import InteractionActionBar from './report/InteractionActionBar.vue'
 import InteractionChatPanel from './report/InteractionChatPanel.vue'
-import InteractionHandoffPanel from './report/InteractionHandoffPanel.vue'
+import InteractionReportShell from './report/InteractionReportShell.vue'
 import InteractionSurveyPanel from './report/InteractionSurveyPanel.vue'
 import ReportAgentToolsCard from './report/ReportAgentToolsCard.vue'
-import ReportSectionsList from './report/ReportSectionsList.vue'
 
 const { t } = useI18n()
 
@@ -668,162 +640,19 @@ watch(() => props.simulationId, (newId) => {
   overflow: hidden;
 }
 
-.main-split-layout:not(.technical-open) .left-panel.report-style {
+.main-split-layout:not(.technical-open) :deep(.left-panel.report-style) {
   width: 42%;
   min-width: 360px;
   padding: 28px 34px 56px;
   background: var(--mc-bg-subtle);
 }
 
-.main-split-layout:not(.technical-open) .report-content-wrapper {
+.main-split-layout:not(.technical-open) :deep(.report-content-wrapper) {
   max-width: 620px;
 }
 
 .main-split-layout:not(.technical-open) .right-panel {
   flex: 1.2;
-}
-
-/* Left Panel - Report Style (与 Step4Report.vue 完全一致) */
-.left-panel.report-style {
-  width: 45%;
-  min-width: 450px;
-  background: var(--mc-bg-subtle);
-  border-right: 1px solid var(--mc-border);
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  padding: 30px 50px 60px 50px;
-}
-
-.left-panel::-webkit-scrollbar {
-  width: 6px;
-}
-
-.left-panel::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.left-panel::-webkit-scrollbar-thumb {
-  background: transparent;
-  border-radius: 3px;
-  transition: background 0.3s ease;
-}
-
-.left-panel:hover::-webkit-scrollbar-thumb {
-  background: rgba(34, 92, 75, 0.18);
-}
-
-.left-panel::-webkit-scrollbar-thumb:hover {
-  background: rgba(34, 92, 75, 0.28);
-}
-
-/* Report Header */
-.report-content-wrapper {
-  max-width: 800px;
-  margin: 0 auto;
-  width: 100%;
-}
-
-.report-header-block {
-  margin-bottom: 30px;
-}
-
-.report-meta {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 24px;
-}
-
-.report-tag {
-  background: var(--mc-accent);
-  color: #fffdfa;
-  font-size: 11px;
-  font-weight: 700;
-  padding: 4px 8px;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-
-.report-id {
-  font-size: 11px;
-  color: var(--mc-text-tertiary);
-  font-weight: 500;
-  letter-spacing: 0.02em;
-}
-
-.main-title {
-  font-family: var(--mc-font-display);
-  font-size: 36px;
-  font-weight: 700;
-  color: var(--mc-text-primary);
-  line-height: 1.2;
-  margin: 0 0 16px 0;
-  letter-spacing: 0;
-}
-
-.sub-title {
-  font-family: var(--mc-font-body);
-  font-size: 16px;
-  color: var(--mc-text-secondary);
-  font-style: normal;
-  line-height: 1.6;
-  margin: 0 0 30px 0;
-  font-weight: 400;
-}
-
-.header-divider {
-  height: 1px;
-  background: var(--mc-border);
-  width: 100%;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-/* Waiting Placeholder */
-.waiting-placeholder {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 20px;
-  padding: 40px;
-  color: var(--mc-text-tertiary);
-}
-
-.waiting-animation {
-  position: relative;
-  width: 48px;
-  height: 48px;
-}
-
-.waiting-ring {
-  position: absolute;
-  width: 100%;
-  height: 100%;
-  border: 2px solid #E5E7EB;
-  border-radius: 50%;
-  animation: ripple 2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-}
-
-.waiting-ring:nth-child(2) {
-  animation-delay: 0.4s;
-}
-
-.waiting-ring:nth-child(3) {
-  animation-delay: 0.8s;
-}
-
-@keyframes ripple {
-  0% { transform: scale(0.5); opacity: 1; }
-  100% { transform: scale(2); opacity: 0; }
-}
-
-.waiting-text {
-  font-size: 14px;
 }
 
 /* Right Panel - Interaction */
@@ -1008,8 +837,8 @@ watch(() => props.simulationId, (newId) => {
     overflow-y: auto;
   }
 
-  .left-panel.report-style,
-  .main-split-layout:not(.technical-open) .left-panel.report-style {
+  :deep(.left-panel.report-style),
+  .main-split-layout:not(.technical-open) :deep(.left-panel.report-style) {
     width: 100%;
     min-width: 0;
     max-height: 44vh;
@@ -1022,12 +851,5 @@ watch(() => props.simulationId, (newId) => {
     min-height: 56vh;
   }
 
-}
-</style>
-
-<style>
-/* English locale: smaller report title */
-html[lang="en"] .report-header-block .main-title {
-  font-size: 28px;
 }
 </style>
