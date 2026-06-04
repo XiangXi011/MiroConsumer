@@ -530,6 +530,7 @@ import {
   buildBranchAwarePrompts,
   buildCascadeAwarePrompts,
   buildComparisonAwarePrompts,
+  buildReplayAwarePrompts,
   isConsumerProject,
   pickTopVocQuotes,
 } from '../utils/consumerMode'
@@ -600,36 +601,6 @@ const workspaceBranchComparison = ref(null)
 const workspaceComparisonSnapshot = ref(null)
 
 const effectiveComparisonSnapshot = computed(() => props.comparisonSnapshot || workspaceComparisonSnapshot.value)
-
-const buildReplayAwarePrompts = (reportContext, tFn) => {
-  const prompts = []
-  if (!reportContext || typeof reportContext !== 'object') return prompts
-  const replay = reportContext.replay_alignment
-  if (!replay || typeof replay !== 'object') return prompts
-
-  if (replay.status === 'drift' && replay.drift_signals && replay.drift_signals.length > 0) {
-    prompts.push(
-      typeof tFn === 'function'
-        ? tFn('consumer.quickPrompts.replayDrift', 'Replay shows drift. What changed compared to the benchmark?', { count: replay.drift_signals.length })
-        : 'Replay shows drift. What changed compared to the benchmark?'
-    )
-  }
-  if (replay.status === 'aligned') {
-    prompts.push(
-      typeof tFn === 'function'
-        ? tFn('consumer.quickPrompts.replayAligned', 'Replay aligns with benchmark. What stable signals hold up best?')
-        : 'Replay aligns with benchmark. What stable signals hold up best?'
-    )
-  }
-  if (replay.status === 'partial') {
-    prompts.push(
-      typeof tFn === 'function'
-        ? tFn('consumer.quickPrompts.replayPartial', 'Replay is partially aligned. Which signals are inconsistent?')
-        : 'Replay is partially aligned. Which signals are inconsistent?'
-    )
-  }
-  return prompts
-}
 
 const consumerQuickPrompts = computed(() => {
   if (!isConsumerMode.value) return []
