@@ -58,8 +58,8 @@ function Write-PathGroups {
 Push-Location $RepoRoot
 try {
     $Branch = (& git branch --show-current).Trim()
-    $Upstream = & git rev-parse --abbrev-ref --symbolic-full-name "@{u}" 2>$null
-    if ($LASTEXITCODE -ne 0) {
+    $Upstream = (& git for-each-ref --format="%(upstream:short)" "refs/heads/$Branch") -join ""
+    if ([string]::IsNullOrWhiteSpace($Upstream)) {
         $Upstream = "(none)"
     }
 
