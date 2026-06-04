@@ -520,6 +520,7 @@ import {
   normalizeConsumerResearchActionResponse,
   saveConsumerInterviewHandoff,
 } from '../utils/consumerResearchActions'
+import { deriveReportRenderState } from '../utils/reportContent'
 
 const router = useRouter()
 const { t } = useI18n()
@@ -596,6 +597,14 @@ const showInsightDrawer = ref(false)
 const drawerResult = ref(null)
 const drawerLoading = ref(false)
 const drawerError = ref('')
+
+const applyReportRenderState = () => {
+  const state = deriveReportRenderState(props.reportData)
+  if (!state.isComplete) return
+  isComplete.value = true
+  reportOutline.value = state.outline
+  generatedSections.value = state.generatedSections
+}
 
 // Branch comparison state
 const branchComparisonRaw = ref(null)
@@ -2645,6 +2654,7 @@ const stopPolling = () => {
 
 // Lifecycle
 onMounted(() => {
+  applyReportRenderState()
   if (props.reportId) {
     addLog(`Report Agent initialized: ${props.reportId}`)
     startPolling()
@@ -2673,11 +2683,16 @@ watch(() => props.reportId, (newId) => {
     startTime.value = null
     evidenceGraph.value = null
     evidenceGraphError.value = ''
+    applyReportRenderState()
     
     startPolling()
     loadEvidenceGraph()
   }
 }, { immediate: true })
+
+watch(() => props.reportData, () => {
+  applyReportRenderState()
+}, { deep: true })
 </script>
 
 <style scoped>
