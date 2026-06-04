@@ -65,6 +65,7 @@ import { useI18n } from 'vue-i18n'
 import { chatWithReport, getReport, getAgentLog } from '../api/report'
 import { interviewAgents, getSimulationProfilesRealtime } from '../api/simulation'
 import { useStep5ChatState } from '../composables/useStep5ChatState'
+import { useStep5ReportDataState } from '../composables/useStep5ReportDataState'
 import { useStep5SurveyState } from '../composables/useStep5SurveyState'
 import {
   buildConsumerQuickPrompts,
@@ -130,12 +131,16 @@ const {
 // Consumer interview handoff state
 const interviewHandoffContext = ref(null)
 
-// Report Data
-const reportOutline = ref(null)
-const generatedSections = ref({})
-const collapsedSections = ref(new Set())
-const currentSectionIndex = ref(null)
-const profiles = ref([])
+const {
+  reportOutline,
+  generatedSections,
+  collapsedSections,
+  currentSectionIndex,
+  profiles,
+  toggleSectionCollapse,
+  applyReportLogs,
+  setProfiles,
+} = useStep5ReportDataState()
 
 const {
   selectedAgents,
@@ -202,17 +207,6 @@ const consumerEnrichedFindings = computed(() => {
 
 // Refs
 const leftPanel = ref(null)
-
-const toggleSectionCollapse = (idx) => {
-  if (!generatedSections.value[idx + 1]) return
-  const newSet = new Set(collapsedSections.value)
-  if (newSet.has(idx)) {
-    newSet.delete(idx)
-  } else {
-    newSet.add(idx)
-  }
-  collapsedSections.value = newSet
-}
 
 // Chat Methods
 const sendMessage = async () => {
@@ -391,15 +385,7 @@ const loadAgentLogs = async () => {
     if (res.success && res.data) {
       const logs = res.data.logs || []
       
-      logs.forEach(log => {
-        if (log.action === 'planning_complete' && log.details?.outline) {
-          reportOutline.value = log.details.outline
-        }
-        
-        if (log.action === 'section_complete' && log.section_index < 100 && log.details?.content) {
-          generatedSections.value[log.section_index] = log.details.content
-        }
-      })
+      applyReportLogs(logs)
       
       addLog(t('log.reportDataLoaded'))
     }
@@ -414,7 +400,7 @@ const loadProfiles = async () => {
   try {
     const res = await getSimulationProfilesRealtime(props.simulationId, 'reddit')
     if (res.success && res.data) {
-      profiles.value = res.data.profiles || []
+      setProfiles(res.data.profiles || [])
       addLog(t('log.loadedProfiles', { count: profiles.value.length }))
     }
   } catch (err) {
