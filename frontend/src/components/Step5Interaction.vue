@@ -60,23 +60,16 @@
 
 <script setup lang="ts">
 // @ts-nocheck
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { chatWithReport, getReport, getAgentLog } from '../api/report'
-import { interviewAgents, getSimulationProfilesRealtime } from '../api/simulation'
-import {
-  buildConsumerQuickPrompts,
-  buildBranchAwarePrompts,
-  buildCascadeAwarePrompts,
-  buildComparisonAwarePrompts,
-  buildReplayAwarePrompts,
-  isConsumerProject,
-  pickTopVocQuotes,
-} from '../utils/consumerMode'
-import {
-  loadConsumerInterviewHandoff,
-  clearConsumerInterviewHandoff,
-} from '../utils/consumerResearchActions'
+import { chatWithReport } from '../api/report'
+import { interviewAgents } from '../api/simulation'
+import { useStep5ChatState } from '../composables/useStep5ChatState'
+import { useStep5ConsumerContextState } from '../composables/useStep5ConsumerContextState'
+import { useStep5InterviewHandoffState } from '../composables/useStep5InterviewHandoffState'
+import { useStep5ReportDataState } from '../composables/useStep5ReportDataState'
+import { useStep5ReportLoaders } from '../composables/useStep5ReportLoaders'
+import { useStep5SurveyState } from '../composables/useStep5SurveyState'
 import {
   buildSurveyInterviewRequests,
   extractAgentChatResponse,
@@ -98,178 +91,86 @@ const props = defineProps({
 
 const emit = defineEmits(['add-log', 'update-status'])
 
-// State
-const activeTab = ref('chat')
-const chatTarget = ref('report_agent')
-const showAgentDropdown = ref(false)
-const selectedAgent = ref(null)
-const selectedAgentIndex = ref(null)
-
-// Chat State
-const chatInput = ref('')
-const chatHistory = ref([])
-const chatHistoryCache = ref({}) // 缓存所有对话记录: { 'report_agent': [], 'agent_0': [], 'agent_1': [], ... }
-const isSending = ref(false)
-const chatPanelRef = ref(null)
-
-// Survey State
-const selectedAgents = ref(new Set())
-const surveyQuestion = ref('')
-const surveyResults = ref([])
-const isSurveying = ref(false)
-
-// Consumer interview handoff state
-const interviewHandoffContext = ref(null)
-
-// Report Data
-const reportOutline = ref(null)
-const generatedSections = ref({})
-const collapsedSections = ref(new Set())
-const currentSectionIndex = ref(null)
-const profiles = ref([])
-
-const isConsumerMode = computed(() => (
-  isConsumerProject(props.reportData) || isConsumerProject(props.projectData)
-))
-
-const reportContext = computed(() => props.reportData?.report_context || {})
-
-const workspaceBranchComparison = ref(null)
-const workspaceComparisonSnapshot = ref(null)
-
-const effectiveComparisonSnapshot = computed(() => props.comparisonSnapshot || workspaceComparisonSnapshot.value)
-
-const consumerQuickPrompts = computed(() => {
-  if (!isConsumerMode.value) return []
-  const basePrompts = props.reportData?.report_context
-    ? buildConsumerQuickPrompts(props.reportData.report_context, t)
-    : []
-  const branchPrompts = workspaceBranchComparison.value
-    ? buildBranchAwarePrompts(workspaceBranchComparison.value, t)
-    : []
-  const cascadePrompts = props.reportData?.report_context
-    ? buildCascadeAwarePrompts(props.reportData.report_context, t)
-    : []
-  const snapshot = effectiveComparisonSnapshot.value
-  const comparisonPrompts = snapshot
-    ? buildComparisonAwarePrompts(snapshot, t)
-    : []
-  const replayPrompts = props.reportData?.report_context
-    ? buildReplayAwarePrompts(props.reportData.report_context, t)
-    : []
-  return [...basePrompts, ...branchPrompts, ...cascadePrompts, ...comparisonPrompts, ...replayPrompts]
-})
-
-const consumerVocHighlights = computed(() => (
-  isConsumerMode.value && props.reportData?.report_context
-    ? pickTopVocQuotes(props.reportData.report_context, t)
-    : []
-))
-
-const consumerSourceCatalog = computed(() => (
-  isConsumerMode.value && props.reportData?.report_context
-    ? (props.reportData.report_context.source_catalog || [])
-    : []
-))
-
-const consumerEnrichedFindings = computed(() => {
-  if (!isConsumerMode.value || !props.reportData?.report_context) return []
-  const enriched = props.reportData.report_context.enriched_findings || []
-  if (enriched.length > 0) {
-    return enriched.filter(f => f && f.summary)
-  }
-  return (props.reportData.report_context.research_findings || []).filter(f => f && f.summary)
-})
-
-// Refs
-const leftPanel = ref(null)
-
-// Methods
 const addLog = (msg) => {
   emit('add-log', msg)
 }
 
-const applyQuickPrompt = (prompt) => {
-  chatInput.value = prompt
-  activeTab.value = 'chat'
-  chatTarget.value = 'report_agent'
-  nextTick(() => {
-    chatPanelRef.value?.chatPanelRef?.chatInputRef?.focus()
-  })
-}
+const {
+  activeTab,
+  chatTarget,
+  showAgentDropdown,
+  selectedAgent,
+  selectedAgentIndex,
+  chatInput,
+  chatHistory,
+  isSending,
+  chatPanelRef,
+  applyQuickPrompt,
+  selectChatTarget,
+  saveChatHistory,
+  selectReportAgentChat,
+  selectSurveyTab,
+  toggleAgentDropdown,
+  selectAgent,
+  scrollToBottom,
+} = useStep5ChatState({
+  addLog,
+  formatSelectChatTargetLog: agent => t('log.selectChatTarget', { name: agent.username }),
+})
 
+const {
+  reportOutline,
+  generatedSections,
+  collapsedSections,
+  currentSectionIndex,
+  profiles,
+  toggleSectionCollapse,
+  applyReportLogs,
+  setProfiles,
+} = useStep5ReportDataState()
 
-const toggleSectionCollapse = (idx) => {
-  if (!generatedSections.value[idx + 1]) return
-  const newSet = new Set(collapsedSections.value)
-  if (newSet.has(idx)) {
-    newSet.delete(idx)
-  } else {
-    newSet.add(idx)
-  }
-  collapsedSections.value = newSet
-}
+const {
+  selectedAgents,
+  surveyQuestion,
+  surveyResults,
+  isSurveying,
+  toggleAgentSelection,
+  selectAllAgents,
+  clearAgentSelection,
+} = useStep5SurveyState({ profiles })
 
-const selectChatTarget = (target) => {
-  chatTarget.value = target
-  if (target === 'report_agent') {
-    showAgentDropdown.value = false
-  }
-}
+const {
+  isConsumerMode,
+  reportContext,
+  workspaceBranchComparison,
+  workspaceComparisonSnapshot,
+  consumerQuickPrompts,
+  consumerVocHighlights,
+  consumerSourceCatalog,
+  consumerEnrichedFindings,
+} = useStep5ConsumerContextState({ props, t })
 
-// 保存当前对话记录到缓存
-const saveChatHistory = () => {
-  if (chatHistory.value.length === 0) return
-  
-  if (chatTarget.value === 'report_agent') {
-    chatHistoryCache.value['report_agent'] = [...chatHistory.value]
-  } else if (selectedAgentIndex.value !== null) {
-    chatHistoryCache.value[`agent_${selectedAgentIndex.value}`] = [...chatHistory.value]
-  }
-}
+const {
+  loadReportData,
+  loadProfiles,
+} = useStep5ReportLoaders({
+  reportId: computed(() => props.reportId),
+  simulationId: computed(() => props.simulationId),
+  profiles,
+  addLog,
+  t,
+  applyReportLogs,
+  setProfiles,
+})
 
-const selectReportAgentChat = () => {
-  // 保存当前对话记录
-  saveChatHistory()
-  
-  activeTab.value = 'chat'
-  chatTarget.value = 'report_agent'
-  selectedAgent.value = null
-  selectedAgentIndex.value = null
-  showAgentDropdown.value = false
-  
-  // 恢复 Report Agent 的对话记录
-  chatHistory.value = chatHistoryCache.value['report_agent'] || []
-}
+const {
+  interviewHandoffContext,
+  loadInterviewHandoff,
+  clearInterviewHandoff: clearStoredInterviewHandoff,
+} = useStep5InterviewHandoffState()
 
-const selectSurveyTab = () => {
-  activeTab.value = 'survey'
-  selectedAgent.value = null
-  selectedAgentIndex.value = null
-  showAgentDropdown.value = false
-}
-
-const toggleAgentDropdown = () => {
-  showAgentDropdown.value = !showAgentDropdown.value
-  if (showAgentDropdown.value) {
-    activeTab.value = 'chat'
-    chatTarget.value = 'agent'
-  }
-}
-
-const selectAgent = (agent, idx) => {
-  // 保存当前对话记录
-  saveChatHistory()
-  
-  selectedAgent.value = agent
-  selectedAgentIndex.value = idx
-  chatTarget.value = 'agent'
-  showAgentDropdown.value = false
-  
-  // 恢复该 Agent 的对话记录
-  chatHistory.value = chatHistoryCache.value[`agent_${idx}`] || []
-  addLog(t('log.selectChatTarget', { name: agent.username }))
-}
+// Refs
+const leftPanel = ref(null)
 
 // Chat Methods
 const sendMessage = async () => {
@@ -387,36 +288,6 @@ const sendToAgent = async (message) => {
   }
 }
 
-const scrollToBottom = () => {
-  nextTick(() => {
-    const chatMessages = chatPanelRef.value?.chatPanelRef?.chatMessages
-    if (chatMessages) {
-      chatMessages.scrollTop = chatMessages.scrollHeight
-    }
-  })
-}
-
-// Survey Methods
-const toggleAgentSelection = (idx) => {
-  const newSet = new Set(selectedAgents.value)
-  if (newSet.has(idx)) {
-    newSet.delete(idx)
-  } else {
-    newSet.add(idx)
-  }
-  selectedAgents.value = newSet
-}
-
-const selectAllAgents = () => {
-  const newSet = new Set()
-  profiles.value.forEach((_, idx) => newSet.add(idx))
-  selectedAgents.value = newSet
-}
-
-const clearAgentSelection = () => {
-  selectedAgents.value = new Set()
-}
-
 const submitSurvey = async () => {
   if (selectedAgents.value.size === 0 || !surveyQuestion.value.trim()) return
   
@@ -452,63 +323,6 @@ const submitSurvey = async () => {
   }
 }
 
-// Load Report Data
-const loadReportData = async () => {
-  if (!props.reportId) return
-  
-  try {
-    addLog(t('log.loadReportData', { id: props.reportId }))
-    
-    // Get report info
-    const reportRes = await getReport(props.reportId)
-    if (reportRes.success && reportRes.data) {
-      // Load agent logs to get report outline and sections
-      await loadAgentLogs()
-    }
-  } catch (err) {
-    addLog(t('log.loadReportFailed', { error: err.message }))
-  }
-}
-
-const loadAgentLogs = async () => {
-  if (!props.reportId) return
-  
-  try {
-    const res = await getAgentLog(props.reportId, 0)
-    if (res.success && res.data) {
-      const logs = res.data.logs || []
-      
-      logs.forEach(log => {
-        if (log.action === 'planning_complete' && log.details?.outline) {
-          reportOutline.value = log.details.outline
-        }
-        
-        if (log.action === 'section_complete' && log.section_index < 100 && log.details?.content) {
-          generatedSections.value[log.section_index] = log.details.content
-        }
-      })
-      
-      addLog(t('log.reportDataLoaded'))
-    }
-  } catch (err) {
-    addLog(t('log.loadReportLogFailed', { error: err.message }))
-  }
-}
-
-const loadProfiles = async () => {
-  if (!props.simulationId) return
-  
-  try {
-    const res = await getSimulationProfilesRealtime(props.simulationId, 'reddit')
-    if (res.success && res.data) {
-      profiles.value = res.data.profiles || []
-      addLog(t('log.loadedProfiles', { count: profiles.value.length }))
-    }
-  } catch (err) {
-    addLog(t('log.loadProfilesFailed', { error: err.message }))
-  }
-}
-
 // Click outside to close dropdown
 const handleClickOutside = (e) => {
   const dropdown = document.querySelector('.agent-dropdown')
@@ -517,18 +331,8 @@ const handleClickOutside = (e) => {
   }
 }
 
-const loadInterviewHandoff = () => {
-  if (!props.simulationId) {
-    interviewHandoffContext.value = null
-    return
-  }
-  interviewHandoffContext.value = loadConsumerInterviewHandoff(props.simulationId)
-}
-
 const clearInterviewHandoff = () => {
-  if (!props.simulationId) return
-  clearConsumerInterviewHandoff(props.simulationId)
-  interviewHandoffContext.value = null
+  clearStoredInterviewHandoff(props.simulationId)
 }
 
 // Lifecycle
@@ -536,7 +340,7 @@ onMounted(() => {
   addLog(t('log.step5Init'))
   loadReportData()
   loadProfiles()
-  loadInterviewHandoff()
+  loadInterviewHandoff(props.simulationId)
   document.addEventListener('click', handleClickOutside)
 })
 
@@ -553,7 +357,7 @@ watch(() => props.reportId, (newId) => {
 watch(() => props.simulationId, (newId) => {
   if (newId) {
     loadProfiles()
-    loadInterviewHandoff()
+    loadInterviewHandoff(newId)
   }
 }, { immediate: true })
 </script>
