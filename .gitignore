@@ -45,6 +45,8 @@ htmlcov/
 .cursor/
 .claude/
 .worktrees/
+.codex/
+search-gateway/
 
 # 文档与测试程序
 mydoc/
@@ -61,3 +63,19 @@ backend/uploads/
 data/
 !backend/app/services/consumer/data/
 !backend/app/services/consumer/data/*.json
+# Added by code-review-graph
+.code-review-graph/
+
+# Local tooling artifacts
+.codemap/
+.playwright-cli/
+.pytest-basetemp*/
+.pytest-probe/
+.runtime-check/
+.superpowers/
+
+# Local run recordings
+report-gen.yml
+report-page*.yml
+report-view.yml
+sim-complete.yml
