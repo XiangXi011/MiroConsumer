@@ -104,6 +104,7 @@ LOGGER_MODULE_MAP = {
     "app.services.oasis_profile_generator": "miroconsumer.oasis_profile",
     "app.services.simulation_config_generator": "miroconsumer.simulation_config",
     "app.services.report_agent": "miroconsumer.report_agent",
+    "app.services.report_logging": "miroconsumer.report_agent",
     "app.utils.zep_paging": "miroconsumer.zep_paging",
     "app.utils.retry": "miroconsumer.retry",
 }
@@ -145,9 +146,9 @@ def test_app_request_loggers_use_miroconsumer_namespace():
 
 
 def test_report_logger_attaches_miroconsumer_loggers():
-    from app.services import report_agent
+    from app.services import report_logging
 
-    source = inspect.getsource(report_agent)
+    source = inspect.getsource(report_logging)
     assert "'miroconsumer.report_agent'" in source
     assert "'miroconsumer.zep_tools'" in source
     assert "'mirofish.report_agent'" not in source
