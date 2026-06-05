@@ -55,6 +55,69 @@ export function buildReportWorkflowSummary({
   }
 }
 
+export function applyAgentLogToReportState(log = {}) {
+  if (log.action === 'planning_complete' && log.details?.outline) {
+    return { reportOutline: log.details.outline }
+  }
+
+  if (log.action === 'section_start') {
+    return { currentSectionIndex: log.section_index }
+  }
+
+  if (log.action === 'section_complete' && log.details?.content) {
+    return {
+      generatedSection: {
+        index: log.section_index,
+        content: log.details.content,
+      },
+      expandedContentIndex: log.section_index - 1,
+      currentSectionIndex: null,
+    }
+  }
+
+  if (log.action === 'report_complete') {
+    return {
+      isComplete: true,
+      currentSectionIndex: null,
+      statusUpdate: 'completed',
+      shouldStopPolling: true,
+    }
+  }
+
+  if (log.action === 'report_start') {
+    return { startTime: new Date(log.timestamp) }
+  }
+
+  return {}
+}
+
+export function applyReportStatePatch(patch = {}, state = {}) {
+  if (patch.reportOutline) {
+    state.reportOutline.value = patch.reportOutline
+  }
+  if (patch.currentSectionIndex !== undefined) {
+    state.currentSectionIndex.value = patch.currentSectionIndex
+  }
+  if (patch.generatedSection) {
+    state.generatedSections.value[patch.generatedSection.index] = patch.generatedSection.content
+  }
+  if (patch.expandedContentIndex !== undefined) {
+    state.expandedContent.value.add(patch.expandedContentIndex)
+  }
+  if (patch.isComplete !== undefined) {
+    state.isComplete.value = patch.isComplete
+  }
+  if (patch.startTime) {
+    state.startTime.value = patch.startTime
+  }
+  if (patch.statusUpdate) {
+    state.emitUpdateStatus?.(patch.statusUpdate)
+  }
+  if (patch.shouldStopPolling) {
+    state.stopPolling?.()
+  }
+}
+
 function buildWorkflowSteps({
   isComplete,
   reportOutline,
