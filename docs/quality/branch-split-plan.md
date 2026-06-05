@@ -53,6 +53,8 @@ base; do not merge the full staging branch directly.
 | 18 | `codex/stack-18-report-tool-displays-split` | report tool display component split |
 | 19 | `codex/stack-19-consumer-confidence-helpers` | consumer confidence helper extraction |
 | 20 | `codex/stack-20-consumer-branching-helpers` | consumer branching/comparison helper extraction |
+| 21 | `codex/stack-21-branch-split-stack-map` | stack pointer map documentation |
+| 22 | `codex/stack-22-stack-inventory-script` | stack inventory script and documentation |
 
 When preparing a PR from a stack pointer, validate the stack against its parent
 stack instead of the final staging head. Example:
