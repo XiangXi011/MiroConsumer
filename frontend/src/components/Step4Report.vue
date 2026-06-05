@@ -185,11 +185,7 @@ import PropagationTimeline from './consumer/PropagationTimeline.vue'
 import EvidenceGraphPanel from './consumer/EvidenceGraphPanel.vue'
 import ReportSectionsList from './report/ReportSectionsList.vue'
 import ReportWorkflowPanel from './report/ReportWorkflowPanel.vue'
-import { runConsumerResearchAction } from '../api/consumer'
-import {
-  normalizeConsumerResearchActionResponse,
-  saveConsumerInterviewHandoff,
-} from '../utils/consumerResearchActions'
+import { useStep4InsightDrawerState } from '../composables/useStep4InsightDrawerState'
 import { deriveReportRenderState } from '../utils/reportContent'
 import {
   applyAgentLogToReportState,
@@ -220,34 +216,6 @@ const goToInteraction = () => {
   }
 }
 
-const closeInsightDrawer = () => {
-  showInsightDrawer.value = false
-  drawerResult.value = null
-  drawerError.value = ''
-}
-
-const handleRunAction = async (payload) => {
-  if (!props.simulationId) return
-  drawerLoading.value = true
-  drawerError.value = ''
-  drawerResult.value = null
-  showInsightDrawer.value = true
-
-  try {
-    const response = await runConsumerResearchAction(props.simulationId, payload)
-    drawerResult.value = normalizeConsumerResearchActionResponse(response)
-  } catch (err) {
-    drawerError.value = err?.message || 'Request failed'
-  } finally {
-    drawerLoading.value = false
-  }
-}
-
-const handleOpenHandoff = (targetContext) => {
-  saveConsumerInterviewHandoff(props.simulationId, targetContext)
-  goToInteraction()
-}
-
 // State
 const agentLogs = ref([])
 const consoleLogs = ref([])
@@ -269,11 +237,18 @@ const evidenceGraph = ref(null)
 const evidenceGraphLoading = ref(false)
 const evidenceGraphError = ref('')
 
-// Consumer insight drawer state
-const showInsightDrawer = ref(false)
-const drawerResult = ref(null)
-const drawerLoading = ref(false)
-const drawerError = ref('')
+const {
+  showInsightDrawer,
+  drawerResult,
+  drawerLoading,
+  drawerError,
+  closeInsightDrawer,
+  handleRunAction,
+  handleOpenHandoff,
+} = useStep4InsightDrawerState({
+  simulationId: computed(() => props.simulationId),
+  goToInteraction,
+})
 
 const applyReportRenderState = () => {
   const state = deriveReportRenderState(props.reportData)
