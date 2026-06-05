@@ -19,6 +19,13 @@ Use this script to check local stack size before opening stacked PRs:
 ./scripts/stack_inventory.ps1 -Markdown
 ```
 
+Use this script to publish stack branches in small batches:
+
+```powershell
+./scripts/publish_stack_branches.ps1
+./scripts/publish_stack_branches.ps1 -StartAt 1 -EndAt 3 -BatchSize 1 -Push
+```
+
 Use this script as the default local quality gate:
 
 ```powershell
@@ -55,6 +62,7 @@ base; do not merge the full staging branch directly.
 | 20 | `codex/stack-20-consumer-branching-helpers` | consumer branching/comparison helper extraction |
 | 21 | `codex/stack-21-branch-split-stack-map` | stack pointer map documentation |
 | 22 | `codex/stack-22-stack-inventory-script` | stack inventory script and documentation |
+| 23 | `codex/stack-23-stack-publish-script` | stack branch publishing script and documentation |
 
 When preparing a PR from a stack pointer, validate the stack against its parent
 stack instead of the final staging head. Example:
