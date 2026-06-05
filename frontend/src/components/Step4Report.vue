@@ -164,14 +164,6 @@ import { useI18n } from 'vue-i18n'
 import {
   getAgentLog, getConsoleLog,
 } from '../api/report'
-import {
-  getBranchComparison,
-} from '../api/consumer'
-import {
-  loadSelectedBranch,
-  formatBranchComparison,
-  clearSelectedBranch,
-} from '../utils/consumerMode'
 import { deriveReportConsumerContext } from '../utils/reportConsumerContext'
 import ConsumerReportHeader from './consumer/ConsumerReportHeader.vue'
 import ResearchAssetWorkspace from './consumer/ResearchAssetWorkspace.vue'
@@ -184,6 +176,7 @@ import PropagationTimeline from './consumer/PropagationTimeline.vue'
 import EvidenceGraphPanel from './consumer/EvidenceGraphPanel.vue'
 import ReportSectionsList from './report/ReportSectionsList.vue'
 import ReportWorkflowPanel from './report/ReportWorkflowPanel.vue'
+import { useStep4BranchComparisonState } from '../composables/useStep4BranchComparisonState'
 import { useStep4EvidenceGraphState } from '../composables/useStep4EvidenceGraphState'
 import { useStep4InsightDrawerState } from '../composables/useStep4InsightDrawerState'
 import { deriveReportRenderState } from '../utils/reportContent'
@@ -255,13 +248,6 @@ const applyReportRenderState = () => {
   generatedSections.value = state.generatedSections
 }
 
-// Branch comparison state
-const branchComparisonRaw = ref(null)
-const branchComparisonFormatted = computed(() => {
-  if (!branchComparisonRaw.value) return null
-  return formatBranchComparison(branchComparisonRaw.value, t)
-})
-
 const projectId = computed(() => props.projectData?.project_id || props.projectData?.projectId || null)
 
 const consumerContextState = computed(() => deriveReportConsumerContext({
@@ -273,6 +259,15 @@ const isConsumerMode = computed(() => consumerContextState.value.isConsumerMode)
 const reportContext = computed(() => consumerContextState.value.reportContext)
 
 const {
+  branchComparisonFormatted,
+  loadBranchComparison,
+} = useStep4BranchComparisonState({
+  simulationId: computed(() => props.simulationId),
+  isConsumerMode,
+  t,
+})
+
+const {
   evidenceGraph,
   evidenceGraphLoading,
   evidenceGraphError,
@@ -282,31 +277,6 @@ const {
   reportId: computed(() => props.reportId),
   isConsumerMode,
 })
-
-const loadBranchComparison = async () => {
-  if (!props.simulationId || !isConsumerMode.value) {
-    branchComparisonRaw.value = null
-    return
-  }
-  const branchId = loadSelectedBranch(props.simulationId)
-  if (!branchId) {
-    branchComparisonRaw.value = null
-    return
-  }
-  try {
-    const res = await getBranchComparison(props.simulationId, branchId)
-    if (res.success && res.data) {
-      branchComparisonRaw.value = res.data
-    } else {
-      clearSelectedBranch(props.simulationId)
-      branchComparisonRaw.value = null
-    }
-  } catch (err) {
-    console.warn('loadBranchComparison failed:', err)
-    clearSelectedBranch(props.simulationId)
-    branchComparisonRaw.value = null
-  }
-}
 
 watch(() => props.simulationId, () => {
   loadBranchComparison()
