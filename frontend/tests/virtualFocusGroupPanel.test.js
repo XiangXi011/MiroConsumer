@@ -29,6 +29,7 @@ test('VirtualFocusGroupPanel.vue supports participant roles, moderator goal, fou
     'utf-8'
   )
   const step5 = readFileSync(new URL('../src/components/Step5Interaction.vue', import.meta.url), 'utf-8')
+  const workspaceShell = readFileSync(new URL('../src/components/report/InteractionWorkspaceShell.vue', import.meta.url), 'utf-8')
 
   for (const token of [
     'participant-role-selection',
@@ -45,7 +46,8 @@ test('VirtualFocusGroupPanel.vue supports participant roles, moderator goal, fou
   ]) {
     assert.ok(component.includes(token), `missing ${token}`)
   }
-  assert.ok(step5.includes('VirtualFocusGroupPanel'), 'Step5Interaction must mount VirtualFocusGroupPanel')
+  assert.ok(step5.includes('InteractionWorkspaceShell'), 'Step5Interaction must mount InteractionWorkspaceShell')
+  assert.ok(workspaceShell.includes('VirtualFocusGroupPanel'), 'InteractionWorkspaceShell must mount VirtualFocusGroupPanel')
 })
 
 // --- Phase 6J P1: VirtualFocusGroupPanel explainability convergence ---

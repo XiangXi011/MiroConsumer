@@ -9,10 +9,12 @@ const __dirname = dirname(__filename)
 
 const step4Path = join(__dirname, '../src/components/Step4Report.vue')
 const step5Path = join(__dirname, '../src/components/Step5Interaction.vue')
+const reportShellPath = join(__dirname, '../src/components/report/InteractionReportShell.vue')
 const sectionsPath = join(__dirname, '../src/components/report/ReportSectionsList.vue')
 
 const step4Content = readFileSync(step4Path, 'utf-8')
 const step5Content = readFileSync(step5Path, 'utf-8')
+const reportShellContent = readFileSync(reportShellPath, 'utf-8')
 const sectionsContent = readFileSync(sectionsPath, 'utf-8')
 
 test('Step4Report delegates report section rendering to ReportSectionsList', () => {
@@ -38,8 +40,10 @@ test('ReportSectionsList owns section list rendering contract', () => {
 })
 
 test('Step5Interaction reuses ReportSectionsList for report sections', () => {
-  assert.ok(step5Content.includes("import ReportSectionsList from './report/ReportSectionsList.vue'"), 'Step5 must import ReportSectionsList')
-  assert.ok(step5Content.includes('<ReportSectionsList'), 'Step5 must render ReportSectionsList')
+  assert.ok(step5Content.includes("import InteractionReportShell from './report/InteractionReportShell.vue'"), 'Step5 must import InteractionReportShell')
+  assert.ok(step5Content.includes('<InteractionReportShell'), 'Step5 must render InteractionReportShell')
+  assert.ok(reportShellContent.includes("import ReportSectionsList from './ReportSectionsList.vue'"), 'InteractionReportShell must import ReportSectionsList')
+  assert.ok(reportShellContent.includes('<ReportSectionsList'), 'InteractionReportShell must render ReportSectionsList')
   assert.ok(!step5Content.includes('class="sections-list"'), 'section list markup should live outside Step5Interaction')
   assert.ok(!step5Content.includes('renderMarkdown(generatedSections[idx + 1])'), 'section markdown rendering should live outside Step5Interaction')
   assert.ok(step5Content.includes('@toggle-section-collapse="toggleSectionCollapse"'), 'Step5 must keep collapse state handling')
