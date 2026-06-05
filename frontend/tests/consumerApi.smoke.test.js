@@ -252,10 +252,33 @@ const step4Src = readFile(
   'utf-8'
 )
 
-test('Step4Report.vue imports consumer functions from consumer.js', () => {
+test('Step4Report.vue delegates consumer API calls through composables', () => {
   assert.ok(
-    step4Src.includes("from '../api/consumer'"),
-    'Expected Step4Report.vue to import from ../api/consumer'
+    step4Src.includes("import { useStep4BranchComparisonState } from '../composables/useStep4BranchComparisonState'"),
+    'Expected Step4Report.vue to delegate branch comparison consumer API calls'
+  )
+  assert.ok(
+    step4Src.includes("import { useStep4EvidenceGraphState } from '../composables/useStep4EvidenceGraphState'"),
+    'Expected Step4Report.vue to delegate evidence graph consumer API calls'
+  )
+})
+
+test('Step4 consumer composables import consumer functions from consumer.js', () => {
+  const branchComparisonSrc = readFile(
+    new URL('../src/composables/useStep4BranchComparisonState.ts', import.meta.url),
+    'utf-8'
+  )
+  const evidenceGraphSrc = readFile(
+    new URL('../src/composables/useStep4EvidenceGraphState.ts', import.meta.url),
+    'utf-8'
+  )
+  assert.ok(
+    branchComparisonSrc.includes("import('../api/consumer')"),
+    'Expected branch comparison state to import from ../api/consumer'
+  )
+  assert.ok(
+    evidenceGraphSrc.includes("import('../api/consumer')"),
+    'Expected evidence graph state to import from ../api/consumer'
   )
 })
 

@@ -161,18 +161,6 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import {
-  getAgentLog, getConsoleLog,
-} from '../api/report'
-import {
-  getBranchComparison,
-  getReportEvidenceGraph,
-} from '../api/consumer'
-import {
-  loadSelectedBranch,
-  formatBranchComparison,
-  clearSelectedBranch,
-} from '../utils/consumerMode'
 import { deriveReportConsumerContext } from '../utils/reportConsumerContext'
 import ConsumerReportHeader from './consumer/ConsumerReportHeader.vue'
 import ResearchAssetWorkspace from './consumer/ResearchAssetWorkspace.vue'
@@ -185,15 +173,12 @@ import PropagationTimeline from './consumer/PropagationTimeline.vue'
 import EvidenceGraphPanel from './consumer/EvidenceGraphPanel.vue'
 import ReportSectionsList from './report/ReportSectionsList.vue'
 import ReportWorkflowPanel from './report/ReportWorkflowPanel.vue'
-import { runConsumerResearchAction } from '../api/consumer'
+import { useStep4BranchComparisonState } from '../composables/useStep4BranchComparisonState'
+import { useStep4EvidenceGraphState } from '../composables/useStep4EvidenceGraphState'
+import { useStep4InsightDrawerState } from '../composables/useStep4InsightDrawerState'
+import { useStep4ReportPollingState } from '../composables/useStep4ReportPollingState'
+import { useStep4ReportRenderState } from '../composables/useStep4ReportRenderState'
 import {
-  normalizeConsumerResearchActionResponse,
-  saveConsumerInterviewHandoff,
-} from '../utils/consumerResearchActions'
-import { deriveReportRenderState } from '../utils/reportContent'
-import {
-  applyAgentLogToReportState,
-  applyReportStatePatch,
   buildReportWorkflowSummary,
   formatElapsedTime as formatWorkflowElapsedTime,
   getLogLevelClass,
@@ -220,101 +205,57 @@ const goToInteraction = () => {
   }
 }
 
-const closeInsightDrawer = () => {
-  showInsightDrawer.value = false
-  drawerResult.value = null
-  drawerError.value = ''
-}
-
-const handleRunAction = async (payload) => {
-  if (!props.simulationId) return
-  drawerLoading.value = true
-  drawerError.value = ''
-  drawerResult.value = null
-  showInsightDrawer.value = true
-
-  try {
-    const response = await runConsumerResearchAction(props.simulationId, payload)
-    drawerResult.value = normalizeConsumerResearchActionResponse(response)
-  } catch (err) {
-    drawerError.value = err?.message || 'Request failed'
-  } finally {
-    drawerLoading.value = false
-  }
-}
-
-const handleOpenHandoff = (targetContext) => {
-  saveConsumerInterviewHandoff(props.simulationId, targetContext)
-  goToInteraction()
-}
-
 // State
-const agentLogs = ref([])
-const consoleLogs = ref([])
-const agentLogLine = ref(0)
-const consoleLogLine = ref(0)
-const reportOutline = ref(null)
-const currentSectionIndex = ref(null)
-const generatedSections = ref({})
-const expandedContent = ref(new Set())
 const expandedLogs = ref(new Set())
-const collapsedSections = ref(new Set())
-const isComplete = ref(false)
-const startTime = ref(null)
 const leftPanel = ref(null)
 const rightPanel = ref(null)
 const logContent = ref(null)
 const showRawResult = reactive({})
-const evidenceGraph = ref(null)
-const evidenceGraphLoading = ref(false)
-const evidenceGraphError = ref('')
 
-// Consumer insight drawer state
-const showInsightDrawer = ref(false)
-const drawerResult = ref(null)
-const drawerLoading = ref(false)
-const drawerError = ref('')
-
-const applyReportRenderState = () => {
-  const state = deriveReportRenderState(props.reportData)
-  if (!state.isComplete) return
-  isComplete.value = true
-  reportOutline.value = state.outline
-  generatedSections.value = state.generatedSections
-}
-
-// Branch comparison state
-const branchComparisonRaw = ref(null)
-const branchComparisonFormatted = computed(() => {
-  if (!branchComparisonRaw.value) return null
-  return formatBranchComparison(branchComparisonRaw.value, t)
+const {
+  showInsightDrawer,
+  drawerResult,
+  drawerLoading,
+  drawerError,
+  closeInsightDrawer,
+  handleRunAction,
+  handleOpenHandoff,
+} = useStep4InsightDrawerState({
+  simulationId: computed(() => props.simulationId),
+  goToInteraction,
 })
 
-const loadEvidenceGraph = async () => {
-  if (!props.reportId || !isConsumerMode.value) {
-    evidenceGraph.value = null
-    evidenceGraphError.value = ''
-    evidenceGraphLoading.value = false
-    return
-  }
+const {
+  reportOutline,
+  currentSectionIndex,
+  generatedSections,
+  expandedContent,
+  collapsedSections,
+  isComplete,
+  startTime,
+  applyReportRenderState,
+  resetReportRenderState,
+  toggleSectionContent,
+  toggleSectionCollapse,
+  applyAgentLogStatePatch,
+} = useStep4ReportRenderState({
+  emitUpdateStatus: status => emit('update-status', status),
+  stopPolling: () => stopPolling(),
+})
 
-  evidenceGraphLoading.value = true
-  evidenceGraphError.value = ''
-  try {
-    const res = await getReportEvidenceGraph(props.reportId)
-    if (res.success && res.data) {
-      evidenceGraph.value = res.data
-    } else {
-      evidenceGraph.value = null
-      evidenceGraphError.value = res.error || 'Evidence graph unavailable'
-    }
-  } catch (err) {
-    evidenceGraph.value = null
-    evidenceGraphError.value = err?.message || 'Evidence graph unavailable'
-  } finally {
-    evidenceGraphLoading.value = false
-  }
-}
+const {
+  agentLogs,
+  consoleLogs,
+  resetPollingState,
+  startPolling,
+  stopPolling,
+} = useStep4ReportPollingState({
+  reportId: computed(() => props.reportId),
+  isComplete,
+  rightPanel,
+  logContent,
+  applyAgentLogStatePatch,
+})
 
 const projectId = computed(() => props.projectData?.project_id || props.projectData?.projectId || null)
 
@@ -326,30 +267,25 @@ const consumerContextState = computed(() => deriveReportConsumerContext({
 const isConsumerMode = computed(() => consumerContextState.value.isConsumerMode)
 const reportContext = computed(() => consumerContextState.value.reportContext)
 
-const loadBranchComparison = async () => {
-  if (!props.simulationId || !isConsumerMode.value) {
-    branchComparisonRaw.value = null
-    return
-  }
-  const branchId = loadSelectedBranch(props.simulationId)
-  if (!branchId) {
-    branchComparisonRaw.value = null
-    return
-  }
-  try {
-    const res = await getBranchComparison(props.simulationId, branchId)
-    if (res.success && res.data) {
-      branchComparisonRaw.value = res.data
-    } else {
-      clearSelectedBranch(props.simulationId)
-      branchComparisonRaw.value = null
-    }
-  } catch (err) {
-    console.warn('loadBranchComparison failed:', err)
-    clearSelectedBranch(props.simulationId)
-    branchComparisonRaw.value = null
-  }
-}
+const {
+  branchComparisonFormatted,
+  loadBranchComparison,
+} = useStep4BranchComparisonState({
+  simulationId: computed(() => props.simulationId),
+  isConsumerMode,
+  t,
+})
+
+const {
+  evidenceGraph,
+  evidenceGraphLoading,
+  evidenceGraphError,
+  resetEvidenceGraph,
+  loadEvidenceGraph,
+} = useStep4EvidenceGraphState({
+  reportId: computed(() => props.reportId),
+  isConsumerMode,
+})
 
 watch(() => props.simulationId, () => {
   loadBranchComparison()
@@ -380,29 +316,6 @@ const toggleRawResult = (timestamp, event) => {
       rightPanel.value.scrollTop += scrollDelta
     })
   }
-}
-
-const toggleSectionContent = (idx) => {
-  if (!generatedSections.value[idx + 1]) return
-  const newSet = new Set(expandedContent.value)
-  if (newSet.has(idx)) {
-    newSet.delete(idx)
-  } else {
-    newSet.add(idx)
-  }
-  expandedContent.value = newSet
-}
-
-const toggleSectionCollapse = (idx) => {
-  // 只有已完成的章节才能折叠
-  if (!generatedSections.value[idx + 1]) return
-  const newSet = new Set(collapsedSections.value)
-  if (newSet.has(idx)) {
-    newSet.delete(idx)
-  } else {
-    newSet.add(idx)
-  }
-  collapsedSections.value = newSet
 }
 
 const toggleLogExpand = (log) => {
@@ -439,105 +352,9 @@ const addLog = (msg) => {
   emit('add-log', msg)
 }
 
-const applyAgentLogStatePatch = (patch) => applyReportStatePatch(patch, {
-  reportOutline,
-  currentSectionIndex,
-  generatedSections,
-  expandedContent,
-  isComplete,
-  startTime,
-  emitUpdateStatus: status => emit('update-status', status),
-  stopPolling,
-})
-
-// Polling
-let agentLogTimer = null
-let consoleLogTimer = null
-
-const fetchAgentLog = async () => {
-  if (!props.reportId) return
-
-  try {
-    const res = await getAgentLog(props.reportId, agentLogLine.value)
-
-    if (res.success && res.data) {
-      const newLogs = res.data.logs || []
-
-      if (newLogs.length > 0) {
-        newLogs.forEach(log => {
-          agentLogs.value.push(log)
-
-          applyAgentLogStatePatch(applyAgentLogToReportState(log))
-        })
-
-        agentLogLine.value = res.data.from_line + newLogs.length
-
-        nextTick(() => {
-          if (rightPanel.value) {
-            // 如果任务已完成，滚动到顶部；否则滚动到底部跟随最新日志
-            if (isComplete.value) {
-              rightPanel.value.scrollTop = 0
-            } else {
-              rightPanel.value.scrollTop = rightPanel.value.scrollHeight
-            }
-          }
-        })
-      }
-    }
-  } catch (err) {
-    console.warn('Failed to fetch agent log:', err)
-  }
-}
-
-const fetchConsoleLog = async () => {
-  if (!props.reportId) return
-
-  try {
-    const res = await getConsoleLog(props.reportId, consoleLogLine.value)
-
-    if (res.success && res.data) {
-      const newLogs = res.data.logs || []
-
-      if (newLogs.length > 0) {
-        consoleLogs.value.push(...newLogs)
-        consoleLogLine.value = res.data.from_line + newLogs.length
-
-        nextTick(() => {
-          if (logContent.value) {
-            logContent.value.scrollTop = logContent.value.scrollHeight
-          }
-        })
-      }
-    }
-  } catch (err) {
-    console.warn('Failed to fetch console log:', err)
-  }
-}
-
-const startPolling = () => {
-  if (agentLogTimer || consoleLogTimer) return
-
-  fetchAgentLog()
-  fetchConsoleLog()
-
-  agentLogTimer = setInterval(fetchAgentLog, 2000)
-  consoleLogTimer = setInterval(fetchConsoleLog, 1500)
-}
-
-const stopPolling = () => {
-  if (agentLogTimer) {
-    clearInterval(agentLogTimer)
-    agentLogTimer = null
-  }
-  if (consoleLogTimer) {
-    clearInterval(consoleLogTimer)
-    consoleLogTimer = null
-  }
-}
-
 // Lifecycle
 onMounted(() => {
-  applyReportRenderState()
+  applyReportRenderState(props.reportData)
   if (props.reportId) {
     addLog(`Report Agent initialized: ${props.reportId}`)
     startPolling()
@@ -552,21 +369,11 @@ onUnmounted(() => {
 
 watch(() => props.reportId, (newId) => {
   if (newId) {
-    agentLogs.value = []
-    consoleLogs.value = []
-    agentLogLine.value = 0
-    consoleLogLine.value = 0
-    reportOutline.value = null
-    currentSectionIndex.value = null
-    generatedSections.value = {}
-    expandedContent.value = new Set()
+    resetPollingState()
     expandedLogs.value = new Set()
-    collapsedSections.value = new Set()
-    isComplete.value = false
-    startTime.value = null
-    evidenceGraph.value = null
-    evidenceGraphError.value = ''
-    applyReportRenderState()
+    resetReportRenderState()
+    resetEvidenceGraph()
+    applyReportRenderState(props.reportData)
 
     startPolling()
     loadEvidenceGraph()
@@ -574,7 +381,7 @@ watch(() => props.reportId, (newId) => {
 }, { immediate: true })
 
 watch(() => props.reportData, () => {
-  applyReportRenderState()
+  applyReportRenderState(props.reportData)
 }, { deep: true })
 </script>
 
