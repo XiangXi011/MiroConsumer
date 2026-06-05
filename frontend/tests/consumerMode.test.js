@@ -10,6 +10,7 @@ import {
   formatCascadeMetrics,
   buildCascadeAwarePrompts,
   buildComparisonAwarePrompts,
+  buildReplayAwarePrompts,
   isConsumerProject,
   pickTopVocQuotes,
   formatSourceQualitySummary,
@@ -598,6 +599,61 @@ test('buildComparisonAwarePrompts returns empty array for null or empty snapshot
   assert.deepEqual(buildComparisonAwarePrompts(null), [])
   assert.deepEqual(buildComparisonAwarePrompts({}), [])
   assert.deepEqual(buildComparisonAwarePrompts(undefined), [])
+})
+
+test('buildReplayAwarePrompts generates drift prompt with signal count', () => {
+  const calls = []
+  const t = (key, params) => {
+    calls.push({ key, params })
+    return `translated:${key}`
+  }
+
+  const prompts = buildReplayAwarePrompts({
+    replay_alignment: {
+      status: 'drift',
+      drift_signals: ['risk_signal', 'acceptance_drop'],
+    },
+  }, t)
+
+  assert.deepEqual(prompts, ['translated:consumer.quickPrompts.replayDrift'])
+  assert.deepEqual(calls, [
+    {
+      key: 'consumer.quickPrompts.replayDrift',
+      params: { count: 2 },
+    },
+  ])
+})
+
+test('buildReplayAwarePrompts generates aligned prompt', () => {
+  const prompts = buildReplayAwarePrompts({
+    replay_alignment: { status: 'aligned' },
+  })
+
+  assert.deepEqual(prompts, [
+    'Replay aligns with benchmark. What stable signals hold up best?',
+  ])
+})
+
+test('buildReplayAwarePrompts generates partial alignment prompt', () => {
+  const prompts = buildReplayAwarePrompts({
+    replay_alignment: { status: 'partial' },
+  })
+
+  assert.deepEqual(prompts, [
+    'Replay is partially aligned. Which signals are inconsistent?',
+  ])
+})
+
+test('buildReplayAwarePrompts returns empty array without replay alignment data', () => {
+  assert.deepEqual(buildReplayAwarePrompts({}), [])
+  assert.deepEqual(buildReplayAwarePrompts(null), [])
+  assert.deepEqual(buildReplayAwarePrompts({ replay_alignment: null }), [])
+  assert.deepEqual(buildReplayAwarePrompts({
+    replay_alignment: {
+      status: 'drift',
+      drift_signals: [],
+    },
+  }), [])
 })
 
 // ============== Phase 4A: Source Quality / Confidence helpers ==============

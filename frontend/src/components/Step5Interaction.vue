@@ -530,6 +530,7 @@ import {
   buildBranchAwarePrompts,
   buildCascadeAwarePrompts,
   buildComparisonAwarePrompts,
+  buildReplayAwarePrompts,
   isConsumerProject,
   pickTopVocQuotes,
 } from '../utils/consumerMode'
@@ -537,6 +538,12 @@ import {
   loadConsumerInterviewHandoff,
   clearConsumerInterviewHandoff,
 } from '../utils/consumerResearchActions'
+import { renderReportMarkdown as renderMarkdown } from '../utils/reportMarkdown'
+import {
+  buildSurveyInterviewRequests,
+  extractAgentChatResponse,
+  normalizeSurveyResults,
+} from '../utils/step5Survey'
 import ComparisonSnapshotWorkspace from './consumer/ComparisonSnapshotWorkspace.vue'
 import PropagationPathGraph from './consumer/PropagationPathGraph.vue'
 import RepresentativeConsumerInterview from './consumer/RepresentativeConsumerInterview.vue'
@@ -599,36 +606,6 @@ const workspaceBranchComparison = ref(null)
 const workspaceComparisonSnapshot = ref(null)
 
 const effectiveComparisonSnapshot = computed(() => props.comparisonSnapshot || workspaceComparisonSnapshot.value)
-
-const buildReplayAwarePrompts = (reportContext, tFn) => {
-  const prompts = []
-  if (!reportContext || typeof reportContext !== 'object') return prompts
-  const replay = reportContext.replay_alignment
-  if (!replay || typeof replay !== 'object') return prompts
-
-  if (replay.status === 'drift' && replay.drift_signals && replay.drift_signals.length > 0) {
-    prompts.push(
-      typeof tFn === 'function'
-        ? tFn('consumer.quickPrompts.replayDrift', 'Replay shows drift. What changed compared to the benchmark?', { count: replay.drift_signals.length })
-        : 'Replay shows drift. What changed compared to the benchmark?'
-    )
-  }
-  if (replay.status === 'aligned') {
-    prompts.push(
-      typeof tFn === 'function'
-        ? tFn('consumer.quickPrompts.replayAligned', 'Replay aligns with benchmark. What stable signals hold up best?')
-        : 'Replay aligns with benchmark. What stable signals hold up best?'
-    )
-  }
-  if (replay.status === 'partial') {
-    prompts.push(
-      typeof tFn === 'function'
-        ? tFn('consumer.quickPrompts.replayPartial', 'Replay is partially aligned. Which signals are inconsistent?')
-        : 'Replay is partially aligned. Which signals are inconsistent?'
-    )
-  }
-  return prompts
-}
 
 const consumerQuickPrompts = computed(() => {
   if (!isConsumerMode.value) return []
@@ -781,93 +758,6 @@ const formatTime = (timestamp) => {
   }
 }
 
-const renderMarkdown = (content) => {
-  if (!content) return ''
-  
-  let processedContent = content.replace(/^##\s+.+\n+/, '')
-  let html = processedContent.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre class="code-block"><code>$2</code></pre>')
-  html = html.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>')
-  html = html.replace(/^#### (.+)$/gm, '<h5 class="md-h5">$1</h5>')
-  html = html.replace(/^### (.+)$/gm, '<h4 class="md-h4">$1</h4>')
-  html = html.replace(/^## (.+)$/gm, '<h3 class="md-h3">$1</h3>')
-  html = html.replace(/^# (.+)$/gm, '<h2 class="md-h2">$1</h2>')
-  html = html.replace(/^> (.+)$/gm, '<blockquote class="md-quote">$1</blockquote>')
-  
-  // 处理列表 - 支持子列表
-  html = html.replace(/^(\s*)- (.+)$/gm, (match, indent, text) => {
-    const level = Math.floor(indent.length / 2)
-    return `<li class="md-li" data-level="${level}">${text}</li>`
-  })
-  html = html.replace(/^(\s*)(\d+)\. (.+)$/gm, (match, indent, num, text) => {
-    const level = Math.floor(indent.length / 2)
-    return `<li class="md-oli" data-level="${level}">${text}</li>`
-  })
-  
-  // 包装无序列表
-  html = html.replace(/(<li class="md-li"[^>]*>.*?<\/li>\s*)+/g, '<ul class="md-ul">$&</ul>')
-  // 包装有序列表
-  html = html.replace(/(<li class="md-oli"[^>]*>.*?<\/li>\s*)+/g, '<ol class="md-ol">$&</ol>')
-  
-  // 清理列表项之间的所有空白
-  html = html.replace(/<\/li>\s+<li/g, '</li><li')
-  // 清理列表开始标签后的空白
-  html = html.replace(/<ul class="md-ul">\s+/g, '<ul class="md-ul">')
-  html = html.replace(/<ol class="md-ol">\s+/g, '<ol class="md-ol">')
-  // 清理列表结束标签前的空白
-  html = html.replace(/\s+<\/ul>/g, '</ul>')
-  html = html.replace(/\s+<\/ol>/g, '</ol>')
-  
-  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>')
-  html = html.replace(/_(.+?)_/g, '<em>$1</em>')
-  html = html.replace(/^---$/gm, '<hr class="md-hr">')
-  html = html.replace(/\n\n/g, '</p><p class="md-p">')
-  html = html.replace(/\n/g, '<br>')
-  html = '<p class="md-p">' + html + '</p>'
-  html = html.replace(/<p class="md-p"><\/p>/g, '')
-  html = html.replace(/<p class="md-p">(<h[2-5])/g, '$1')
-  html = html.replace(/(<\/h[2-5]>)<\/p>/g, '$1')
-  html = html.replace(/<p class="md-p">(<ul|<ol|<blockquote|<pre|<hr)/g, '$1')
-  html = html.replace(/(<\/ul>|<\/ol>|<\/blockquote>|<\/pre>)<\/p>/g, '$1')
-  // 清理块级元素前后的 <br> 标签
-  html = html.replace(/<br>\s*(<ul|<ol|<blockquote)/g, '$1')
-  html = html.replace(/(<\/ul>|<\/ol>|<\/blockquote>)\s*<br>/g, '$1')
-  // 清理 <p><br> 紧跟块级元素的情况（多余空行导致）
-  html = html.replace(/<p class="md-p">(<br>\s*)+(<ul|<ol|<blockquote|<pre|<hr)/g, '$2')
-  // 清理连续的 <br> 标签
-  html = html.replace(/(<br>\s*){2,}/g, '<br>')
-  // 清理块级元素后紧跟的段落开始标签前的 <br>
-  html = html.replace(/(<\/ol>|<\/ul>|<\/blockquote>)<br>(<p|<div)/g, '$1$2')
-
-  // 修复非连续有序列表的编号：当单项 <ol> 被段落内容隔开时，保持编号递增
-  const tokens = html.split(/(<ol class="md-ol">(?:<li class="md-oli"[^>]*>[\s\S]*?<\/li>)+<\/ol>)/g)
-  let olCounter = 0
-  let inSequence = false
-  for (let i = 0; i < tokens.length; i++) {
-    if (tokens[i].startsWith('<ol class="md-ol">')) {
-      const liCount = (tokens[i].match(/<li class="md-oli"/g) || []).length
-      if (liCount === 1) {
-        olCounter++
-        if (olCounter > 1) {
-          tokens[i] = tokens[i].replace('<ol class="md-ol">', `<ol class="md-ol" start="${olCounter}">`)
-        }
-        inSequence = true
-      } else {
-        olCounter = 0
-        inSequence = false
-      }
-    } else if (inSequence) {
-      if (/<h[2-5]/.test(tokens[i])) {
-        olCounter = 0
-        inSequence = false
-      }
-    }
-  }
-  html = tokens.join('')
-
-  return html
-}
-
 // Chat Methods
 const sendMessage = async () => {
   if (!chatInput.value.trim() || isSending.value) return
@@ -963,27 +853,11 @@ const sendToAgent = async (message) => {
   })
   
   if (res.success && res.data) {
-    // 正确的数据路径: res.data.result.results 是一个对象字典
-    // 格式: {"twitter_0": {...}, "reddit_0": {...}} 或单平台 {"reddit_0": {...}}
     const resultData = res.data.result || res.data
-    const resultsDict = resultData.results || resultData
-    
-    // 将对象字典转换为数组，优先获取 reddit 平台的回复
-    let responseContent = null
-    const agentId = selectedAgentIndex.value
-    
-    if (typeof resultsDict === 'object' && !Array.isArray(resultsDict)) {
-      // 优先使用 reddit 平台回复，其次 twitter
-      const redditKey = `reddit_${agentId}`
-      const twitterKey = `twitter_${agentId}`
-      const agentResult = resultsDict[redditKey] || resultsDict[twitterKey] || Object.values(resultsDict)[0]
-      if (agentResult) {
-        responseContent = agentResult.response || agentResult.answer
-      }
-    } else if (Array.isArray(resultsDict) && resultsDict.length > 0) {
-      // 兼容数组格式
-      responseContent = resultsDict[0].response || resultsDict[0].answer
-    }
+    const responseContent = extractAgentChatResponse({
+      resultData,
+      agentId: selectedAgentIndex.value,
+    })
     
     if (responseContent) {
       chatHistory.value.push({
@@ -1036,10 +910,8 @@ const submitSurvey = async () => {
   addLog(t('log.sendSurvey', { count: selectedAgents.value.size }))
   
   try {
-    const interviews = Array.from(selectedAgents.value).map(idx => ({
-      agent_id: idx,
-      prompt: surveyQuestion.value.trim()
-    }))
+    const question = surveyQuestion.value.trim()
+    const interviews = buildSurveyInterviewRequests(selectedAgents.value, question)
     
     const res = await interviewAgents({
       simulation_id: props.simulationId,
@@ -1047,46 +919,14 @@ const submitSurvey = async () => {
     })
     
     if (res.success && res.data) {
-      // 正确的数据路径: res.data.result.results 是一个对象字典
-      // 格式: {"twitter_0": {...}, "reddit_0": {...}, "twitter_1": {...}, ...}
       const resultData = res.data.result || res.data
-      const resultsDict = resultData.results || resultData
-      
-      // 将对象字典转换为数组格式
-      const surveyResultsList = []
-      
-      for (const interview of interviews) {
-        const agentIdx = interview.agent_id
-        const agent = profiles.value[agentIdx]
-        
-        // 优先使用 reddit 平台回复，其次 twitter
-        let responseContent = t('step5.noResponse')
-
-        if (typeof resultsDict === 'object' && !Array.isArray(resultsDict)) {
-          const redditKey = `reddit_${agentIdx}`
-          const twitterKey = `twitter_${agentIdx}`
-          const agentResult = resultsDict[redditKey] || resultsDict[twitterKey]
-          if (agentResult) {
-            responseContent = agentResult.response || agentResult.answer || t('step5.noResponse')
-          }
-        } else if (Array.isArray(resultsDict)) {
-          // 兼容数组格式
-          const matchedResult = resultsDict.find(r => r.agent_id === agentIdx)
-          if (matchedResult) {
-            responseContent = matchedResult.response || matchedResult.answer || t('step5.noResponse')
-          }
-        }
-        
-        surveyResultsList.push({
-          agent_id: agentIdx,
-          agent_name: agent?.username || `Agent ${agentIdx}`,
-          profession: agent?.profession,
-          question: surveyQuestion.value.trim(),
-          answer: responseContent
-        })
-      }
-      
-      surveyResults.value = surveyResultsList
+      surveyResults.value = normalizeSurveyResults({
+        interviews,
+        profiles: profiles.value,
+        resultData,
+        question,
+        noResponseText: t('step5.noResponse'),
+      })
       addLog(t('log.receivedReplies', { count: surveyResults.value.length }))
     } else {
       throw new Error(res.error || t('step5.requestFailed'))

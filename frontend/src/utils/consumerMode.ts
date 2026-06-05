@@ -669,6 +669,40 @@ export function buildConfidenceAwarePrompts(reportContext = {}, t = null) {
   return prompts
 }
 
+export function buildReplayAwarePrompts(reportContext = {}, t = null) {
+  const prompts = []
+  if (!reportContext || typeof reportContext !== 'object') return prompts
+  const replay = reportContext.replay_alignment
+  if (!replay || typeof replay !== 'object') return prompts
+
+  if (replay.status === 'drift' && replay.drift_signals && replay.drift_signals.length > 0) {
+    prompts.push(translate(
+      t,
+      'consumer.quickPrompts.replayDrift',
+      'Replay shows drift. What changed compared to the benchmark?',
+      { count: replay.drift_signals.length },
+    ))
+  }
+
+  if (replay.status === 'aligned') {
+    prompts.push(translate(
+      t,
+      'consumer.quickPrompts.replayAligned',
+      'Replay aligns with benchmark. What stable signals hold up best?',
+    ))
+  }
+
+  if (replay.status === 'partial') {
+    prompts.push(translate(
+      t,
+      'consumer.quickPrompts.replayPartial',
+      'Replay is partially aligned. Which signals are inconsistent?',
+    ))
+  }
+
+  return prompts
+}
+
 export function formatComparisonConfidence(comparisonConfidence = {}) {
   if (!comparisonConfidence || typeof comparisonConfidence !== 'object') {
     return {

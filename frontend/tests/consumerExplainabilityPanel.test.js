@@ -120,6 +120,8 @@ const headerContent = readFileSync(headerPath, 'utf-8')
 
 const step4Path = join(__dirname, '../src/components/Step4Report.vue')
 const step4Content = readFileSync(step4Path, 'utf-8')
+const reportConsumerContextPath = join(__dirname, '../src/utils/reportConsumerContext.ts')
+const reportConsumerContextContent = readFileSync(reportConsumerContextPath, 'utf-8')
 
 test('ConsumerReportHeader.vue imports ConsumerExplainabilityPanel', () => {
   assert.ok(headerContent.includes("import ConsumerExplainabilityPanel from './ConsumerExplainabilityPanel.vue'"), 'must import ConsumerExplainabilityPanel')
@@ -154,20 +156,20 @@ test('Step4Report.vue passes props for low confidence findings, findings requiri
   assert.ok(step4Content.includes('consumer-causal-voc-quotes'), 'must pass consumer-causal-voc-quotes prop')
 })
 
-test('Step4Report.vue maps explainability and audit data from reportContext finding fields', () => {
-  assert.ok(step4Content.includes('explainability') && step4Content.includes('audit'), 'must reference explainability and audit')
-  assert.ok(step4Content.includes('reportContext'), 'must derive from reportContext')
+test('reportConsumerContext.ts maps explainability and audit data from reportContext finding fields', () => {
+  assert.ok(reportConsumerContextContent.includes('explainability') && reportConsumerContextContent.includes('audit'), 'must reference explainability and audit')
+  assert.ok(reportConsumerContextContent.includes('reportContext'), 'must derive from reportContext')
 })
 
-test('Step4Report.vue preserves source, evidence, and support metadata in top risk findings', () => {
-  assert.ok(step4Content.includes('source') && step4Content.includes('evidence') && step4Content.includes('support'), 'must preserve source/evidence/support')
-  assert.ok(step4Content.includes('top_risk_findings'), 'must reference top_risk_findings')
+test('reportConsumerContext.ts preserves source, evidence, and support metadata in top risk findings', () => {
+  assert.ok(reportConsumerContextContent.includes('source') && reportConsumerContextContent.includes('evidence') && reportConsumerContextContent.includes('support'), 'must preserve source/evidence/support')
+  assert.ok(reportConsumerContextContent.includes('top_risk_findings'), 'must reference top_risk_findings')
 })
 
-test('Step4Report.vue preserves support_level and source provenance for finding audit data', () => {
-  assert.ok(step4Content.includes('supportLevel') && step4Content.includes('support_level'), 'must preserve support_level')
-  assert.ok(step4Content.includes('sourceId') && step4Content.includes('source_id'), 'must preserve source_id')
-  assert.ok(step4Content.includes('sourceLabel') && step4Content.includes('source_label'), 'must preserve source_label')
+test('reportConsumerContext.ts preserves support_level and source provenance for finding audit data', () => {
+  assert.ok(reportConsumerContextContent.includes('supportLevel') && reportConsumerContextContent.includes('support_level'), 'must preserve support_level')
+  assert.ok(reportConsumerContextContent.includes('sourceId') && reportConsumerContextContent.includes('source_id'), 'must preserve source_id')
+  assert.ok(reportConsumerContextContent.includes('sourceLabel') && reportConsumerContextContent.includes('source_label'), 'must preserve source_label')
 })
 
 test('ConsumerReportHeader.vue builds explainability from finding source provenance fields', () => {
