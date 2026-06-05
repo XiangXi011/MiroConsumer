@@ -179,10 +179,9 @@ import ReportWorkflowPanel from './report/ReportWorkflowPanel.vue'
 import { useStep4BranchComparisonState } from '../composables/useStep4BranchComparisonState'
 import { useStep4EvidenceGraphState } from '../composables/useStep4EvidenceGraphState'
 import { useStep4InsightDrawerState } from '../composables/useStep4InsightDrawerState'
-import { deriveReportRenderState } from '../utils/reportContent'
+import { useStep4ReportRenderState } from '../composables/useStep4ReportRenderState'
 import {
   applyAgentLogToReportState,
-  applyReportStatePatch,
   buildReportWorkflowSummary,
   formatElapsedTime as formatWorkflowElapsedTime,
   getLogLevelClass,
@@ -214,14 +213,7 @@ const agentLogs = ref([])
 const consoleLogs = ref([])
 const agentLogLine = ref(0)
 const consoleLogLine = ref(0)
-const reportOutline = ref(null)
-const currentSectionIndex = ref(null)
-const generatedSections = ref({})
-const expandedContent = ref(new Set())
 const expandedLogs = ref(new Set())
-const collapsedSections = ref(new Set())
-const isComplete = ref(false)
-const startTime = ref(null)
 const leftPanel = ref(null)
 const rightPanel = ref(null)
 const logContent = ref(null)
@@ -240,13 +232,23 @@ const {
   goToInteraction,
 })
 
-const applyReportRenderState = () => {
-  const state = deriveReportRenderState(props.reportData)
-  if (!state.isComplete) return
-  isComplete.value = true
-  reportOutline.value = state.outline
-  generatedSections.value = state.generatedSections
-}
+const {
+  reportOutline,
+  currentSectionIndex,
+  generatedSections,
+  expandedContent,
+  collapsedSections,
+  isComplete,
+  startTime,
+  applyReportRenderState,
+  resetReportRenderState,
+  toggleSectionContent,
+  toggleSectionCollapse,
+  applyAgentLogStatePatch,
+} = useStep4ReportRenderState({
+  emitUpdateStatus: status => emit('update-status', status),
+  stopPolling: () => stopPolling(),
+})
 
 const projectId = computed(() => props.projectData?.project_id || props.projectData?.projectId || null)
 
@@ -309,29 +311,6 @@ const toggleRawResult = (timestamp, event) => {
   }
 }
 
-const toggleSectionContent = (idx) => {
-  if (!generatedSections.value[idx + 1]) return
-  const newSet = new Set(expandedContent.value)
-  if (newSet.has(idx)) {
-    newSet.delete(idx)
-  } else {
-    newSet.add(idx)
-  }
-  expandedContent.value = newSet
-}
-
-const toggleSectionCollapse = (idx) => {
-  // 只有已完成的章节才能折叠
-  if (!generatedSections.value[idx + 1]) return
-  const newSet = new Set(collapsedSections.value)
-  if (newSet.has(idx)) {
-    newSet.delete(idx)
-  } else {
-    newSet.add(idx)
-  }
-  collapsedSections.value = newSet
-}
-
 const toggleLogExpand = (log) => {
   const newSet = new Set(expandedLogs.value)
   if (newSet.has(log.timestamp)) {
@@ -366,18 +345,6 @@ const addLog = (msg) => {
   emit('add-log', msg)
 }
 
-const applyAgentLogStatePatch = (patch) => applyReportStatePatch(patch, {
-  reportOutline,
-  currentSectionIndex,
-  generatedSections,
-  expandedContent,
-  isComplete,
-  startTime,
-  emitUpdateStatus: status => emit('update-status', status),
-  stopPolling,
-})
-
-// Polling
 let agentLogTimer = null
 let consoleLogTimer = null
 
@@ -464,7 +431,7 @@ const stopPolling = () => {
 
 // Lifecycle
 onMounted(() => {
-  applyReportRenderState()
+  applyReportRenderState(props.reportData)
   if (props.reportId) {
     addLog(`Report Agent initialized: ${props.reportId}`)
     startPolling()
@@ -483,16 +450,10 @@ watch(() => props.reportId, (newId) => {
     consoleLogs.value = []
     agentLogLine.value = 0
     consoleLogLine.value = 0
-    reportOutline.value = null
-    currentSectionIndex.value = null
-    generatedSections.value = {}
-    expandedContent.value = new Set()
     expandedLogs.value = new Set()
-    collapsedSections.value = new Set()
-    isComplete.value = false
-    startTime.value = null
+    resetReportRenderState()
     resetEvidenceGraph()
-    applyReportRenderState()
+    applyReportRenderState(props.reportData)
 
     startPolling()
     loadEvidenceGraph()
@@ -500,7 +461,7 @@ watch(() => props.reportId, (newId) => {
 }, { immediate: true })
 
 watch(() => props.reportData, () => {
-  applyReportRenderState()
+  applyReportRenderState(props.reportData)
 }, { deep: true })
 </script>
 
