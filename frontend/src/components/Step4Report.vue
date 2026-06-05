@@ -161,9 +161,6 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import {
-  getAgentLog, getConsoleLog,
-} from '../api/report'
 import { deriveReportConsumerContext } from '../utils/reportConsumerContext'
 import ConsumerReportHeader from './consumer/ConsumerReportHeader.vue'
 import ResearchAssetWorkspace from './consumer/ResearchAssetWorkspace.vue'
@@ -179,9 +176,9 @@ import ReportWorkflowPanel from './report/ReportWorkflowPanel.vue'
 import { useStep4BranchComparisonState } from '../composables/useStep4BranchComparisonState'
 import { useStep4EvidenceGraphState } from '../composables/useStep4EvidenceGraphState'
 import { useStep4InsightDrawerState } from '../composables/useStep4InsightDrawerState'
+import { useStep4ReportPollingState } from '../composables/useStep4ReportPollingState'
 import { useStep4ReportRenderState } from '../composables/useStep4ReportRenderState'
 import {
-  applyAgentLogToReportState,
   buildReportWorkflowSummary,
   formatElapsedTime as formatWorkflowElapsedTime,
   getLogLevelClass,
@@ -209,10 +206,6 @@ const goToInteraction = () => {
 }
 
 // State
-const agentLogs = ref([])
-const consoleLogs = ref([])
-const agentLogLine = ref(0)
-const consoleLogLine = ref(0)
 const expandedLogs = ref(new Set())
 const leftPanel = ref(null)
 const rightPanel = ref(null)
@@ -248,6 +241,20 @@ const {
 } = useStep4ReportRenderState({
   emitUpdateStatus: status => emit('update-status', status),
   stopPolling: () => stopPolling(),
+})
+
+const {
+  agentLogs,
+  consoleLogs,
+  resetPollingState,
+  startPolling,
+  stopPolling,
+} = useStep4ReportPollingState({
+  reportId: computed(() => props.reportId),
+  isComplete,
+  rightPanel,
+  logContent,
+  applyAgentLogStatePatch,
 })
 
 const projectId = computed(() => props.projectData?.project_id || props.projectData?.projectId || null)
@@ -345,90 +352,6 @@ const addLog = (msg) => {
   emit('add-log', msg)
 }
 
-let agentLogTimer = null
-let consoleLogTimer = null
-
-const fetchAgentLog = async () => {
-  if (!props.reportId) return
-
-  try {
-    const res = await getAgentLog(props.reportId, agentLogLine.value)
-
-    if (res.success && res.data) {
-      const newLogs = res.data.logs || []
-
-      if (newLogs.length > 0) {
-        newLogs.forEach(log => {
-          agentLogs.value.push(log)
-
-          applyAgentLogStatePatch(applyAgentLogToReportState(log))
-        })
-
-        agentLogLine.value = res.data.from_line + newLogs.length
-
-        nextTick(() => {
-          if (rightPanel.value) {
-            // 如果任务已完成，滚动到顶部；否则滚动到底部跟随最新日志
-            if (isComplete.value) {
-              rightPanel.value.scrollTop = 0
-            } else {
-              rightPanel.value.scrollTop = rightPanel.value.scrollHeight
-            }
-          }
-        })
-      }
-    }
-  } catch (err) {
-    console.warn('Failed to fetch agent log:', err)
-  }
-}
-
-const fetchConsoleLog = async () => {
-  if (!props.reportId) return
-
-  try {
-    const res = await getConsoleLog(props.reportId, consoleLogLine.value)
-
-    if (res.success && res.data) {
-      const newLogs = res.data.logs || []
-
-      if (newLogs.length > 0) {
-        consoleLogs.value.push(...newLogs)
-        consoleLogLine.value = res.data.from_line + newLogs.length
-
-        nextTick(() => {
-          if (logContent.value) {
-            logContent.value.scrollTop = logContent.value.scrollHeight
-          }
-        })
-      }
-    }
-  } catch (err) {
-    console.warn('Failed to fetch console log:', err)
-  }
-}
-
-const startPolling = () => {
-  if (agentLogTimer || consoleLogTimer) return
-
-  fetchAgentLog()
-  fetchConsoleLog()
-
-  agentLogTimer = setInterval(fetchAgentLog, 2000)
-  consoleLogTimer = setInterval(fetchConsoleLog, 1500)
-}
-
-const stopPolling = () => {
-  if (agentLogTimer) {
-    clearInterval(agentLogTimer)
-    agentLogTimer = null
-  }
-  if (consoleLogTimer) {
-    clearInterval(consoleLogTimer)
-    consoleLogTimer = null
-  }
-}
-
 // Lifecycle
 onMounted(() => {
   applyReportRenderState(props.reportData)
@@ -446,10 +369,7 @@ onUnmounted(() => {
 
 watch(() => props.reportId, (newId) => {
   if (newId) {
-    agentLogs.value = []
-    consoleLogs.value = []
-    agentLogLine.value = 0
-    consoleLogLine.value = 0
+    resetPollingState()
     expandedLogs.value = new Set()
     resetReportRenderState()
     resetEvidenceGraph()
