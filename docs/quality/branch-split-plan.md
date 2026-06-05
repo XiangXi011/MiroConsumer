@@ -12,6 +12,13 @@ Use this script before preparing each PR:
 ./scripts/change_inventory.ps1 -ShowFiles
 ```
 
+Use this script to check local stack size before opening stacked PRs:
+
+```powershell
+./scripts/stack_inventory.ps1
+./scripts/stack_inventory.ps1 -Markdown
+```
+
 Use this script as the default local quality gate:
 
 ```powershell
