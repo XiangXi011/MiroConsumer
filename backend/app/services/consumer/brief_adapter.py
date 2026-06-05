@@ -17,6 +17,20 @@ from .models import (
 _MISSING = object()
 
 
+def _normalize_source_evidence_spans(value: Any) -> list[dict[str, Any]]:
+    if value is None:
+        return []
+    if not isinstance(value, (list, tuple)):
+        raise ValueError("source_evidence_spans must be a list of mappings")
+
+    spans: list[dict[str, Any]] = []
+    for item in value:
+        if not isinstance(item, Mapping):
+            raise ValueError("source_evidence_spans must contain only mappings")
+        spans.append(dict(item))
+    return spans
+
+
 class ConsumerBriefAdapter:
     @staticmethod
     def from_payload(payload: Mapping[str, Any]) -> ConsumerBusinessBrief:
@@ -87,4 +101,8 @@ class ConsumerBriefAdapter:
             llm_retry_budget=llm_retry_budget,
             task_retry_budget=payload.get("task_retry_budget", 1),
             simulation_retry_budget=payload.get("simulation_retry_budget", 0),
+            source_evidence_spans=_normalize_source_evidence_spans(
+                payload.get("source_evidence_spans")
+            ),
+            risk_flags=_normalize_string_list(payload.get("risk_flags"), "risk_flags"),
         )

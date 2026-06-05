@@ -15,6 +15,7 @@ from app.services.consumer.research_ingest import (
     build_research_summary,
     build_research_snapshot,
     build_workspace_findings,
+    llm_auto_research_provider,
     resolve_research_findings,
 )
 from app.services.consumer.source_registry import SourceRegistry
@@ -36,6 +37,40 @@ def test_research_ingest_builds_typed_findings():
     assert findings[0].finding_type in {"category_context", "risk_signal", "trend_signal"}
     assert findings[0].visibility in {GraphVisibility.Propagation_Only, GraphVisibility.Restricted}
     assert findings[0].summary
+
+
+def test_resolve_research_findings_uses_openclaw_source_evidence_without_auto_provider():
+    brief = ConsumerBriefAdapter.from_payload(
+        {
+            "task_type": "concept_test",
+            "product_concept_assets": ["Shuke kids color-changing toothpaste"],
+            "research_goal": "Validate parent safety confidence",
+            "research_mode": "auto_enrich",
+            "enable_lane_b": True,
+            "source_evidence_spans": [
+                {
+                    "title": "Parent safety article",
+                    "url": "https://example.com/safety",
+                    "snippet": "Parents look for fluoride dosage and swallow-safety proof.",
+                    "evidence_type": "regulatory",
+                    "confidence": 0.82,
+                    "query": "kids toothpaste fluoride safety",
+                }
+            ],
+        }
+    )
+
+    findings = resolve_research_findings(
+        brief,
+        provider=None,
+        enable_lane_b=False,
+    )
+
+    assert len(findings) == 1
+    assert findings[0].source_label == "source_evidence"
+    assert findings[0].finding_type == "risk_signal"
+    assert findings[0].visibility == GraphVisibility.Restricted
+    assert "swallow-safety" in findings[0].summary
 
 
 def test_auto_enrich_uses_provider_output_without_manual_background():
@@ -62,6 +97,43 @@ def test_auto_enrich_uses_provider_output_without_manual_background():
     )
 
     assert [item.finding_id for item in findings] == ["auto_1"]
+
+
+def test_llm_auto_research_provider_uses_bounded_timeout(monkeypatch):
+    captured = {}
+
+    class FakeClient:
+        def chat_json(self, **kwargs):
+            captured.update(kwargs)
+            return {
+                "findings": [
+                    {
+                        "type": "category_context",
+                        "summary": "Whitening toothpaste shoppers want proof.",
+                        "visibility": "Initial",
+                        "confidence": 0.7,
+                    }
+                ]
+            }
+
+    from app.utils import llm_client
+
+    monkeypatch.setattr(llm_client, "LLMClient", lambda: FakeClient())
+
+    brief = ConsumerBriefAdapter.from_payload(
+        {
+            "task_type": "concept_test",
+            "product_concept_assets": ["Whitening toothpaste"],
+            "research_goal": "Understand whitening appeal",
+            "research_mode": "auto_enrich",
+        }
+    )
+
+    findings = llm_auto_research_provider(brief)
+
+    assert findings
+    assert captured["timeout"] <= 45
+    assert captured["fallback_on_failure"] is False
 
 
 def test_research_ingest_can_build_pinned_research_summary():
@@ -107,6 +179,51 @@ def test_build_research_snapshot_includes_auto_enrich_findings(tmp_path):
     assert len(resolved) > 0
     assert len(snapshot.findings) == len(resolved)
     assert any(f.source_label == "auto_enrich" for f in snapshot.findings)
+
+
+def test_build_research_snapshot_reuses_precomputed_findings_without_reinvoking_provider(tmp_path):
+    """Graph build already resolved research once; snapshot must not repeat slow providers."""
+    brief = ConsumerBriefAdapter.from_payload(
+        {
+            "task_type": "concept_test",
+            "product_concept_assets": ["Glow serum stick"],
+            "claims": ["Derm-tested glow boost"],
+            "research_goal": "Understand first-impression appeal",
+            "research_mode": "auto_enrich",
+        }
+    )
+
+    calls = {"count": 0}
+
+    def _fake_provider(b):
+        calls["count"] += 1
+        return [
+            ResearchFinding(
+                finding_id="auto_once",
+                finding_type="trend_signal",
+                summary="High-protein breakfast is trending",
+                visibility=GraphVisibility.Propagation_Only,
+                source_label="auto_enrich",
+            )
+        ]
+
+    resolved = resolve_research_findings(
+        brief,
+        provider=_fake_provider,
+        project_id="proj_snapshot_reuse",
+        upload_root=str(tmp_path / "uploads"),
+    )
+
+    snapshot = build_research_snapshot(
+        "proj_snapshot_reuse",
+        brief=brief,
+        upload_root=str(tmp_path / "uploads"),
+        provider=_fake_provider,
+        precomputed_findings=resolved,
+    )
+
+    assert calls["count"] == 1
+    assert [item.finding_id for item in snapshot.findings] == ["auto_once"]
 
 
 def test_build_research_snapshot_without_provider_skips_auto_enrich(tmp_path):
@@ -162,6 +279,37 @@ def test_build_lane_b_findings_with_provider(tmp_path):
     assert all(f.source_label == "public_web" for f in findings)
     assert all(f.retrieval_trace_id != "" for f in findings)
     assert len(traces) > 0
+
+
+def test_build_lane_b_findings_limits_queries_for_large_briefs(tmp_path):
+    root = str(tmp_path / "uploads")
+    queries = []
+
+    def fake_provider(query: str, top_k: int):
+        queries.append(query)
+        return []
+
+    brief = ConsumerBriefAdapter.from_payload(
+        {
+            "task_type": "concept_test",
+            "product_concept_assets": [f"Product concept {i}" for i in range(8)],
+            "claims": [f"Claim {i}" for i in range(12)],
+            "research_goal": "Understand whitening concept appeal",
+            "enable_lane_b": True,
+        }
+    )
+
+    build_lane_b_findings(
+        project_id="proj_lb_limit",
+        brief=brief,
+        upload_root=root,
+        lane_b_provider=fake_provider,
+    )
+
+    assert len(queries) <= 6
+    assert "Understand whitening concept appeal" in queries
+    assert "Product concept 0" in queries
+    assert "Claim 0" in queries
 
 
 def test_build_lane_b_findings_fallback_empty_when_no_corpus(tmp_path):
@@ -287,7 +435,6 @@ def test_build_research_snapshot_includes_retrieval_traces(tmp_path):
 
 def test_build_lane_b_findings_with_real_provider_persists_workspace(tmp_path):
     """Lane B findings built with a provider that persists should reuse workspace artifacts."""
-    from unittest.mock import MagicMock
 
     root = str(tmp_path / "uploads")
 

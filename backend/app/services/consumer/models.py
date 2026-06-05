@@ -396,7 +396,7 @@ class ConsumerBusinessBrief:
     llm_retry_budget: int = 2
     task_retry_budget: int = 1
     simulation_retry_budget: int = 0
-    source_evidence_spans: List[str] = field(default_factory=list)
+    source_evidence_spans: List[Mapping[str, Any]] = field(default_factory=list)
     risk_flags: List[str] = field(default_factory=list)
     supported_task_types: ClassVar[set[ConsumerTaskType]] = {
         ConsumerTaskType.ConceptTest,
