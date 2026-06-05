@@ -28,10 +28,13 @@ class OpenClawSessionStore:
 
     def save(self, session: OpenClawResearchSession) -> None:
         session.touch()
-        self._path(session.research_session_id).write_text(
+        path = self._path(session.research_session_id)
+        tmp_path = path.with_suffix(".json.tmp")
+        tmp_path.write_text(
             json.dumps(session.to_dict(), ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
+        tmp_path.replace(path)
 
     def get(self, research_session_id: str) -> Optional[OpenClawResearchSession]:
         if not _SESSION_ID_PATTERN.fullmatch(research_session_id):
