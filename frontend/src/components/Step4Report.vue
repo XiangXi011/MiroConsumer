@@ -166,7 +166,6 @@ import {
 } from '../api/report'
 import {
   getBranchComparison,
-  getReportEvidenceGraph,
 } from '../api/consumer'
 import {
   loadSelectedBranch,
@@ -185,6 +184,7 @@ import PropagationTimeline from './consumer/PropagationTimeline.vue'
 import EvidenceGraphPanel from './consumer/EvidenceGraphPanel.vue'
 import ReportSectionsList from './report/ReportSectionsList.vue'
 import ReportWorkflowPanel from './report/ReportWorkflowPanel.vue'
+import { useStep4EvidenceGraphState } from '../composables/useStep4EvidenceGraphState'
 import { useStep4InsightDrawerState } from '../composables/useStep4InsightDrawerState'
 import { deriveReportRenderState } from '../utils/reportContent'
 import {
@@ -233,9 +233,6 @@ const leftPanel = ref(null)
 const rightPanel = ref(null)
 const logContent = ref(null)
 const showRawResult = reactive({})
-const evidenceGraph = ref(null)
-const evidenceGraphLoading = ref(false)
-const evidenceGraphError = ref('')
 
 const {
   showInsightDrawer,
@@ -265,32 +262,6 @@ const branchComparisonFormatted = computed(() => {
   return formatBranchComparison(branchComparisonRaw.value, t)
 })
 
-const loadEvidenceGraph = async () => {
-  if (!props.reportId || !isConsumerMode.value) {
-    evidenceGraph.value = null
-    evidenceGraphError.value = ''
-    evidenceGraphLoading.value = false
-    return
-  }
-
-  evidenceGraphLoading.value = true
-  evidenceGraphError.value = ''
-  try {
-    const res = await getReportEvidenceGraph(props.reportId)
-    if (res.success && res.data) {
-      evidenceGraph.value = res.data
-    } else {
-      evidenceGraph.value = null
-      evidenceGraphError.value = res.error || 'Evidence graph unavailable'
-    }
-  } catch (err) {
-    evidenceGraph.value = null
-    evidenceGraphError.value = err?.message || 'Evidence graph unavailable'
-  } finally {
-    evidenceGraphLoading.value = false
-  }
-}
-
 const projectId = computed(() => props.projectData?.project_id || props.projectData?.projectId || null)
 
 const consumerContextState = computed(() => deriveReportConsumerContext({
@@ -300,6 +271,17 @@ const consumerContextState = computed(() => deriveReportConsumerContext({
 }))
 const isConsumerMode = computed(() => consumerContextState.value.isConsumerMode)
 const reportContext = computed(() => consumerContextState.value.reportContext)
+
+const {
+  evidenceGraph,
+  evidenceGraphLoading,
+  evidenceGraphError,
+  resetEvidenceGraph,
+  loadEvidenceGraph,
+} = useStep4EvidenceGraphState({
+  reportId: computed(() => props.reportId),
+  isConsumerMode,
+})
 
 const loadBranchComparison = async () => {
   if (!props.simulationId || !isConsumerMode.value) {
@@ -539,8 +521,7 @@ watch(() => props.reportId, (newId) => {
     collapsedSections.value = new Set()
     isComplete.value = false
     startTime.value = null
-    evidenceGraph.value = null
-    evidenceGraphError.value = ''
+    resetEvidenceGraph()
     applyReportRenderState()
 
     startPolling()
