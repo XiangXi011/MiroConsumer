@@ -6,6 +6,7 @@ SCANNED_FILES = [
     ROOT / "app" / "repositories" / "filesystem.py",
     ROOT / "app" / "services" / "simulation_runner.py",
     ROOT / "app" / "services" / "report_agent.py",
+    ROOT / "app" / "services" / "report_manager.py",
     ROOT / "app" / "services" / "consumer" / "society" / "state_store.py",
     ROOT / "app" / "services" / "consumer" / "society" / "society_runtime.py",
 ]
