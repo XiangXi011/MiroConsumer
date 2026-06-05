@@ -4,12 +4,20 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 
+_last_now: Optional[datetime] = None
+
+
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    global _last_now
+    now = datetime.now(timezone.utc)
+    if _last_now is not None and now <= _last_now:
+        now = _last_now + timedelta(microseconds=1)
+    _last_now = now
+    return now.isoformat()
 
 
 @dataclass
