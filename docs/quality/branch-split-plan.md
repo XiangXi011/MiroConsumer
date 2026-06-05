@@ -18,6 +18,42 @@ Use this script as the default local quality gate:
 ./scripts/quality_gate.ps1
 ```
 
+## Current Local Stack Pointers
+
+The staging branch now has local stack pointers that mark reviewable cut points.
+Use these as cherry-pick boundaries when preparing smaller PRs from the target
+base; do not merge the full staging branch directly.
+
+| Stack | Pointer | Scope |
+| --- | --- | --- |
+| 01 | `codex/stack-01-engineering-health` | quality gates, docs, CI, ignore hygiene |
+| 02 | `codex/stack-02-openclaw-backend` | initial OpenClaw backend flow and status helpers |
+| 03 | `codex/stack-03-report-foundations` | report models, prompts, parsers, workflow helpers |
+| 04 | `codex/stack-04-consumer-report-helpers` | report consumer context state helpers |
+| 05 | `codex/stack-05-step4-report-ui-panels` | Step4 report UI panel extraction |
+| 06 | `codex/stack-06-step5-component-shells` | Step5 component shell extraction |
+| 07 | `codex/stack-07-step5-composables` | Step5 composable extraction |
+| 08 | `codex/stack-08-step4-composables` | Step4 composable extraction |
+| 09 | `codex/stack-09-openclaw-session-fix` | deterministic OpenClaw session persistence |
+| 10 | `codex/stack-10-report-manager-module` | report manager extraction |
+| 11 | `codex/stack-11-report-logging-module` | report logging extraction |
+| 12 | `codex/stack-12-consumer-report-mixin` | consumer report mixin extraction |
+| 13 | `codex/stack-13-report-tool-mixin` | report tool mixin extraction |
+| 14 | `codex/stack-14-step4-style-extraction` | Step4 scoped/global style extraction |
+| 15 | `codex/stack-15-consumer-report-mixin-split` | consumer report context/render mixin split |
+| 16 | `codex/stack-16-workflow-panel-style-extraction` | workflow panel scoped style extraction |
+| 17 | `codex/stack-17-openclaw-evidence-helpers` | OpenClaw evidence helper extraction |
+| 18 | `codex/stack-18-report-tool-displays-split` | report tool display component split |
+| 19 | `codex/stack-19-consumer-confidence-helpers` | consumer confidence helper extraction |
+| 20 | `codex/stack-20-consumer-branching-helpers` | consumer branching/comparison helper extraction |
+
+When preparing a PR from a stack pointer, validate the stack against its parent
+stack instead of the final staging head. Example:
+
+```powershell
+git diff --stat codex/stack-17-openclaw-evidence-helpers..codex/stack-18-report-tool-displays-split
+```
+
 ## Split Order
 
 ### PR 1: Engineering Health Gate
@@ -107,6 +143,18 @@ If this command becomes too slow, split PR 3 into:
 - society runtime;
 - report agent and report APIs.
 
+Recommended stack mapping after the backend report-agent slimming work:
+
+- PR 3a: report foundations and manager/logging modules:
+  `codex/stack-03-report-foundations` and `codex/stack-10-report-manager-module`
+  through `codex/stack-11-report-logging-module`.
+- PR 3b: consumer report generation mixins:
+  `codex/stack-12-consumer-report-mixin`,
+  `codex/stack-13-report-tool-mixin`, and
+  `codex/stack-15-consumer-report-mixin-split`.
+- PR 3c: any remaining simulation/runtime files, after a fresh inventory proves
+  they are not bundled with unrelated frontend changes.
+
 ### PR 4: Frontend OpenClaw Workspace
 
 Scope:
@@ -146,6 +194,8 @@ Intent:
 
 - keep report UX, action workspace, markdown safety, and consumer panels in one
   UI-focused review.
+- keep the later architecture-only splits (`stack-14`, `stack-16`, `stack-18`,
+  `stack-19`, `stack-20`) separate from behavior changes when possible.
 
 Validation:
 
@@ -154,6 +204,21 @@ cd frontend
 npm run typecheck
 npx vitest run tests\reportContent.test.js tests\safeMarkdown.test.js tests\safeMarkdownTableAffordance.test.js tests\e2eRepairContracts.test.js
 ```
+
+Recommended stack mapping after frontend slimming:
+
+- PR 5a: Step4 composables and report panels:
+  `codex/stack-05-step4-report-ui-panels`,
+  `codex/stack-08-step4-composables`, and
+  `codex/stack-14-step4-style-extraction`.
+- PR 5b: Step5 component shells and composables:
+  `codex/stack-06-step5-component-shells` through
+  `codex/stack-07-step5-composables`.
+- PR 5c: report workflow/tool display and consumer utility splits:
+  `codex/stack-16-workflow-panel-style-extraction`,
+  `codex/stack-18-report-tool-displays-split`,
+  `codex/stack-19-consumer-confidence-helpers`, and
+  `codex/stack-20-consumer-branching-helpers`.
 
 ### PR 6: Product Docs, Locales, And Demo Seed Material
 
