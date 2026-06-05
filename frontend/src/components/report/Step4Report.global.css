@@ -1,0 +1,4 @@
+/* English locale: smaller report title */
+html[lang="en"] .report-header-block .main-title {
+  font-size: 28px;
+}
